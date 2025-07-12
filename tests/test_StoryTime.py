@@ -1,5 +1,4 @@
 import pytest
-from unittest.mock import MagicMock, patch
 from StoryTime import StoryApp
 
 class DummyResponse:
