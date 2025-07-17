@@ -1,27 +1,39 @@
-.PHONY: test run install lint clean
+.PHONY: all test run install lint clean
 
-# Variable for venv activation
+# Use .venv/bin/uv consistently
 VENV_ACTIVATE = . .venv/bin/activate &&
 
-# [venv] Run tests with pytest (requires venv)
-test:
-	$(VENV_ACTIVATE) PYTHONPATH=. pytest
+# Default target
+all: install
 
-# [venv] Run the app, activating venv if needed
-run:
+
+venv:
+	test -d .venv || uv venv .venv
+
+install: venv
+	uv pip install -e .[dev]
+
+# Run tests
+test: install
+	. $(VENV_ACTIVATE) PYTHONPATH=. pytest
+
+# Run the app
+run: install
 	$(VENV_ACTIVATE) storytime
 
-# Install all dependencies (including dev) and the package in editable mode
-install:
-	uv pip install .[dev]
-
-# [venv] Lint the code (requires venv)
-lint:
+# Lint the code
+lint: install
 	$(VENV_ACTIVATE) ruff check storytime tests
 
 # Clean up Python cache and test artifacts
+# Clean up Python cache and test artifacts
 clean:
-	find . -type d -name "__pycache__" -exec rm -rf {} +
-	find . -type f -name "*.pyc" -delete
-	rm -rf .pytest_cache .mypy_cache .ruff_cache
-	rm -rf StoryTime.egg-info build/
+	find . -name "__pycache__" -type d -exec rm -rf {} +
+	find . -name "*.pyc" -type f -delete
+	rm -rf .pytest_cache \
+		.mypy_cache \
+		.ruff_cache \
+		StoryTime.egg-info \
+		build/ \
+		.venv \
+		uv.lock
