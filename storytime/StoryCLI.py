@@ -137,6 +137,109 @@ def story(
         else:
             console.print("[red]Error:[/red] An unexpected error occurred. Use --verbose for details.", style="bold")
         raise typer.Exit(1)
+@app.command()
+def image(
+    prompt: str = typer.Argument(..., help="The image prompt to generate from"),
+    output_dir: str = typer.Option(".", "--output-dir", "-o", help="Directory to save the image"),
+    filename: Optional[str] = typer.Option(None, "--filename", "-f", help="Custom filename (without extension)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output")
+):
+    """Generate an image from a prompt."""
+    
+    if not prompt.strip():
+        console.print("[red]Error:[/red] Please provide a non-empty image prompt.", style="bold")
+        raise typer.Exit(1)
+    
+    try:
+        # Initialize backend
+        if verbose:
+            console.print("[dim]Initializing Gemini backend...[/dim]")
+        
+        backend = GeminiBackend()
+        
+        # Generate image
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]Generating image..."),
+            console=console,
+            transient=True
+        ) as progress:
+            progress.add_task("image", total=None)
+            image, image_bytes = backend.generate_image(prompt)
+        
+        if image is None or image_bytes is None:
+            console.print("[red]Error:[/red] Failed to generate image. Please check your API key and try again.", style="bold")
+            raise typer.Exit(1)
+        
+        # Determine filename
+        if filename:
+            image_name = filename
+        else:
+            # Generate filename based on prompt
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]Generating filename..."),
+                console=console,
+                transient=True
+            ) as progress:
+                progress.add_task("filename", total=None)
+                raw_name = backend.generate_image_name(prompt, prompt)  # Use prompt as "story" for naming
+            
+            if not raw_name or raw_name == "story_image":
+                # Fallback: create filename from prompt
+                image_name = prompt.lower().replace(" ", "_")[:30]  # Limit to 30 chars
+            else:
+                # Clean up the generated name - take only the first line/word if it's verbose
+                lines = raw_name.split('\n')
+                first_line = lines[0].strip()
+                # Take first word or phrase before common separators
+                for sep in ['.', ',', ':', ';', '!', '?']:
+                    first_line = first_line.split(sep)[0]
+                image_name = first_line.strip() if first_line.strip() else "generated_image"
+        
+        # Sanitize filename using standard library methods
+        import string
+        # Keep alphanumeric, underscore, hyphen, and space (will convert space to underscore)
+        valid_chars = string.ascii_letters + string.digits + "_- "
+        # Filter to valid characters and replace spaces with underscores
+        clean_chars = ''.join(c if c in valid_chars else '_' for c in image_name)
+        image_name = clean_chars.replace(" ", "_")
+        
+        # Ensure .png extension
+        if not image_name.endswith(".png"):
+            image_name += ".png"
+        
+        # Save image to specified directory
+        import os
+        if output_dir != ".":
+            os.makedirs(output_dir, exist_ok=True)
+        
+        image_path = os.path.join(output_dir, image_name)
+        
+        with open(image_path, "wb") as f:
+            f.write(image_bytes)
+        
+        console.print(f"[bold green]✅ Image saved as:[/bold green] {image_path}")
+        console.print(f"[dim]Prompt:[/dim] {prompt}")
+        
+        if verbose:
+            console.print(f"[dim]Image size: {len(image_bytes)} bytes[/dim]")
+    
+    except RuntimeError as e:
+        if "GEMINI_API_KEY" in str(e):
+            console.print("[red]Error:[/red] GEMINI_API_KEY environment variable not set.", style="bold")
+            console.print("[dim]Please set your Gemini API key: export GEMINI_API_KEY=your_key_here[/dim]")
+        else:
+            console.print(f"[red]Error:[/red] {e}", style="bold")
+        raise typer.Exit(1)
+    
+    except Exception as e:
+        if verbose:
+            console.print(f"[red]Unexpected error:[/red] {e}", style="bold")
+        else:
+            console.print("[red]Error:[/red] An unexpected error occurred. Use --verbose for details.", style="bold")
+        raise typer.Exit(1)
+
 
 if __name__ == "__main__":
     app()
