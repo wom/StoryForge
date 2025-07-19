@@ -1,5 +1,5 @@
 import pytest
-from StoryTime import StoryApp
+from storytime.StoryTime import StoryApp
 
 class DummyResponse:
     def __init__(self, text):
