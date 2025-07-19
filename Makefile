@@ -15,7 +15,7 @@ install: venv
 
 # Run tests
 test: install
-	. $(VENV_ACTIVATE) PYTHONPATH=. pytest
+	$(VENV_ACTIVATE) PYTHONPATH=. pytest
 
 # Run the app
 run: install
