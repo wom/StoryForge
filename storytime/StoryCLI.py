@@ -5,7 +5,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from dataclasses import dataclass
 from typing import Optional
 
-from .gemini_backend import GeminiBackend
+from .llm_backend import get_backend
 
 console = Console()
 app = typer.Typer(add_completion=False, help="StoryTime CLI - Generate stories and images with AI")
@@ -51,7 +51,7 @@ def story(
         if verbose:
             console.print("[dim]Initializing Gemini backend...[/dim]")
         
-        backend = GeminiBackend()
+        backend = get_backend()
         
         # Generate story
         with Progress(
@@ -155,7 +155,7 @@ def image(
         if verbose:
             console.print("[dim]Initializing Gemini backend...[/dim]")
         
-        backend = GeminiBackend()
+        backend = get_backend()
         
         # Generate image
         with Progress(
