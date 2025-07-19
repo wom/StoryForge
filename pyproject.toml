@@ -11,7 +11,10 @@ requires-python = ">=3.8"
 dependencies = [
     "google-genai>=1.23.0",
     "pillow>=11.2.1",
-    "textual>=0.54.1"
+    "textual[syntax]>=0.54.1",
+    "textual-dev>=0.00.1",
+    "typer>=0.9.0",
+    "rich>=13.0.0"
 ]
 
 [project.optional-dependencies]
@@ -23,3 +26,12 @@ dev = [
 
 [project.scripts]
 storytime = "storytime.StoryTime:main"
+storytime-cli = "storytime.StoryCLI:app"
+
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["storytime*"]
+exclude = ["data*", "tests*"]
