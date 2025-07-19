@@ -1,3 +1,7 @@
+"""
+Abstract base class for Large Language Model (LLM) backends.
+Defines the required interface for any backend that can generate stories and images.
+"""
 from typing import Tuple, Optional
 from abc import ABC, abstractmethod
 
