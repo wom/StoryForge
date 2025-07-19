@@ -21,11 +21,17 @@ test: install
 run: install
 	$(VENV_ACTIVATE) storytime
 
+# [venv] Run attaching to debug console
+debug:
+	$(VENV_ACTIVATE) textual run --dev `which storytime`
+# [venv] Run textual debug server
+console:
+	$(VENV_ACTIVATE) textual console 
+
 # Lint the code
 lint: install
 	$(VENV_ACTIVATE) ruff check storytime tests
 
-# Clean up Python cache and test artifacts
 # Clean up Python cache and test artifacts
 clean:
 	find . -name "__pycache__" -type d -exec rm -rf {} +

@@ -1,0 +1,18 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Run StoryCLI",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/storytime/StoryCLI.py",
+            "console": "integratedTerminal",
+            "args": [
+                "Alice",
+                "--age", "30",
+                "--verbose",
+                "--color", "magenta"
+            ]
+        }
+    ]
+}
