@@ -1,14 +1,19 @@
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
 from storytime.gemini_backend import GeminiBackend
+
 
 @patch("storytime.gemini_backend.genai.Client")
 def test_generate_story_success(mock_client):
     backend = GeminiBackend()
     mock_response = MagicMock()
-    mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="A story")]))]
+    mock_response.candidates = [
+        MagicMock(content=MagicMock(parts=[MagicMock(text="A story")]))
+    ]
     backend.client.models.generate_content.return_value = mock_response
     result = backend.generate_story("prompt")
     assert result == "A story"
+
 
 @patch("storytime.gemini_backend.genai.Client")
 def test_generate_story_error(mock_client):
@@ -16,6 +21,7 @@ def test_generate_story_error(mock_client):
     backend.client.models.generate_content.side_effect = Exception("fail")
     result = backend.generate_story("prompt")
     assert result == "[Error generating story]"
+
 
 @patch("storytime.gemini_backend.genai.Client")
 def test_generate_image_success(mock_client):
@@ -30,6 +36,7 @@ def test_generate_image_success(mock_client):
         assert image == "image_obj"
         assert image_bytes == b"bytes"
 
+
 @patch("storytime.gemini_backend.genai.Client")
 def test_generate_image_none(mock_client):
     backend = GeminiBackend()
@@ -42,6 +49,7 @@ def test_generate_image_none(mock_client):
     assert image is None
     assert image_bytes is None
 
+
 @patch("storytime.gemini_backend.genai.Client")
 def test_generate_image_name_success(mock_client):
     backend = GeminiBackend()
@@ -52,6 +60,7 @@ def test_generate_image_name_success(mock_client):
     backend.client.models.generate_content.return_value = mock_response
     name = backend.generate_image_name("prompt", "story")
     assert name == "filename"
+
 
 @patch("storytime.gemini_backend.genai.Client")
 def test_generate_image_name_error(mock_client):
