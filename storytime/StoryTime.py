@@ -2,20 +2,24 @@
 StoryTime: Textual TUI app for generating illustrated stories using Gemini LLM backend.
 Handles user input, confirmation dialogs, and asynchronous story/image generation.
 """
-from textual.app import App, ComposeResult
-from textual.widgets import Input, Button, Static, Log, LoadingIndicator
-from textual.containers import Vertical, Horizontal
+
 import asyncio
 
+from textual.app import App, ComposeResult
+from textual.containers import Horizontal, Vertical
+from textual.widgets import Button, Input, LoadingIndicator, Log, Static
+
 from .gemini_backend import GeminiBackend
+
 
 class StoryApp(App):
     """
     Main Textual application for interactive story and image generation.
     Presents a prompt input, output log, and confirmation dialogs.
     """
+
     CSS_PATH = None  # No custom CSS
-    BINDINGS = [ ("q", "quit", "Quit") ]  # Keyboard shortcut to quit
+    BINDINGS = [("q", "quit", "Quit")]  # Keyboard shortcut to quit
 
     def __init__(self, *args, **kwargs):
         """
@@ -24,10 +28,10 @@ class StoryApp(App):
         super().__init__(*args, **kwargs)
         self.backend = GeminiBackend()
 
-
     def compose(self) -> ComposeResult:
         """
-        Compose the main UI layout: prompt input, generate button, output log, and hidden confirmation dialog.
+        Compose the main UI layout: prompt input, generate button, output log,
+        and hidden confirmation dialog.
         """
         yield Vertical(
             Static("Enter a story prompt:"),
@@ -40,7 +44,8 @@ class StoryApp(App):
 
     async def on_button_pressed(self, event: Button.Pressed) -> None:
         """
-        Handle button presses for generating stories/images and confirmation dialog actions.
+        Handle button presses for generating stories/images and confirmation
+        dialog actions.
         Args:
             event (Button.Pressed): The button press event.
         """
@@ -55,13 +60,16 @@ class StoryApp(App):
             # Show confirmation dialog
             confirm_dialog = self.query_one("#confirm_dialog", Static)
             confirm_dialog.update(
-                "[bold]Are you sure?[/bold]\n\nThis will generate a story and an image based on your prompt, and save the image to disk.\n\nContinue?\n\n"
+                "[bold]Are you sure?[/bold]\n\n"
+                "This will generate a story and an image based on your prompt, "
+                "and save the image to disk.\n\nContinue?\n\n"
             )
             confirm_dialog.remove_class("hidden")
-            confirm_dialog.mount(Horizontal(
-                Button("Yes", id="confirm_yes"),
-                Button("No", id="confirm_no")
-            ))
+            confirm_dialog.mount(
+                Horizontal(
+                    Button("Yes", id="confirm_yes"), Button("No", id="confirm_no")
+                )
+            )
             self.set_focus(confirm_dialog)
             self._pending_prompt = prompt  # Store prompt for later use
             return
@@ -93,7 +101,8 @@ class StoryApp(App):
 
     async def _do_generation(self):
         """
-        Asynchronously generate the story and image, update the UI, and save the image to disk.
+        Asynchronously generate the story and image, update the UI, and save
+        the image to disk.
         Handles spinner display and error reporting.
         """
         prompt = getattr(self, "_pending_prompt", None)
@@ -111,13 +120,17 @@ class StoryApp(App):
             output_log.write(f"[green]Story:[/green]\n{story}")
             output_log.write("[bold]Generating image...[/bold]")
             # Generate image in a thread
-            image, image_bytes = await asyncio.to_thread(self.backend.generate_image, prompt)
+            image, image_bytes = await asyncio.to_thread(
+                self.backend.generate_image, prompt
+            )
             if image is None:
                 output_log.write("[red]Failed to generate image.[/red]")
                 return
             output_log.write("[bold]Generating image name...[/bold]")
             # Generate image filename in a thread
-            image_name = await asyncio.to_thread(self.backend.generate_image_name, prompt, story)
+            image_name = await asyncio.to_thread(
+                self.backend.generate_image_name, prompt, story
+            )
             if not image_name:
                 image_name = "story_image.png"
             else:
@@ -131,12 +144,13 @@ class StoryApp(App):
             spinner.remove()
             self._pending_prompt = None
 
+
 def main():
     """
     Entry point for running the StoryApp.
     """
     StoryApp().run()
 
+
 if __name__ == "__main__":
     main()
-

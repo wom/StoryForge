@@ -2,20 +2,23 @@
 GeminiBackend: Implementation of LLMBackend using Google Gemini APIs.
 Provides methods to generate stories, images, and image filenames using Gemini models.
 """
+
 import os
+from io import BytesIO
+
 from google import genai
 from google.genai import types
 from PIL import Image
-from io import BytesIO
-from typing import Tuple, Optional
 
 from .llm_backend import LLMBackend
+
 
 class GeminiBackend(LLMBackend):
     """
     LLM backend implementation using Google Gemini APIs.
     Requires GEMINI_API_KEY environment variable to be set.
     """
+
     def __init__(self):
         """
         Initialize the Gemini client using the API key from environment variables.
@@ -38,7 +41,7 @@ class GeminiBackend(LLMBackend):
         try:
             response = self.client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=f"Write a short story based on this prompt: {prompt}"
+                contents=f"Write a short story based on this prompt: {prompt}",
             )
             # Extract the story text from the response
             return response.candidates[0].content.parts[0].text.strip()
@@ -46,21 +49,21 @@ class GeminiBackend(LLMBackend):
             # Return a generic error message if generation fails
             return "[Error generating story]"
 
-    def generate_image(self, prompt: str) -> Tuple[Optional[object], Optional[bytes]]:
+    def generate_image(self, prompt: str) -> tuple[object | None, bytes | None]:
         """
-        Generate an illustration image for the given story prompt using Gemini image model.
+        Generate an illustration image for the given story prompt using Gemini
+        image model.
         Args:
             prompt (str): The story prompt to illustrate.
         Returns:
-            Tuple[Optional[Image.Image], Optional[bytes]]: The PIL Image object and its raw bytes, or (None, None) on failure.
+            Tuple[Optional[Image.Image], Optional[bytes]]: The PIL Image object
+            and its raw bytes, or (None, None) on failure.
         """
         contents = f"Create a detailed, beautiful illustration for this story: {prompt}"
         response = self.client.models.generate_content(
             model="gemini-2.0-flash-preview-image-generation",
             contents=contents,
-            config=types.GenerateContentConfig(
-                response_modalities=['TEXT', 'IMAGE']
-            )
+            config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
         )
         # Iterate through response parts to find image data
         for part in response.candidates[0].content.parts:
@@ -78,17 +81,24 @@ class GeminiBackend(LLMBackend):
 
     def generate_image_name(self, prompt: str, story: str) -> str:
         """
-        Generate a short, creative, and descriptive filename for an image illustrating the story.
+        Generate a short, creative, and descriptive filename for an image
+        illustrating the story.
         Args:
             prompt (str): The original prompt.
             story (str): The generated story.
         Returns:
-            str: A suggested filename (no spaces or special characters), or 'story_image' on failure.
+            str: A suggested filename (no spaces or special characters), or
+            'story_image' on failure.
         """
         try:
             response = self.client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=f"Given this story: {story}\nSuggest a short, creative, and descriptive filename for an image illustrating it (no spaces, no special characters, just letters, numbers, and underscores)."
+                contents=(
+                    f"Given this story: {story}\n"
+                    "Suggest a short, creative, and descriptive filename for an "
+                    "image illustrating it (no spaces, no special characters, "
+                    "just letters, numbers, and underscores)."
+                ),
             )
             name = response.candidates[0].content.parts[0].text.strip()
             # Remove file extension if present
@@ -97,4 +107,3 @@ class GeminiBackend(LLMBackend):
         except Exception:
             # Fallback filename
             return "story_image"
-
