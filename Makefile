@@ -1,4 +1,4 @@
-.PHONY: all test run install lint clean
+.PHONY: all test run install lint lint-check clean
 
 # Use .venv/bin/uv consistently
 VENV_ACTIVATE = . .venv/bin/activate &&
@@ -28,8 +28,13 @@ debug:
 console:
 	$(VENV_ACTIVATE) textual console 
 
-# Lint the code
+# Lint the code (mirrors pre-commit hook behavior)
 lint: install
+	$(VENV_ACTIVATE) ruff check --fix storytime tests
+	$(VENV_ACTIVATE) ruff format storytime tests
+
+# Lint check only (no auto-fixes)
+lint-check: install
 	$(VENV_ACTIVATE) ruff check storytime tests
 
 # Clean up Python cache and test artifacts
