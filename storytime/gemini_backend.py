@@ -11,6 +11,7 @@ from google.genai import types
 from PIL import Image
 
 from .llm_backend import LLMBackend
+from .story_prompt import StoryPrompt
 
 
 class GeminiBackend(LLMBackend):
@@ -30,35 +31,41 @@ class GeminiBackend(LLMBackend):
             raise RuntimeError("GEMINI_API_KEY environment variable not set.")
         self.client = genai.Client(api_key=api_key)
 
-    def generate_story(self, prompt: str, context: str | None = None) -> str:
+    def generate_story(
+        self, prompt: str | StoryPrompt, context: str | None = None
+    ) -> str:
         """
-        Generate a short story based on the given prompt using Gemini LLM.
+        Generate a story based on the given prompt using Gemini LLM.
+
         Args:
-            prompt (str): The prompt to base the story on.
+            prompt (str | StoryPrompt): The prompt to base the story on, or a
+                StoryPrompt object containing comprehensive story generation parameters.
             context (str, optional): Additional context like character descriptions
-                                   and background information for more consistent
-                                   stories.
+                and background information for more consistent stories.
+                                   Ignored if prompt is a StoryPrompt object.
+
         Returns:
             str: The generated story, or an error message on failure.
         """
         try:
-            # Build the content for the LLM
-            if context:
-                # Future enhancement: Smart context filtering will happen here
-                # - Parse context for relevant sections based on prompt
-                # - Apply token budget limits
-                # - Score context sections by relevance
-                contents = (
-                    f"Context for story generation:\n\n{context}\n\n"
-                    f"Based on the above context, write a short story for this "
-                    f"prompt: {prompt}\n"
-                    f"Use the character descriptions and background information to "
-                    f"make the story consistent with established personalities and "
-                    f"relationships."
-                )
+            # Determine if we're using a StoryPrompt or simple string
+            if isinstance(prompt, StoryPrompt):
+                # Use the StoryPrompt's comprehensive prompt building
+                contents = prompt.build_story_prompt()
             else:
-                # Fallback to basic prompt when no context available
-                contents = f"Write a short story based on this prompt: {prompt}"
+                # Legacy behavior for backward compatibility
+                if context:
+                    contents = (
+                        f"Context for story generation:\n\n{context}\n\n"
+                        f"Based on the above context, write a short story for this "
+                        f"prompt: {prompt}\n"
+                        f"Use the character descriptions and background information to "
+                        f"make the story consistent with established personalities and "
+                        f"relationships."
+                    )
+                else:
+                    # Fallback to basic prompt when no context available
+                    contents = f"Write a short story based on this prompt: {prompt}"
 
             response = self.client.models.generate_content(
                 model="gemini-2.5-flash",
@@ -70,17 +77,30 @@ class GeminiBackend(LLMBackend):
             # Return a generic error message if generation fails
             return "[Error generating story]"
 
-    def generate_image(self, prompt: str) -> tuple[object | None, bytes | None]:
+    def generate_image(
+        self, prompt: str | StoryPrompt
+    ) -> tuple[object | None, bytes | None]:
         """
         Generate an illustration image for the given story prompt using Gemini
         image model.
+
         Args:
-            prompt (str): The story prompt to illustrate.
+            prompt (str | StoryPrompt): The story prompt to illustrate, or a
+                StoryPrompt object containing comprehensive image generation parameters.
+
         Returns:
             Tuple[Optional[Image.Image], Optional[bytes]]: The PIL Image object
             and its raw bytes, or (None, None) on failure.
         """
-        contents = f"Create a detailed, beautiful illustration for this story: {prompt}"
+        # Determine if we're using a StoryPrompt or simple string
+        if isinstance(prompt, StoryPrompt):
+            contents = prompt.build_image_prompt()
+        else:
+            # Legacy behavior for backward compatibility
+            contents = (
+                f"Create a detailed, beautiful illustration for this story: {prompt}"
+            )
+
         response = self.client.models.generate_content(
             model="gemini-2.0-flash-preview-image-generation",
             contents=contents,
@@ -100,26 +120,35 @@ class GeminiBackend(LLMBackend):
         # Return (None, None) if no image found
         return None, None
 
-    def generate_image_name(self, prompt: str, story: str) -> str:
+    def generate_image_name(self, prompt: str | StoryPrompt, story: str) -> str:
         """
         Generate a short, creative, and descriptive filename for an image
         illustrating the story.
+
         Args:
-            prompt (str): The original prompt.
+            prompt (str | StoryPrompt): The original prompt or StoryPrompt object.
             story (str): The generated story.
+
         Returns:
             str: A suggested filename (no spaces or special characters), or
             'story_image' on failure.
         """
         try:
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=(
+            # Determine if we're using a StoryPrompt or simple string
+            if isinstance(prompt, StoryPrompt):
+                contents = prompt.build_image_name_prompt(story)
+            else:
+                # Legacy behavior for backward compatibility
+                contents = (
                     f"Given this story: {story}\n"
                     "Suggest a short, creative, and descriptive filename for an "
                     "image illustrating it (no spaces, no special characters, "
                     "just letters, numbers, and underscores)."
-                ),
+                )
+
+            response = self.client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=contents,
             )
             name = response.candidates[0].content.parts[0].text.strip()
             # Remove file extension if present

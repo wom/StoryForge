@@ -54,6 +54,63 @@ storytime
 
 This command is available as long as your virtual environment is activated.
 
+### CLI Version
+
+You can also use the command-line interface directly:
+
+```bash
+storytime-cli story "Tell me a story about a robot"
+storytime-cli image "A beautiful sunset over mountains"
+storytime-cli hello "Your Name"
+```
+
+## Tab Completion
+
+StoryTime CLI supports tab completion for commands, options, and arguments. This makes the CLI much more convenient to use.
+
+### Quick Setup (Automatic)
+
+The easiest way to enable tab completion is to let the CLI install it for you:
+
+```bash
+storytime-cli --install-completion
+```
+
+**Note:** If you get an error about existing files, use the manual setup below.
+
+### Manual Setup
+
+If automatic installation doesn't work, you can set up completion manually for your shell:
+
+**Bash** (add to `~/.bashrc`):
+```bash
+eval "$(storytime-cli --show-completion)"
+```
+
+**Zsh** (add to `~/.zshrc`):
+```bash
+eval "$(storytime-cli --show-completion)"
+```
+
+**Fish** (add to `~/.config/fish/config.fish`):
+```bash
+storytime-cli --show-completion | source
+```
+
+After adding the line to your shell configuration, restart your terminal or run:
+```bash
+source ~/.bashrc  # for bash
+source ~/.zshrc   # for zsh
+```
+
+### Using Tab Completion
+
+Once enabled, you can use tab completion for:
+
+- **Commands**: `storytime-cli <TAB>` shows available commands (`story`, `image`, `hello`)
+- **Options**: `storytime-cli story --<TAB>` shows options like `--output-dir`, `--verbose`, etc.
+- **Help**: Use `storytime-cli <command> --help` to see all available options
+
 ## Editing and Debugging
 
 - All source code is in the `storytime/` package. When editing or adding files, use package imports (e.g., `from storytime.gemini_backend import GeminiBackend`).

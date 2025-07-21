@@ -33,7 +33,13 @@ class TestCLIIntegration:
 
         # Should create backend via factory
         mock_gemini.assert_called_once()
-        mock_backend.generate_story.assert_called_once_with("test prompt")
+        # Now includes context parameter (may be None or contain family.md content)
+        args, kwargs = mock_backend.generate_story.call_args
+        assert len(args) >= 1  # At least prompt
+        assert args[0] == "test prompt"
+        # Second argument should be context (string or None)
+        if len(args) > 1:
+            assert args[1] is None or isinstance(args[1], str)
         assert result.exit_code == 0
         assert "Test story content" in result.stdout
 

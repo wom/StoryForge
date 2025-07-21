@@ -10,7 +10,7 @@ from .llm_backend import get_backend
 
 console = Console()
 app = typer.Typer(
-    add_completion=False, help="StoryTime CLI - Generate stories and images with AI"
+    add_completion=True, help="StoryTime CLI - Generate stories and images with AI"
 )
 
 

@@ -13,6 +13,10 @@ Supported backends:
 
 import os
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING, Union
+
+if TYPE_CHECKING:
+    from .story_prompt import StoryPrompt
 
 
 class LLMBackend(ABC):
@@ -24,15 +28,19 @@ class LLMBackend(ABC):
     """
 
     @abstractmethod
-    def generate_story(self, prompt: str, context: str | None = None) -> str:
+    def generate_story(
+        self, prompt: Union[str, "StoryPrompt"], context: str | None = None
+    ) -> str:
         """
         Generate a story based on the given prompt and optional context.
 
         Args:
-            prompt (str): The user's story prompt or description.
+            prompt (str | StoryPrompt): The user's story prompt or description, or a
+                StoryPrompt object containing comprehensive story generation parameters.
             context (str, optional): Additional context like character descriptions,
                                    background information, or story examples to help
                                    generate more consistent and personalized stories.
+                                   Ignored if prompt is a StoryPrompt object.
 
         Returns:
             str: The generated story text.
@@ -40,20 +48,22 @@ class LLMBackend(ABC):
         Raises:
             NotImplementedError: If the method is not implemented by a subclass.
 
-        Future enhancements:
-        - Context will be intelligently filtered based on prompt content
-        - Token usage will be optimized through smart context selection
-        - Multiple context types (characters, settings, style) will be supported
+        Note:
+        When using StoryPrompt objects, the context parameter is ignored as all context
+        is encapsulated within the StoryPrompt instance.
         """
         raise NotImplementedError("Subclass must implement generate_story method")
 
     @abstractmethod
-    def generate_image(self, prompt: str) -> tuple[object | None, bytes | None]:
+    def generate_image(
+        self, prompt: Union[str, "StoryPrompt"]
+    ) -> tuple[object | None, bytes | None]:
         """
         Generate an image based on the given prompt.
 
         Args:
-            prompt (str): The prompt or description for image generation.
+            prompt (str | StoryPrompt): The prompt or description for image generation,
+                or a StoryPrompt object containing comprehensive parameters.
 
         Returns:
             Tuple[Optional[object], Optional[bytes]]: A tuple containing:
@@ -66,12 +76,12 @@ class LLMBackend(ABC):
         raise NotImplementedError("Subclass must implement generate_image method")
 
     @abstractmethod
-    def generate_image_name(self, prompt: str, story: str) -> str:
+    def generate_image_name(self, prompt: Union[str, "StoryPrompt"], story: str) -> str:
         """
         Generate a descriptive filename for an image based on the prompt and story.
 
         Args:
-            prompt (str): The original user prompt.
+            prompt (str | StoryPrompt): The original user prompt or StoryPrompt object.
             story (str): The generated story text.
 
         Returns:
