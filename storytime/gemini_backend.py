@@ -11,7 +11,7 @@ from google.genai import types
 from PIL import Image
 
 from .llm_backend import LLMBackend
-from .story_prompt import StoryPrompt
+from .prompt import Prompt
 
 
 class GeminiBackend(LLMBackend):
@@ -31,27 +31,25 @@ class GeminiBackend(LLMBackend):
             raise RuntimeError("GEMINI_API_KEY environment variable not set.")
         self.client = genai.Client(api_key=api_key)
 
-    def generate_story(
-        self, prompt: str | StoryPrompt, context: str | None = None
-    ) -> str:
+    def generate_story(self, prompt: str | Prompt, context: str | None = None) -> str:
         """
         Generate a story based on the given prompt using Gemini LLM.
 
         Args:
-            prompt (str | StoryPrompt): The prompt to base the story on, or a
-                StoryPrompt object containing comprehensive story generation parameters.
+            prompt (str | Prompt): The prompt to base the story on, or a
+                Prompt object containing comprehensive story generation parameters.
             context (str, optional): Additional context like character descriptions
                 and background information for more consistent stories.
-                                   Ignored if prompt is a StoryPrompt object.
+                                   Ignored if prompt is a Prompt object.
 
         Returns:
             str: The generated story, or an error message on failure.
         """
         try:
-            # Determine if we're using a StoryPrompt or simple string
-            if isinstance(prompt, StoryPrompt):
-                # Use the StoryPrompt's comprehensive prompt building
-                contents = prompt.build_story_prompt()
+            # Determine if we're using a Prompt or simple string
+            if isinstance(prompt, Prompt):
+                # Use the Prompt's comprehensive prompt building
+                contents = prompt.story
             else:
                 # Legacy behavior for backward compatibility
                 if context:
@@ -86,23 +84,23 @@ class GeminiBackend(LLMBackend):
             return "[Error generating story]"
 
     def generate_image(
-        self, prompt: str | StoryPrompt
+        self, prompt: str | Prompt
     ) -> tuple[object | None, bytes | None]:
         """
         Generate an illustration image for the given story prompt using Gemini
         image model.
 
         Args:
-            prompt (str | StoryPrompt): The story prompt to illustrate, or a
-                StoryPrompt object containing comprehensive image generation parameters.
+            prompt (str | Prompt): The story prompt to illustrate, or a
+                Prompt object containing comprehensive image generation parameters.
 
         Returns:
             Tuple[Optional[Image.Image], Optional[bytes]]: The PIL Image object
             and its raw bytes, or (None, None) on failure.
         """
-        # Determine if we're using a StoryPrompt or simple string
-        if isinstance(prompt, StoryPrompt):
-            contents = prompt.build_image_prompt()
+        # Determine if we're using a Prompt or simple string
+        if isinstance(prompt, Prompt):
+            contents = prompt.image
         else:
             # Legacy behavior for backward compatibility
             contents = (
@@ -133,13 +131,13 @@ class GeminiBackend(LLMBackend):
         # Return (None, None) if no image found
         return None, None
 
-    def generate_image_name(self, prompt: str | StoryPrompt, story: str) -> str:
+    def generate_image_name(self, prompt: str | Prompt, story: str) -> str:
         """
         Generate a short, creative, and descriptive filename for an image
         illustrating the story.
 
         Args:
-            prompt (str | StoryPrompt): The original prompt or StoryPrompt object.
+            prompt (str | Prompt): The original prompt or Prompt object.
             story (str): The generated story.
 
         Returns:
@@ -147,9 +145,9 @@ class GeminiBackend(LLMBackend):
             'story_image' on failure.
         """
         try:
-            # Determine if we're using a StoryPrompt or simple string
-            if isinstance(prompt, StoryPrompt):
-                contents = prompt.build_image_name_prompt(story)
+            # Determine if we're using a Prompt or simple string
+            if isinstance(prompt, Prompt):
+                contents = prompt.image_name(story)
             else:
                 # Legacy behavior for backward compatibility
                 contents = (

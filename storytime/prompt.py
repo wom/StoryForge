@@ -1,8 +1,9 @@
 """
-Story Prompt Builder for Children-Friendly Content.
+Prompt Builder for Children-Friendly Content.
 
-This module provides the StoryPrompt class, a comprehensive prompt builder
-for generating age-appropriate, educational, and engaging stories for children.
+This module provides the Prompt class, a comprehensive prompt builder
+for generating age-appropriate, educational, and engaging stories and images
+for children.
 It encapsulates all parameters needed for story generation, image generation,
 and image naming across different LLM backends.
 """
@@ -12,13 +13,13 @@ from typing import Literal
 
 
 @dataclass
-class StoryPrompt:
+class Prompt:
     """
-    A comprehensive prompt builder for children-friendly story generation.
+    A comprehensive prompt builder for children-friendly content generation.
 
     This class encapsulates all the parameters needed to generate age-appropriate,
-    educational, and engaging stories for children. It provides methods to build
-    prompts for story generation, image generation, and image naming.
+    educational, and engaging stories and images for children. It provides properties
+    to access prompts for story generation, image generation, and image naming.
 
     Attributes:
         prompt (str): The main story prompt or description
@@ -34,6 +35,12 @@ class StoryPrompt:
         setting (str, optional): Specific story setting
         characters (list[str], optional): Character names/descriptions to include
         learning_focus (str, optional): Educational element to emphasize
+
+    Usage:
+        prompt = Prompt("A brave little mouse goes on an adventure")
+        story_prompt = prompt.story  # Get story generation prompt
+        image_prompt = prompt.image  # Get image generation prompt
+        name_prompt = prompt.image_name(story_text)  # Get filename prompt
     """
 
     prompt: str
@@ -60,7 +67,7 @@ class StoryPrompt:
         Literal["counting", "colors", "letters", "emotions", "nature"] | None
     ) = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate parameters after initialization."""
         self._validate_parameters()
 
@@ -155,9 +162,10 @@ class StoryPrompt:
         }
         return style_descriptions[self.style]
 
-    def build_story_prompt(self) -> str:
+    @property
+    def story(self) -> str:
         """
-        Build the complete story generation prompt.
+        Get the complete story generation prompt.
 
         Returns:
             str: A comprehensive prompt for story generation
@@ -223,9 +231,10 @@ class StoryPrompt:
 
         return "".join(prompt_parts)
 
-    def build_image_prompt(self) -> str:
+    @property
+    def image(self) -> str:
         """
-        Build a prompt for image generation based on the story parameters.
+        Get a prompt for image generation based on the story parameters.
 
         Returns:
             str: A prompt suitable for image generation
@@ -280,7 +289,7 @@ class StoryPrompt:
 
         return "".join(image_parts)
 
-    def build_image_name_prompt(self, story: str) -> str:
+    def image_name(self, story: str) -> str:
         """
         Build a prompt for generating a descriptive filename for the story image.
 
@@ -301,6 +310,19 @@ class StoryPrompt:
             "- Reflect the story's main theme or characters\n"
             "\nReturn only the filename, nothing else."
         )
+
+    # Backward compatibility methods (deprecated)
+    def build_story_prompt(self) -> str:
+        """Deprecated: Use .story property instead."""
+        return self.story
+
+    def build_image_prompt(self) -> str:
+        """Deprecated: Use .image property instead."""
+        return self.image
+
+    def build_image_name_prompt(self, story: str) -> str:
+        """Deprecated: Use .image_name(story) method instead."""
+        return self.image_name(story)
 
     @classmethod
     def get_valid_values(cls) -> dict[str, list[str]]:
@@ -325,3 +347,7 @@ class StoryPrompt:
             ],
             "learning_focus": ["counting", "colors", "letters", "emotions", "nature"],
         }
+
+
+# Backward compatibility alias
+StoryPrompt = Prompt

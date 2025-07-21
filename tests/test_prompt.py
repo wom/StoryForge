@@ -1,18 +1,18 @@
 """
-Tests for the StoryPrompt class.
+Tests for the Prompt class.
 """
 
 import pytest
 
-from storytime.story_prompt import StoryPrompt
+from storytime.prompt import Prompt
 
 
-class TestStoryPromptBasic:
-    """Test basic StoryPrompt functionality."""
+class TestPromptBasic:
+    """Test basic Prompt functionality."""
 
     def test_story_prompt_creation(self):
-        """Test creating a basic StoryPrompt."""
-        prompt = StoryPrompt(
+        """Test creating a basic Prompt."""
+        prompt = Prompt(
             prompt="A little rabbit goes on an adventure",
             age_range="preschool",
             style="adventure",
@@ -27,8 +27,8 @@ class TestStoryPromptBasic:
         assert prompt.context is None  # default value
 
     def test_story_prompt_with_all_parameters(self):
-        """Test creating a StoryPrompt with all parameters."""
-        prompt = StoryPrompt(
+        """Test creating a Prompt with all parameters."""
+        prompt = Prompt(
             prompt="Two friends solve a mystery",
             context="Maya and Sam are best friends",
             length="medium",
@@ -53,13 +53,13 @@ class TestStoryPromptBasic:
         assert prompt.learning_focus == "emotions"
 
 
-class TestStoryPromptValidation:
-    """Test parameter validation in StoryPrompt."""
+class TestPromptValidation:
+    """Test parameter validation in Prompt."""
 
     def test_valid_parameters_accepted(self):
         """Test that valid parameters are accepted."""
         # Should not raise any exception
-        StoryPrompt(
+        Prompt(
             prompt="Test",
             length="bedtime",
             age_range="toddler",
@@ -72,40 +72,40 @@ class TestStoryPromptValidation:
     def test_invalid_length_rejected(self):
         """Test that invalid length values are rejected."""
         with pytest.raises(ValueError, match="Invalid length"):
-            StoryPrompt(prompt="Test", length="invalid_length")
+            Prompt(prompt="Test", length="invalid_length")
 
     def test_invalid_age_range_rejected(self):
         """Test that invalid age_range values are rejected."""
         with pytest.raises(ValueError, match="Invalid age_range"):
-            StoryPrompt(prompt="Test", age_range="invalid_age")
+            Prompt(prompt="Test", age_range="invalid_age")
 
     def test_invalid_style_rejected(self):
         """Test that invalid style values are rejected."""
         with pytest.raises(ValueError, match="Invalid style"):
-            StoryPrompt(prompt="Test", style="invalid_style")
+            Prompt(prompt="Test", style="invalid_style")
 
     def test_invalid_tone_rejected(self):
         """Test that invalid tone values are rejected."""
         with pytest.raises(ValueError, match="Invalid tone"):
-            StoryPrompt(prompt="Test", tone="invalid_tone")
+            Prompt(prompt="Test", tone="invalid_tone")
 
     def test_invalid_theme_rejected(self):
         """Test that invalid theme values are rejected."""
         with pytest.raises(ValueError, match="Invalid theme"):
-            StoryPrompt(prompt="Test", theme="invalid_theme")
+            Prompt(prompt="Test", theme="invalid_theme")
 
     def test_invalid_learning_focus_rejected(self):
         """Test that invalid learning_focus values are rejected."""
         with pytest.raises(ValueError, match="Invalid learning_focus"):
-            StoryPrompt(prompt="Test", learning_focus="invalid_focus")
+            Prompt(prompt="Test", learning_focus="invalid_focus")
 
 
-class TestStoryPromptPromptBuilding:
+class TestPromptPromptBuilding:
     """Test prompt building methods."""
 
     def test_build_story_prompt_basic(self):
         """Test building a basic story prompt."""
-        prompt = StoryPrompt(
+        prompt = Prompt(
             prompt="A cat finds a magical hat",
             age_range="preschool",
             style="fantasy",
@@ -123,7 +123,7 @@ class TestStoryPromptPromptBuilding:
 
     def test_build_story_prompt_with_context(self):
         """Test building a story prompt with context."""
-        prompt = StoryPrompt(
+        prompt = Prompt(
             prompt="Adventure in the garden",
             context="Fluffy is a curious orange tabby cat who loves exploring.",
             style="adventure",
@@ -140,7 +140,7 @@ class TestStoryPromptPromptBuilding:
 
     def test_build_story_prompt_with_all_options(self):
         """Test building a comprehensive story prompt."""
-        prompt = StoryPrompt(
+        prompt = Prompt(
             prompt="Friends help each other",
             length="bedtime",
             age_range="early_reader",
@@ -164,7 +164,7 @@ class TestStoryPromptPromptBuilding:
 
     def test_build_image_prompt(self):
         """Test building an image generation prompt."""
-        prompt = StoryPrompt(
+        prompt = Prompt(
             prompt="A butterfly learns to fly",
             style="adventure",
             tone="gentle",
@@ -186,7 +186,7 @@ class TestStoryPromptPromptBuilding:
 
     def test_build_image_name_prompt(self):
         """Test building an image name generation prompt."""
-        prompt = StoryPrompt(
+        prompt = Prompt(
             prompt="A dragon makes friends", style="friendship", age_range="preschool"
         )
 
@@ -203,12 +203,12 @@ class TestStoryPromptPromptBuilding:
         assert "Return only the filename" in result
 
 
-class TestStoryPromptUtilities:
+class TestPromptUtilities:
     """Test utility methods."""
 
     def test_get_valid_values(self):
         """Test the get_valid_values class method."""
-        valid_values = StoryPrompt.get_valid_values()
+        valid_values = Prompt.get_valid_values()
 
         assert isinstance(valid_values, dict)
         assert "length" in valid_values
@@ -227,12 +227,12 @@ class TestStoryPromptUtilities:
         assert "colors" in valid_values["learning_focus"]
 
 
-class TestStoryPromptEdgeCases:
+class TestPromptEdgeCases:
     """Test edge cases and special scenarios."""
 
     def test_none_optional_parameters(self):
         """Test that None values work for optional parameters."""
-        prompt = StoryPrompt(
+        prompt = Prompt(
             prompt="Test story",
             context=None,
             theme=None,
@@ -252,7 +252,7 @@ class TestStoryPromptEdgeCases:
 
     def test_empty_characters_list(self):
         """Test behavior with empty characters list."""
-        prompt = StoryPrompt(prompt="Test story", characters=[])
+        prompt = Prompt(prompt="Test story", characters=[])
 
         result = prompt.build_story_prompt()
         assert isinstance(result, str)
@@ -261,7 +261,7 @@ class TestStoryPromptEdgeCases:
 
     def test_multiple_characters(self):
         """Test behavior with multiple characters."""
-        prompt = StoryPrompt(
+        prompt = Prompt(
             prompt="Test story",
             characters=["Alice", "Bob", "Charlie the Cat", "Mrs. Henderson"],
         )
@@ -274,19 +274,19 @@ class TestBackwardCompatibility:
     """Test that the system maintains backward compatibility."""
 
     def test_story_prompt_can_be_used_as_string_alternative(self):
-        """Test that StoryPrompt can be used where strings were used before."""
+        """Test that Prompt can be used where strings were used before."""
 
         # This simulates how the backend would handle the prompt
         def simulate_backend_usage(prompt_input, context=None):
-            if isinstance(prompt_input, StoryPrompt):
+            if isinstance(prompt_input, Prompt):
                 return prompt_input.build_story_prompt()
             else:
                 if context:
                     return f"Legacy: {prompt_input} with context: {context}"
                 return f"Legacy: {prompt_input}"
 
-        # Test with StoryPrompt
-        story_prompt = StoryPrompt(prompt="Test adventure", style="adventure")
+        # Test with Prompt
+        story_prompt = Prompt(prompt="Test adventure", style="adventure")
         result1 = simulate_backend_usage(story_prompt)
         assert isinstance(result1, str)
         assert "Test adventure" in result1
