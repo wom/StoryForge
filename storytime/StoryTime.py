@@ -9,6 +9,7 @@ from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.widgets import Button, Input, LoadingIndicator, Log, Static
 
+from .context import get_default_context_manager
 from .gemini_backend import GeminiBackend
 
 
@@ -21,12 +22,22 @@ class StoryApp(App):
     CSS_PATH = None  # No custom CSS
     BINDINGS = [("q", "quit", "Quit")]  # Keyboard shortcut to quit
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, context_file: str | None = None, *args, **kwargs):
         """
-        Initialize the StoryApp and Gemini backend.
+        Initialize the StoryApp with Gemini backend and optional context.
+
+        Args:
+            context_file: Path to context file (e.g., family.md). If None,
+                         will use default context manager to find data/family.md
         """
         super().__init__(*args, **kwargs)
         self.backend = GeminiBackend()
+        # Future enhancement: Context will be intelligently filtered per prompt
+        self.context_manager = get_default_context_manager()
+        if context_file:
+            from .context import ContextManager
+
+            self.context_manager = ContextManager(context_file)
 
     def compose(self) -> ComposeResult:
         """
@@ -115,8 +126,14 @@ class StoryApp(App):
             output_log.clear()
             output_log.write(f"[bold]Generating story for:[/bold] {prompt}")
             await asyncio.sleep(0.1)  # Let spinner show
+            # Load context for story generation
+            # Future enhancement: Smart filtering based on prompt analysis
+            context = self.context_manager.extract_relevant_context(prompt)
+
             # Generate story in a thread to avoid blocking UI
-            story = await asyncio.to_thread(self.backend.generate_story, prompt)
+            story = await asyncio.to_thread(
+                self.backend.generate_story, prompt, context
+            )
             output_log.write(f"[green]Story:[/green]\n{story}")
             output_log.write("[bold]Generating image...[/bold]")
             # Generate image in a thread
@@ -145,11 +162,14 @@ class StoryApp(App):
             self._pending_prompt = None
 
 
-def main():
+def main(context_file: str | None = None):
     """
     Entry point for running the StoryApp.
+
+    Args:
+        context_file: Optional path to context file
     """
-    StoryApp().run()
+    StoryApp(context_file=context_file).run()
 
 
 if __name__ == "__main__":

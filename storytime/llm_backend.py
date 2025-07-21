@@ -24,18 +24,26 @@ class LLMBackend(ABC):
     """
 
     @abstractmethod
-    def generate_story(self, prompt: str) -> str:
+    def generate_story(self, prompt: str, context: str | None = None) -> str:
         """
-        Generate a story based on the given prompt.
+        Generate a story based on the given prompt and optional context.
 
         Args:
             prompt (str): The user's story prompt or description.
+            context (str, optional): Additional context like character descriptions,
+                                   background information, or story examples to help
+                                   generate more consistent and personalized stories.
 
         Returns:
             str: The generated story text.
 
         Raises:
             NotImplementedError: If the method is not implemented by a subclass.
+
+        Future enhancements:
+        - Context will be intelligently filtered based on prompt content
+        - Token usage will be optimized through smart context selection
+        - Multiple context types (characters, settings, style) will be supported
         """
         raise NotImplementedError("Subclass must implement generate_story method")
 

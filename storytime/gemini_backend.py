@@ -30,18 +30,39 @@ class GeminiBackend(LLMBackend):
             raise RuntimeError("GEMINI_API_KEY environment variable not set.")
         self.client = genai.Client(api_key=api_key)
 
-    def generate_story(self, prompt: str) -> str:
+    def generate_story(self, prompt: str, context: str | None = None) -> str:
         """
         Generate a short story based on the given prompt using Gemini LLM.
         Args:
             prompt (str): The prompt to base the story on.
+            context (str, optional): Additional context like character descriptions
+                                   and background information for more consistent
+                                   stories.
         Returns:
             str: The generated story, or an error message on failure.
         """
         try:
+            # Build the content for the LLM
+            if context:
+                # Future enhancement: Smart context filtering will happen here
+                # - Parse context for relevant sections based on prompt
+                # - Apply token budget limits
+                # - Score context sections by relevance
+                contents = (
+                    f"Context for story generation:\n\n{context}\n\n"
+                    f"Based on the above context, write a short story for this "
+                    f"prompt: {prompt}\n"
+                    f"Use the character descriptions and background information to "
+                    f"make the story consistent with established personalities and "
+                    f"relationships."
+                )
+            else:
+                # Fallback to basic prompt when no context available
+                contents = f"Write a short story based on this prompt: {prompt}"
+
             response = self.client.models.generate_content(
                 model="gemini-2.5-flash",
-                contents=f"Write a short story based on this prompt: {prompt}",
+                contents=contents,
             )
             # Extract the story text from the response
             return response.candidates[0].content.parts[0].text.strip()

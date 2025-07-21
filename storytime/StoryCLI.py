@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.text import Text
 
+from .context import ContextManager
 from .llm_backend import get_backend
 
 console = Console()
@@ -54,6 +55,9 @@ def story(
     output_dir: str = typer.Option(
         ".", "--output-dir", "-o", help="Directory to save the image"
     ),
+    context_file: str | None = typer.Option(
+        None, "--context-file", "-c", help="Path to context file (e.g., family.md)"
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output"
     ),
@@ -73,6 +77,20 @@ def story(
 
         backend = get_backend()
 
+        # Load context if specified
+        # Future enhancement: Smart context extraction will filter this
+        # based on characters mentioned in the prompt
+        context_manager = ContextManager(context_file)
+        context = context_manager.extract_relevant_context(prompt)
+
+        if verbose and context:
+            console.print(
+                f"[dim]Loaded context from: "
+                f"{context_manager._resolve_context_path()}[/dim]"
+            )
+        elif verbose:
+            console.print("[dim]No context file loaded[/dim]")
+
         # Generate story
         with Progress(
             SpinnerColumn(),
@@ -81,7 +99,7 @@ def story(
             transient=True,
         ) as progress:
             progress.add_task("story", total=None)
-            story = backend.generate_story(prompt)
+            story = backend.generate_story(prompt, context)
 
         if story == "[Error generating story]":
             console.print(
