@@ -38,6 +38,7 @@ class StoryApp(App):
             from .context import ContextManager
 
             self.context_manager = ContextManager(context_file)
+        self._pending_prompt: str | None = None
 
     def compose(self) -> ComposeResult:
         """
@@ -154,8 +155,12 @@ class StoryApp(App):
                 # Sanitize filename
                 image_name = image_name.replace(" ", "_").replace("/", "-") + ".png"
             # Save image to disk
-            with open(image_name, "wb") as f:
-                f.write(image_bytes)
+            if image_bytes is not None:
+                with open(image_name, "wb") as f:
+                    f.write(image_bytes)
+            else:
+                output_log.write("[red]No image data to save.[/red]")
+                return
             output_log.write(f"[green]Image saved as:[/green] {image_name}")
         finally:
             spinner.remove()

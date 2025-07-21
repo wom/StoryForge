@@ -32,16 +32,16 @@ console:
 lint: install
 	$(VENV_ACTIVATE) ruff check --fix storytime tests
 	$(VENV_ACTIVATE) ruff format storytime tests
-	$(VENV_ACTIVATE) mypy storytime tests
+	$(VENV_ACTIVATE) mypy storytime
 
 # Lint check only (no auto-fixes)
 lint-check: install
 	$(VENV_ACTIVATE) ruff check storytime tests
-	$(VENV_ACTIVATE) mypy storytime tests
+	$(VENV_ACTIVATE) mypy storytime
 
 # Type check only
 typecheck: install
-	$(VENV_ACTIVATE) mypy storytime tests
+	$(VENV_ACTIVATE) mypy storytime
 
 # Clean up Python cache and test artifacts
 clean:

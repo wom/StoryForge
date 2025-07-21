@@ -39,15 +39,15 @@ class StoryPrompt:
     prompt: str
     context: str | None = None
     length: Literal["flash", "short", "medium", "bedtime"] = "short"
-    age_range: Literal[
-        "toddler", "preschool", "early_reader", "middle_grade"
-    ] = "preschool"
-    style: Literal[
-        "adventure", "comedy", "fantasy", "fairy_tale", "friendship"
-    ] = "adventure"
-    tone: Literal[
-        "gentle", "exciting", "silly", "heartwarming", "magical"
-    ] = "heartwarming"
+    age_range: Literal["toddler", "preschool", "early_reader", "middle_grade"] = (
+        "preschool"
+    )
+    style: Literal["adventure", "comedy", "fantasy", "fairy_tale", "friendship"] = (
+        "adventure"
+    )
+    tone: Literal["gentle", "exciting", "silly", "heartwarming", "magical"] = (
+        "heartwarming"
+    )
     theme: (
         Literal[
             "courage", "kindness", "teamwork", "problem_solving", "creativity", "family"

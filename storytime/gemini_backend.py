@@ -20,7 +20,7 @@ class GeminiBackend(LLMBackend):
     Requires GEMINI_API_KEY environment variable to be set.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize the Gemini client using the API key from environment variables.
         Raises:
@@ -71,8 +71,16 @@ class GeminiBackend(LLMBackend):
                 model="gemini-2.5-flash",
                 contents=contents,
             )
-            # Extract the story text from the response
-            return response.candidates[0].content.parts[0].text.strip()
+            # Extract the story text from the response with proper null checking
+            if (
+                response.candidates
+                and response.candidates[0].content
+                and response.candidates[0].content.parts
+                and response.candidates[0].content.parts[0].text
+            ):
+                return response.candidates[0].content.parts[0].text.strip()
+            else:
+                return "[Error: No valid response from Gemini]"
         except Exception:
             # Return a generic error message if generation fails
             return "[Error generating story]"
@@ -106,17 +114,22 @@ class GeminiBackend(LLMBackend):
             contents=contents,
             config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
         )
-        # Iterate through response parts to find image data
-        for part in response.candidates[0].content.parts:
-            if part.inline_data is not None:
-                try:
-                    # Load image from bytes
-                    image = Image.open(BytesIO(part.inline_data.data))
-                    image_bytes = part.inline_data.data
-                    return image, image_bytes
-                except Exception:
-                    # Skip parts that fail to decode as images
-                    continue
+        # Iterate through response parts to find image data with proper null checking
+        if (
+            response.candidates
+            and response.candidates[0].content
+            and response.candidates[0].content.parts
+        ):
+            for part in response.candidates[0].content.parts:
+                if part.inline_data is not None and part.inline_data.data is not None:
+                    try:
+                        # Load image from bytes
+                        image = Image.open(BytesIO(part.inline_data.data))
+                        image_bytes = part.inline_data.data
+                        return image, image_bytes
+                    except Exception:
+                        # Skip parts that fail to decode as images
+                        continue
         # Return (None, None) if no image found
         return None, None
 
@@ -150,10 +163,19 @@ class GeminiBackend(LLMBackend):
                 model="gemini-2.5-flash",
                 contents=contents,
             )
-            name = response.candidates[0].content.parts[0].text.strip()
-            # Remove file extension if present
-            name = name.split(".")[0]
-            return name
+            # Extract name with proper null checking
+            if (
+                response.candidates
+                and response.candidates[0].content
+                and response.candidates[0].content.parts
+                and response.candidates[0].content.parts[0].text
+            ):
+                name = response.candidates[0].content.parts[0].text.strip()
+                # Remove file extension if present
+                name = name.split(".")[0]
+                return name
+            else:
+                return "story_image"
         except Exception:
             # Fallback filename
             return "story_image"
