@@ -1,9 +1,12 @@
+import os
 from dataclasses import dataclass
-from typing import Annotated
+from datetime import datetime
+from typing import Annotated, Literal, cast
 
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.prompt import Confirm
 
 from .context import ContextManager
 from .llm_backend import get_backend
@@ -25,6 +28,50 @@ class CLIArgs:
     color: str
 
 
+def generate_default_output_dir() -> str:
+    """Generate a timestamped output directory name."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = f"storytime_output_{timestamp}"
+    return output_dir
+
+
+def show_prompt_summary_and_confirm(
+    prompt: str,
+    age_range: str,
+    style: str,
+    tone: str,
+    theme: str | None,
+    length: str,
+    setting: str | None,
+    characters: list[str] | None,
+    learning_focus: str | None,
+    generation_type: str = "story",
+) -> bool:
+    """Display a summary of the prompt and ask for user confirmation."""
+    console.print(
+        f"\n[bold cyan]📋 {generation_type.title()} Generation Summary:[/bold cyan]"
+    )
+    console.print(f"[bold]Prompt:[/bold] {prompt}")
+    console.print(f"[bold]Age Range:[/bold] {age_range}")
+    console.print(f"[bold]Length:[/bold] {length}")
+    console.print(f"[bold]Style:[/bold] {style}")
+    console.print(f"[bold]Tone:[/bold] {tone}")
+
+    if theme and theme != "random":
+        console.print(f"[bold]Theme:[/bold] {theme}")
+    if learning_focus and learning_focus != "random":
+        console.print(f"[bold]Learning Focus:[/bold] {learning_focus}")
+    if setting:
+        console.print(f"[bold]Setting:[/bold] {setting}")
+    if characters:
+        console.print(f"[bold]Characters:[/bold] {', '.join(characters)}")
+
+    console.print()
+    return Confirm.ask(
+        f"[bold green]Proceed with {generation_type} generation?[/bold green]"
+    )
+
+
 @app.command()
 def story(
     prompt: str = typer.Argument(..., help="The story prompt to generate from"),
@@ -32,7 +79,7 @@ def story(
         "short", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
     ),
     age_range: str = typer.Option(
-        "preschool",
+        "early_reader",
         "--age-range",
         "-a",
         help="Target age group (toddler, preschool, early_reader, middle_grade)",
@@ -64,8 +111,11 @@ def story(
         list[str] | None,
         typer.Option("--character", help="Character names/descriptions (multi-use)"),
     ] = None,
-    output_dir: str = typer.Option(
-        ".", "--output-dir", "-o", help="Directory to save the image"
+    output_dir: str | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Directory to save the image (default: auto-generated)",
     ),
     context_file: str | None = typer.Option(
         None, "--context-file", "-c", help="Path to context file (e.g., family.md)"
@@ -81,6 +131,29 @@ def story(
             "[red]Error:[/red] Please provide a non-empty story prompt.", style="bold"
         )
         raise typer.Exit(1)
+
+    # Generate output directory if not provided
+    if output_dir is None:
+        output_dir = generate_default_output_dir()
+        console.print(
+            f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}"
+        )
+
+    # Show prompt summary and get confirmation
+    if not show_prompt_summary_and_confirm(
+        prompt=prompt,
+        age_range=age_range,
+        style=style,
+        tone=tone,
+        theme=theme,
+        length=length,
+        setting=setting,
+        characters=characters,
+        learning_focus=learning_focus,
+        generation_type="story",
+    ):
+        console.print("[yellow]Story generation cancelled.[/yellow]")
+        raise typer.Exit(0)
 
     try:
         # Initialize backend
@@ -113,14 +186,33 @@ def story(
             story_prompt = Prompt(
                 prompt=prompt,
                 context=context,
-                length=length,  # type: ignore
-                age_range=age_range,  # type: ignore
-                style=style,  # type: ignore
-                tone=tone,  # type: ignore
-                theme=theme_value,  # type: ignore
+                length=cast("Literal['flash', 'short', 'medium', 'bedtime']", length),
+                age_range=cast(
+                    "Literal['toddler', 'preschool', 'early_reader', 'middle_grade']",
+                    age_range,
+                ),
+                style=cast(
+                    "Literal['adventure', 'comedy', 'fantasy', 'fairy_tale', "
+                    "'friendship', 'random']",
+                    style,
+                ),
+                tone=cast(
+                    "Literal['gentle', 'exciting', 'silly', 'heartwarming', "
+                    "'magical', 'random']",
+                    tone,
+                ),
+                theme=cast(
+                    "Literal['courage', 'kindness', 'teamwork', 'problem_solving', "
+                    "'creativity', 'family', 'random'] | None",
+                    theme_value,
+                ),
                 setting=setting,
                 characters=characters_list,
-                learning_focus=learning_focus_value,  # type: ignore
+                learning_focus=cast(
+                    "Literal['counting', 'colors', 'letters', 'emotions', "
+                    "'nature', 'random'] | None",
+                    learning_focus_value,
+                ),
             )
 
             if verbose:
@@ -203,10 +295,7 @@ def story(
             image_name += ".png"
 
         # Save image to specified directory
-        import os
-
-        if output_dir != ".":
-            os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
         image_path = os.path.join(output_dir, image_name)
 
@@ -283,8 +372,11 @@ def image(
         list[str] | None,
         typer.Option("--character", help="Character names/descriptions (multi-use)"),
     ] = None,
-    output_dir: str = typer.Option(
-        ".", "--output-dir", "-o", help="Directory to save the image"
+    output_dir: str | None = typer.Option(
+        None,
+        "--output-dir",
+        "-o",
+        help="Directory to save the image (default: auto-generated)",
     ),
     filename: str | None = typer.Option(
         None, "--filename", "-f", help="Custom filename (without extension)"
@@ -300,6 +392,29 @@ def image(
             "[red]Error:[/red] Please provide a non-empty image prompt.", style="bold"
         )
         raise typer.Exit(1)
+
+    # Generate output directory if not provided
+    if output_dir is None:
+        output_dir = generate_default_output_dir()
+        console.print(
+            f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}"
+        )
+
+    # Show prompt summary and get confirmation
+    if not show_prompt_summary_and_confirm(
+        prompt=prompt,
+        age_range=age_range,
+        style=style,
+        tone=tone,
+        theme=theme,
+        length=length,
+        setting=setting,
+        characters=characters,
+        learning_focus=learning_focus,
+        generation_type="image",
+    ):
+        console.print("[yellow]Image generation cancelled.[/yellow]")
+        raise typer.Exit(0)
 
     try:
         # Initialize backend
@@ -318,14 +433,33 @@ def image(
             image_prompt = Prompt(
                 prompt=prompt,
                 context=None,  # No context for standalone image generation
-                length=length,  # type: ignore
-                age_range=age_range,  # type: ignore
-                style=style,  # type: ignore
-                tone=tone,  # type: ignore
-                theme=theme_value,  # type: ignore
+                length=cast("Literal['flash', 'short', 'medium', 'bedtime']", length),
+                age_range=cast(
+                    "Literal['toddler', 'preschool', 'early_reader', 'middle_grade']",
+                    age_range,
+                ),
+                style=cast(
+                    "Literal['adventure', 'comedy', 'fantasy', 'fairy_tale', "
+                    "'friendship', 'random']",
+                    style,
+                ),
+                tone=cast(
+                    "Literal['gentle', 'exciting', 'silly', 'heartwarming', "
+                    "'magical', 'random']",
+                    tone,
+                ),
+                theme=cast(
+                    "Literal['courage', 'kindness', 'teamwork', 'problem_solving', "
+                    "'creativity', 'family', 'random'] | None",
+                    theme_value,
+                ),
                 setting=setting,
                 characters=characters_list,
-                learning_focus=learning_focus_value,  # type: ignore
+                learning_focus=cast(
+                    "Literal['counting', 'colors', 'letters', 'emotions', "
+                    "'nature', 'random'] | None",
+                    learning_focus_value,
+                ),
             )
 
             if verbose:
@@ -406,10 +540,7 @@ def image(
             image_name += ".png"
 
         # Save image to specified directory
-        import os
-
-        if output_dir != ".":
-            os.makedirs(output_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
 
         image_path = os.path.join(output_dir, image_name)
 

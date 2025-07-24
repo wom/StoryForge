@@ -22,8 +22,10 @@ class TestCLIIntegration:
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
-    def test_story_command_uses_factory(self, mock_gemini):
-        """Test that story command uses the backend factory."""
+    @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
+    @patch("os.makedirs")  # Mock directory creation
+    def test_story_command_uses_factory(self, mock_makedirs, mock_confirm, mock_gemini):
+        """Test that story command uses the backend factory with user confirmation."""
         # Mock the backend
         mock_backend = MagicMock()
         mock_backend.generate_story.return_value = "Test story content"
@@ -34,6 +36,8 @@ class TestCLIIntegration:
 
         # Should create backend via factory
         mock_gemini.assert_called_once()
+        # Should ask for confirmation
+        mock_confirm.assert_called_once()
         # Now passes a Prompt object
         args, kwargs = mock_backend.generate_story.call_args
         assert len(args) >= 1  # At least prompt
@@ -41,11 +45,15 @@ class TestCLIIntegration:
         assert args[0].prompt == "test prompt"  # Check the prompt text
         assert result.exit_code == 0
         assert "Test story content" in result.stdout
+        # Should show generated directory
+        assert "Generated output directory:" in result.stdout
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
-    def test_image_command_uses_factory(self, mock_gemini):
-        """Test that image command uses the backend factory."""
+    @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
+    @patch("os.makedirs")  # Mock directory creation
+    def test_image_command_uses_factory(self, mock_makedirs, mock_confirm, mock_gemini):
+        """Test that image command uses the backend factory with user confirmation."""
         # Mock the backend
         mock_backend = MagicMock()
         mock_backend.generate_image.return_value = (MagicMock(), b"fake_image_bytes")
@@ -59,6 +67,8 @@ class TestCLIIntegration:
 
         # Should create backend via factory
         mock_gemini.assert_called_once()
+        # Should ask for confirmation
+        mock_confirm.assert_called_once()
         # Check that generate_image was called with a Prompt object
         args, kwargs = mock_backend.generate_image.call_args
         assert len(args) >= 1
@@ -66,22 +76,30 @@ class TestCLIIntegration:
         assert args[0].prompt == "test prompt"  # Check the prompt text
         assert result.exit_code == 0
         assert "custom_name.png" in result.stdout
+        # Should show generated directory
+        assert "Generated output directory:" in result.stdout
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_story_command_no_backend_error(self):
+    @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
+    def test_story_command_no_backend_error(self, mock_confirm):
         """Test story command fails gracefully when no backend available."""
         result = self.runner.invoke(app, ["story", "test prompt"])
 
         assert result.exit_code == 1
+        # Should ask for confirmation before failing
+        mock_confirm.assert_called_once()
         # Should show error about missing API key
         assert result.stdout != ""
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_image_command_no_backend_error(self):
+    @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
+    def test_image_command_no_backend_error(self, mock_confirm):
         """Test image command fails gracefully when no backend available."""
         result = self.runner.invoke(app, ["image", "test prompt"])
 
         assert result.exit_code == 1
+        # Should ask for confirmation before failing
+        mock_confirm.assert_called_once()
         # Should show error about missing API key
         assert result.stdout != ""
 
@@ -89,7 +107,9 @@ class TestCLIIntegration:
         os.environ, {"LLM_BACKEND": "gemini", "GEMINI_API_KEY": "test_key"}, clear=True
     )
     @patch("storytime.gemini_backend.GeminiBackend")
-    def test_explicit_backend_selection(self, mock_gemini):
+    @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
+    @patch("os.makedirs")  # Mock directory creation
+    def test_explicit_backend_selection(self, mock_makedirs, mock_confirm, mock_gemini):
         """Test that explicit backend selection works via environment."""
         mock_backend = MagicMock()
         mock_backend.generate_image.return_value = (MagicMock(), b"fake_bytes")
@@ -102,6 +122,7 @@ class TestCLIIntegration:
             )
 
         mock_gemini.assert_called_once()
+        mock_confirm.assert_called_once()
         assert result.exit_code == 0
 
     def test_cli_help_shows_all_commands(self):
@@ -122,3 +143,125 @@ class TestCLIIntegration:
         assert "--filename" in result.stdout
         assert "--output-dir" in result.stdout
         assert "--verbose" in result.stdout
+
+    @patch("rich.prompt.Confirm.ask", return_value=False)  # User declines
+    def test_story_command_user_cancellation(self, mock_confirm):
+        """Test that story command exits gracefully when user cancels."""
+        result = self.runner.invoke(app, ["story", "test prompt"])
+
+        # Should ask for confirmation
+        mock_confirm.assert_called_once()
+        # Should exit with code 0 (cancelled, not error)
+        assert result.exit_code == 0
+        # Should show cancellation message
+        assert "Story generation cancelled" in result.stdout
+
+    @patch("rich.prompt.Confirm.ask", return_value=False)  # User declines
+    def test_image_command_user_cancellation(self, mock_confirm):
+        """Test that image command exits gracefully when user cancels."""
+        result = self.runner.invoke(app, ["image", "test prompt"])
+
+        # Should ask for confirmation
+        mock_confirm.assert_called_once()
+        # Should exit with code 0 (cancelled, not error)
+        assert result.exit_code == 0
+        # Should show cancellation message
+        assert "Image generation cancelled" in result.stdout
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
+    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("rich.prompt.Confirm.ask", return_value=True)
+    @patch("os.makedirs")
+    def test_story_auto_generated_directory(
+        self, mock_makedirs, mock_confirm, mock_gemini
+    ):
+        """Test that story command generates output directory automatically."""
+        mock_backend = MagicMock()
+        mock_backend.generate_story.return_value = "Test story"
+        mock_backend.generate_image.return_value = (MagicMock(), b"fake_image_bytes")
+        mock_backend.generate_image_name.return_value = "test_image"
+        mock_gemini.return_value = mock_backend
+
+        with patch("builtins.open", MagicMock()):
+            result = self.runner.invoke(app, ["story", "test prompt"])
+
+        # Should show generated directory message
+        assert "Generated output directory:" in result.stdout
+        assert "storytime_output_" in result.stdout
+        # Should call makedirs with the generated directory
+        mock_makedirs.assert_called_once()
+        assert result.exit_code == 0
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
+    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("rich.prompt.Confirm.ask", return_value=True)
+    @patch("os.makedirs")
+    def test_image_auto_generated_directory(
+        self, mock_makedirs, mock_confirm, mock_gemini
+    ):
+        """Test that image command generates output directory automatically."""
+        mock_backend = MagicMock()
+        mock_backend.generate_image.return_value = (MagicMock(), b"fake_bytes")
+        mock_backend.generate_image_name.return_value = "test_image"
+        mock_gemini.return_value = mock_backend
+
+        with patch("builtins.open", MagicMock()):
+            result = self.runner.invoke(app, ["image", "test prompt"])
+
+        # Should show generated directory message
+        assert "Generated output directory:" in result.stdout
+        assert "storytime_output_" in result.stdout
+        # Should call makedirs with the generated directory
+        mock_makedirs.assert_called_once()
+        assert result.exit_code == 0
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
+    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("rich.prompt.Confirm.ask", return_value=True)
+    @patch("os.makedirs")
+    def test_story_with_explicit_output_dir(
+        self, mock_makedirs, mock_confirm, mock_gemini
+    ):
+        """Test that explicit output directory is used when provided."""
+        mock_backend = MagicMock()
+        mock_backend.generate_story.return_value = "Test story"
+        mock_backend.generate_image.return_value = (MagicMock(), b"fake_image_bytes")
+        mock_backend.generate_image_name.return_value = "test_image"
+        mock_gemini.return_value = mock_backend
+
+        with patch("builtins.open", MagicMock()):
+            result = self.runner.invoke(
+                app, ["story", "test prompt", "--output-dir", "custom_dir"]
+            )
+
+        # Should NOT show generated directory message
+        assert "Generated output directory:" not in result.stdout
+        # Should call makedirs with the explicit directory
+        mock_makedirs.assert_called_once_with("custom_dir", exist_ok=True)
+        assert result.exit_code == 0
+
+    def test_story_prompt_summary_format(self):
+        """Test that story prompt summary shows expected format."""
+        with patch("rich.prompt.Confirm.ask", return_value=False):
+            result = self.runner.invoke(app, ["story", "test prompt"])
+
+        # Should show summary with expected format
+        assert "📋 Story Generation Summary:" in result.stdout
+        assert "Prompt: test prompt" in result.stdout
+        assert "Age Range:" in result.stdout
+        assert "Length:" in result.stdout
+        assert "Style:" in result.stdout
+        assert "Tone:" in result.stdout
+
+    def test_image_prompt_summary_format(self):
+        """Test that image prompt summary shows expected format."""
+        with patch("rich.prompt.Confirm.ask", return_value=False):
+            result = self.runner.invoke(app, ["image", "test prompt"])
+
+        # Should show summary with expected format
+        assert "📋 Image Generation Summary:" in result.stdout
+        assert "Prompt: test prompt" in result.stdout
+        assert "Age Range:" in result.stdout
+        assert "Length:" in result.stdout
+        assert "Style:" in result.stdout
+        assert "Tone:" in result.stdout
