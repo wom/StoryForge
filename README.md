@@ -54,26 +54,26 @@ storytime
 
 This command is available as long as your virtual environment is activated.
 
-### CLI Version
+### CLI Usage
 
-You can also use the command-line interface directly:
+You can use the command-line interface directly with the unified entry point:
 
 ```bash
-storytime-cli story "Tell me a story about a robot"
-storytime-cli image "A beautiful sunset over mountains"
-storytime-cli hello "Your Name"
+storytime story "Tell me a story about a robot"
+storytime image "A beautiful sunset over mountains"
+storytime tui
 ```
 
 ## Tab Completion
 
-StoryTime CLI supports tab completion for commands, options, and arguments. This makes the CLI much more convenient to use.
+StoryTime CLI supports tab completion for commands, options, and arguments.
 
 ### Quick Setup (Automatic)
 
-The easiest way to enable tab completion is to let the CLI install it for you:
+Enable tab completion with:
 
 ```bash
-storytime-cli --install-completion
+storytime --install-completion
 ```
 
 **Note:** If you get an error about existing files, use the manual setup below.
@@ -84,17 +84,17 @@ If automatic installation doesn't work, you can set up completion manually for y
 
 **Bash** (add to `~/.bashrc`):
 ```bash
-eval "$(storytime-cli --show-completion)"
+eval "$(storytime --show-completion)"
 ```
 
 **Zsh** (add to `~/.zshrc`):
 ```bash
-eval "$(storytime-cli --show-completion)"
+eval "$(storytime --show-completion)"
 ```
 
 **Fish** (add to `~/.config/fish/config.fish`):
 ```bash
-storytime-cli --show-completion | source
+storytime --show-completion | source
 ```
 
 After adding the line to your shell configuration, restart your terminal or run:
@@ -107,9 +107,9 @@ source ~/.zshrc   # for zsh
 
 Once enabled, you can use tab completion for:
 
-- **Commands**: `storytime-cli <TAB>` shows available commands (`story`, `image`, `hello`)
-- **Options**: `storytime-cli story --<TAB>` shows options like `--output-dir`, `--verbose`, etc.
-- **Help**: Use `storytime-cli <command> --help` to see all available options
+- **Commands**: `storytime <TAB>` shows available commands (`story`, `image`, `tui`)
+- **Options**: `storytime story --<TAB>` shows options like `--output-dir`, `--verbose`, etc.
+- **Help**: Use `storytime <command> --help` to see all available options
 
 ## Editing and Debugging
 

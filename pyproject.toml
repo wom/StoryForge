@@ -27,8 +27,7 @@ dev = [
 ]
 
 [project.scripts]
-storytime = "storytime.StoryTime:main"
-storytime-cli = "storytime.StoryCLI:app"
+storytime = "storytime.StoryTime:app"
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]

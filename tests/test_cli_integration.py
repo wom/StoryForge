@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, mock_open, patch
 from typer.testing import CliRunner
 
 from storytime.prompt import Prompt
-from storytime.StoryCLI import app
+from storytime.StoryTime import app
 
 
 class TestCLIIntegration:
@@ -18,7 +18,7 @@ class TestCLIIntegration:
         """Test that the CLI app loads without errors."""
         result = self.runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        assert "StoryTime CLI" in result.stdout
+        assert "StoryTime" in result.stdout
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
@@ -141,7 +141,7 @@ class TestCLIIntegration:
         assert result.exit_code == 0
         assert "story" in result.stdout
         assert "image" in result.stdout
-        assert "StoryTime CLI" in result.stdout
+        assert "StoryTime" in result.stdout
 
     def test_image_command_help(self):
         """Test that image command help is correct."""
