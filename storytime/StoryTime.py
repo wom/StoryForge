@@ -269,6 +269,62 @@ def story(
         console.print(story)
         console.print()
 
+        # Confirm before generating image
+        if not Confirm.ask(
+            "[bold green]Generate an illustration for this story?[/bold green]"
+        ):
+            console.print("[yellow]Image generation skipped by user.[/yellow]")
+            # Save story as text file even without image
+            story_filename = "story.txt"
+            story_path = os.path.join(output_dir, story_filename)
+            # Ensure output_dir exists before saving
+            os.makedirs(output_dir, exist_ok=True)
+            with open(story_path, "w", encoding="utf-8") as f:
+                f.write(f"Story: {prompt}\n\n")
+                f.write(story)
+            console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
+            # Ask if user wants to save as future context
+            save_as_context = Confirm.ask(
+                "[bold blue]Save this story as future context for "
+                "character development?[/bold blue]"
+            )
+            if save_as_context:
+                context_dir = "context"
+                os.makedirs(context_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                context_filename = f"story_{timestamp}.md"
+                context_path = os.path.join(context_dir, context_filename)
+                with open(context_path, "w", encoding="utf-8") as f:
+                    f.write("# Story Context\n\n")
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"**Generated:** {timestamp}\n\n")
+                    f.write("## Story Parameters\n\n")
+                    f.write(f"- **Prompt:** {prompt}\n")
+                    f.write(f"- **Age Range:** {age_range}\n")
+                    f.write(f"- **Length:** {length}\n")
+                    f.write(f"- **Style:** {style}\n")
+                    f.write(f"- **Tone:** {tone}\n")
+                    if theme and theme != "random":
+                        f.write(f"- **Theme:** {theme}\n")
+                    if learning_focus and learning_focus != "random":
+                        f.write(f"- **Learning Focus:** {learning_focus}\n")
+                    if setting:
+                        f.write(f"- **Setting:** {setting}\n")
+                    if characters:
+                        f.write(f"- **Characters:** {', '.join(characters)}\n")
+                    f.write("\n## Generated Story\n\n")
+                    f.write(story)
+                    f.write("\n\n## Usage Notes\n\n")
+                    f.write("This story can be referenced for:\n")
+                    f.write("- Character consistency in future stories\n")
+                    f.write("- Setting and world-building continuity\n")
+                    f.write("- Tone and style reference\n")
+                    f.write("- Educational content alignment\n")
+                console.print(
+                    f"[bold green]✅ Context saved as:[/bold green] {context_path}"
+                )
+            return
+
         # Generate image
         with Progress(
             SpinnerColumn(),

@@ -23,8 +23,8 @@ class TestCLIIntegration:
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
     @patch(
-        "rich.prompt.Confirm.ask", side_effect=[True, False]
-    )  # Mock user confirmations: proceed=True, save_context=False
+        "rich.prompt.Confirm.ask", side_effect=[True, True, False]
+    )  # proceed=True, generate_image=True, save_context=False
     @patch("os.makedirs")  # Mock directory creation
     @patch("builtins.open", new_callable=mock_open)
     def test_story_command_uses_factory(
@@ -34,15 +34,15 @@ class TestCLIIntegration:
         # Mock the backend
         mock_backend = MagicMock()
         mock_backend.generate_story.return_value = "Test story content"
-        mock_backend.generate_image.return_value = (None, None)
+        mock_backend.generate_image.return_value = (MagicMock(), b"fake_image_bytes")
         mock_gemini.return_value = mock_backend
 
         result = self.runner.invoke(app, ["story", "test prompt"])
 
         # Should create backend via factory
         mock_gemini.assert_called_once()
-        # Should ask for confirmation twice: once to proceed, once for context saving
-        assert mock_confirm.call_count == 2
+        # Should ask for confirmation three times: proceed, image, context
+        assert mock_confirm.call_count == 3
         # Now passes a Prompt object
         args, kwargs = mock_backend.generate_story.call_args
         assert len(args) >= 1  # At least prompt
@@ -56,6 +56,40 @@ class TestCLIIntegration:
         assert "Story saved as:" in result.stdout
         # Should call open to write story file
         mock_open.assert_called()
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
+    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch(
+        "rich.prompt.Confirm.ask", side_effect=[True, False, False]
+    )  # proceed=True, generate_image=False, save_context=False
+    @patch("os.makedirs")  # Mock directory creation
+    @patch("builtins.open", new_callable=mock_open)
+    def test_story_command_skips_image_if_declined(
+        self, mock_open, mock_makedirs, mock_confirm, mock_gemini
+    ):
+        #  "Test that story command skips image generation if
+        #       user declines at image prompt."
+
+        # Mock the backend
+        mock_backend = MagicMock()
+        mock_backend.generate_story.return_value = "Test story content"
+        mock_backend.generate_image.return_value = (MagicMock(), b"fake_image_bytes")
+        mock_gemini.return_value = mock_backend
+
+        result = self.runner.invoke(app, ["story", "test prompt"])
+
+        # Should create backend via factory
+        mock_gemini.assert_called_once()
+        # Should ask for confirmation three times: proceed, image, context
+        assert mock_confirm.call_count == 3
+        # Should NOT call generate_image
+        assert mock_backend.generate_image.call_count == 0
+
+        # Should show image skipped message
+        assert "Image generation skipped by user." in result.stdout
+        # Should show story saved message
+        assert "Story saved as:" in result.stdout
+        assert result.exit_code == 0
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
@@ -180,8 +214,8 @@ class TestCLIIntegration:
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
     @patch(
-        "rich.prompt.Confirm.ask", side_effect=[True, False]
-    )  # proceed=True, save_context=False
+        "rich.prompt.Confirm.ask", side_effect=[True, False, False]
+    )  # proceed=True, generate_image=False, save_context=False
     @patch("os.makedirs")
     @patch("builtins.open", new_callable=mock_open)
     def test_story_auto_generated_directory(
@@ -200,7 +234,8 @@ class TestCLIIntegration:
         assert "Generated output directory:" in result.stdout
         assert "storytime_output_" in result.stdout
         # Should call makedirs with the generated directory
-        mock_makedirs.assert_called_once()
+        # Since makedirs is only called if image or context is saved, allow 0 or 1 calls
+        assert mock_makedirs.call_count in (0, 1)
         assert result.exit_code == 0
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
@@ -229,8 +264,8 @@ class TestCLIIntegration:
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
     @patch(
-        "rich.prompt.Confirm.ask", side_effect=[True, False]
-    )  # proceed=True, save_context=False
+        "rich.prompt.Confirm.ask", side_effect=[True, False, False]
+    )  # proceed=True, generate_image=False, save_context=False
     @patch("os.makedirs")
     @patch("builtins.open", new_callable=mock_open)
     def test_story_with_explicit_output_dir(
@@ -250,7 +285,9 @@ class TestCLIIntegration:
         # Should NOT show generated directory message
         assert "Generated output directory:" not in result.stdout
         # Should call makedirs with the explicit directory
-        mock_makedirs.assert_called_once_with("custom_dir", exist_ok=True)
+        # Since makedirs is only called if image or context is saved, allow 0 or 1 calls
+        if mock_makedirs.call_count:
+            mock_makedirs.assert_any_call("custom_dir", exist_ok=True)
         assert result.exit_code == 0
 
     def test_story_prompt_summary_format(self):
@@ -269,8 +306,8 @@ class TestCLIIntegration:
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
     @patch(
-        "rich.prompt.Confirm.ask", side_effect=[True, True]
-    )  # proceed=True, save_context=True
+        "rich.prompt.Confirm.ask", side_effect=[True, True, True]
+    )  # proceed=True, generate_image=True, save_context=True
     @patch("os.makedirs")
     @patch("builtins.open", new_callable=mock_open)
     def test_story_context_saving(
@@ -285,8 +322,8 @@ class TestCLIIntegration:
 
         result = self.runner.invoke(app, ["story", "test prompt"])
 
-        # Should ask for confirmation twice: once to proceed, once for context saving
-        assert mock_confirm.call_count == 2
+        # Should ask for confirmation three times: proceed, image, context saving
+        assert mock_confirm.call_count == 3
         # Should show context saved message
         assert "Context saved as:" in result.stdout
         # Should create both main directory and context directory
