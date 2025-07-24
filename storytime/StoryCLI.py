@@ -1,9 +1,9 @@
 from dataclasses import dataclass
+from typing import Annotated
 
 import typer
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.text import Text
 
 from .context import ContextManager
 from .llm_backend import get_backend
@@ -25,7 +25,6 @@ class CLIArgs:
     color: str
 
 
-
 @app.command()
 def story(
     prompt: str = typer.Argument(..., help="The story prompt to generate from"),
@@ -33,26 +32,38 @@ def story(
         "short", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
     ),
     age_range: str = typer.Option(
-        "preschool", "--age-range", "-a", help="Target age group (toddler, preschool, early_reader, middle_grade)"
+        "preschool",
+        "--age-range",
+        "-a",
+        help="Target age group (toddler, preschool, early_reader, middle_grade)",
     ),
     style: str = typer.Option(
-        "random", "--style", "-s", help="Story style (adventure, comedy, fantasy, fairy_tale, friendship, random)"
+        "random",
+        "--style",
+        "-s",
+        help="Story style (adventure, comedy, fantasy, fairy_tale, friendship)",
     ),
     tone: str = typer.Option(
-        "random", "--tone", "-t", help="Story tone (gentle, exciting, silly, heartwarming, magical, random)"
+        "random",
+        "--tone",
+        "-t",
+        help="Story tone (gentle, exciting, silly, heartwarming, magical)",
     ),
     theme: str | None = typer.Option(
-        "random", "--theme", help="Story theme (courage, kindness, teamwork, problem_solving, creativity, family, random)"
+        "random",
+        "--theme",
+        help="Story theme (courage, kindness, teamwork, problem_solving, creativity)",
     ),
     learning_focus: str | None = typer.Option(
-        "random", "--learning-focus", help="Learning focus (counting, colors, letters, emotions, nature, random)"
+        "random",
+        "--learning-focus",
+        help="Learning focus (counting, colors, letters, emotions, nature)",
     ),
-    setting: str | None = typer.Option(
-        None, "--setting", help="Story setting"
-    ),
-    characters: list[str] = typer.Option(
-        [], "--character", help="Character names/descriptions (can be used multiple times)"
-    ),
+    setting: str | None = typer.Option(None, "--setting", help="Story setting"),
+    characters: Annotated[
+        list[str] | None,
+        typer.Option("--character", help="Character names/descriptions (multi-use)"),
+    ] = None,
     output_dir: str = typer.Option(
         ".", "--output-dir", "-o", help="Directory to save the image"
     ),
@@ -98,31 +109,35 @@ def story(
             characters_list = characters if characters else None
             theme_value = theme if theme else None
             learning_focus_value = learning_focus if learning_focus else None
-            
+
             story_prompt = Prompt(
                 prompt=prompt,
                 context=context,
-                length=length,
-                age_range=age_range,
-                style=style,
-                tone=tone,
-                theme=theme_value,
+                length=length,  # type: ignore
+                age_range=age_range,  # type: ignore
+                style=style,  # type: ignore
+                tone=tone,  # type: ignore
+                theme=theme_value,  # type: ignore
                 setting=setting,
                 characters=characters_list,
-                learning_focus=learning_focus_value,
+                learning_focus=learning_focus_value,  # type: ignore
             )
-            
+
             if verbose:
-                console.print(f"[dim]Created prompt with parameters:[/dim]")
+                console.print("[dim]Created prompt with parameters:[/dim]")
                 console.print(f"[dim]  Length: {story_prompt.length}[/dim]")
                 console.print(f"[dim]  Age Range: {story_prompt.age_range}[/dim]")
                 console.print(f"[dim]  Style: {story_prompt.style}[/dim]")
                 console.print(f"[dim]  Tone: {story_prompt.tone}[/dim]")
                 console.print(f"[dim]  Theme: {story_prompt.theme}[/dim]")
-                console.print(f"[dim]  Learning Focus: {story_prompt.learning_focus}[/dim]")
-                
+                console.print(
+                    f"[dim]  Learning Focus: {story_prompt.learning_focus}[/dim]"
+                )
+
         except ValueError as e:
-            console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
+            console.print(
+                f"[red]Error:[/red] Invalid parameter value: {e}", style="bold"
+            )
             raise typer.Exit(1) from e
 
         # Generate story
@@ -236,26 +251,38 @@ def image(
         "short", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
     ),
     age_range: str = typer.Option(
-        "preschool", "--age-range", "-a", help="Target age group (toddler, preschool, early_reader, middle_grade)"
+        "preschool",
+        "--age-range",
+        "-a",
+        help="Target age group (toddler, preschool, early_reader, middle_grade)",
     ),
     style: str = typer.Option(
-        "random", "--style", "-s", help="Story style (adventure, comedy, fantasy, fairy_tale, friendship, random)"
+        "random",
+        "--style",
+        "-s",
+        help="Story style (adventure, comedy, fantasy, fairy_tale, friendship)",
     ),
     tone: str = typer.Option(
-        "random", "--tone", "-t", help="Story tone (gentle, exciting, silly, heartwarming, magical, random)"
+        "random",
+        "--tone",
+        "-t",
+        help="Story tone (gentle, exciting, silly, heartwarming, magical)",
     ),
     theme: str | None = typer.Option(
-        "random", "--theme", help="Story theme (courage, kindness, teamwork, problem_solving, creativity, family, random)"
+        "random",
+        "--theme",
+        help="Story theme (courage, kindness, teamwork, problem_solving, creativity)",
     ),
     learning_focus: str | None = typer.Option(
-        "random", "--learning-focus", help="Learning focus (counting, colors, letters, emotions, nature, random)"
+        "random",
+        "--learning-focus",
+        help="Learning focus (counting, colors, letters, emotions, nature)",
     ),
-    setting: str | None = typer.Option(
-        None, "--setting", help="Story setting"
-    ),
-    characters: list[str] = typer.Option(
-        [], "--character", help="Character names/descriptions (can be used multiple times)"
-    ),
+    setting: str | None = typer.Option(None, "--setting", help="Story setting"),
+    characters: Annotated[
+        list[str] | None,
+        typer.Option("--character", help="Character names/descriptions (multi-use)"),
+    ] = None,
     output_dir: str = typer.Option(
         ".", "--output-dir", "-o", help="Directory to save the image"
     ),
@@ -287,29 +314,33 @@ def image(
             characters_list = characters if characters else None
             theme_value = theme if theme else None
             learning_focus_value = learning_focus if learning_focus else None
-            
+
             image_prompt = Prompt(
                 prompt=prompt,
                 context=None,  # No context for standalone image generation
-                length=length,
-                age_range=age_range,
-                style=style,
-                tone=tone,
-                theme=theme_value,
+                length=length,  # type: ignore
+                age_range=age_range,  # type: ignore
+                style=style,  # type: ignore
+                tone=tone,  # type: ignore
+                theme=theme_value,  # type: ignore
                 setting=setting,
                 characters=characters_list,
-                learning_focus=learning_focus_value,
+                learning_focus=learning_focus_value,  # type: ignore
             )
-            
+
             if verbose:
-                console.print(f"[dim]Created prompt with parameters:[/dim]")
+                console.print("[dim]Created prompt with parameters:[/dim]")
                 console.print(f"[dim]  Style: {image_prompt.style}[/dim]")
                 console.print(f"[dim]  Tone: {image_prompt.tone}[/dim]")
                 console.print(f"[dim]  Theme: {image_prompt.theme}[/dim]")
-                console.print(f"[dim]  Learning Focus: {image_prompt.learning_focus}[/dim]")
-                
+                console.print(
+                    f"[dim]  Learning Focus: {image_prompt.learning_focus}[/dim]"
+                )
+
         except ValueError as e:
-            console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
+            console.print(
+                f"[red]Error:[/red] Invalid parameter value: {e}", style="bold"
+            )
             raise typer.Exit(1) from e
 
         # Generate image

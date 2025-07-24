@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 
 from typer.testing import CliRunner
 
-from storytime.StoryCLI import app
 from storytime.prompt import Prompt
+from storytime.StoryCLI import app
 
 
 class TestCLIIntegration:

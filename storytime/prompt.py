@@ -50,15 +50,21 @@ class Prompt:
     age_range: Literal["toddler", "preschool", "early_reader", "middle_grade"] = (
         "preschool"
     )
-    style: Literal["adventure", "comedy", "fantasy", "fairy_tale", "friendship", "random"] = (
-        "adventure"
-    )
-    tone: Literal["gentle", "exciting", "silly", "heartwarming", "magical", "random"] = (
-        "heartwarming"
-    )
+    style: Literal[
+        "adventure", "comedy", "fantasy", "fairy_tale", "friendship", "random"
+    ] = "adventure"
+    tone: Literal[
+        "gentle", "exciting", "silly", "heartwarming", "magical", "random"
+    ] = "heartwarming"
     theme: (
         Literal[
-            "courage", "kindness", "teamwork", "problem_solving", "creativity", "family", "random"
+            "courage",
+            "kindness",
+            "teamwork",
+            "problem_solving",
+            "creativity",
+            "family",
+            "random",
         ]
         | None
     ) = None
@@ -76,29 +82,43 @@ class Prompt:
     def _resolve_random_parameters(self) -> None:
         """Replace 'random' values with randomly selected valid values."""
         valid_values = self.get_valid_values()
-        
+
         # Resolve random style
         if self.style == "random":
-            self.style = random.choice(valid_values["style"])
-        
+            self.style = random.choice(valid_values["style"])  # type: ignore
+
         # Resolve random tone
         if self.tone == "random":
-            self.tone = random.choice(valid_values["tone"])
-        
+            self.tone = random.choice(valid_values["tone"])  # type: ignore
+
         # Resolve random theme
         if self.theme == "random":
-            self.theme = random.choice(valid_values["theme"])
-        
+            self.theme = random.choice(valid_values["theme"])  # type: ignore
+
         # Resolve random learning_focus
         if self.learning_focus == "random":
-            self.learning_focus = random.choice(valid_values["learning_focus"])
+            self.learning_focus = random.choice(valid_values["learning_focus"])  # type: ignore
 
     def _validate_parameters(self) -> None:
         """Validate that all parameters have acceptable values."""
         valid_lengths = ["flash", "short", "medium", "bedtime"]
         valid_age_ranges = ["toddler", "preschool", "early_reader", "middle_grade"]
-        valid_styles = ["adventure", "comedy", "fantasy", "fairy_tale", "friendship", "random"]
-        valid_tones = ["gentle", "exciting", "silly", "heartwarming", "magical", "random"]
+        valid_styles = [
+            "adventure",
+            "comedy",
+            "fantasy",
+            "fairy_tale",
+            "friendship",
+            "random",
+        ]
+        valid_tones = [
+            "gentle",
+            "exciting",
+            "silly",
+            "heartwarming",
+            "magical",
+            "random",
+        ]
         valid_themes = [
             "courage",
             "kindness",
@@ -108,7 +128,14 @@ class Prompt:
             "family",
             "random",
         ]
-        valid_learning = ["counting", "colors", "letters", "emotions", "nature", "random"]
+        valid_learning = [
+            "counting",
+            "colors",
+            "letters",
+            "emotions",
+            "nature",
+            "random",
+        ]
 
         if self.length not in valid_lengths:
             raise ValueError(
