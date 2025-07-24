@@ -1,5 +1,5 @@
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, mock_open, patch
 
 from typer.testing import CliRunner
 
@@ -22,9 +22,14 @@ class TestCLIIntegration:
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
-    @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
+    @patch(
+        "rich.prompt.Confirm.ask", side_effect=[True, False]
+    )  # Mock user confirmations: proceed=True, save_context=False
     @patch("os.makedirs")  # Mock directory creation
-    def test_story_command_uses_factory(self, mock_makedirs, mock_confirm, mock_gemini):
+    @patch("builtins.open", new_callable=mock_open)
+    def test_story_command_uses_factory(
+        self, mock_open, mock_makedirs, mock_confirm, mock_gemini
+    ):
         """Test that story command uses the backend factory with user confirmation."""
         # Mock the backend
         mock_backend = MagicMock()
@@ -36,8 +41,8 @@ class TestCLIIntegration:
 
         # Should create backend via factory
         mock_gemini.assert_called_once()
-        # Should ask for confirmation
-        mock_confirm.assert_called_once()
+        # Should ask for confirmation twice: once to proceed, once for context saving
+        assert mock_confirm.call_count == 2
         # Now passes a Prompt object
         args, kwargs = mock_backend.generate_story.call_args
         assert len(args) >= 1  # At least prompt
@@ -47,6 +52,10 @@ class TestCLIIntegration:
         assert "Test story content" in result.stdout
         # Should show generated directory
         assert "Generated output directory:" in result.stdout
+        # Should show story saved message
+        assert "Story saved as:" in result.stdout
+        # Should call open to write story file
+        mock_open.assert_called()
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
@@ -170,10 +179,13 @@ class TestCLIIntegration:
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
-    @patch("rich.prompt.Confirm.ask", return_value=True)
+    @patch(
+        "rich.prompt.Confirm.ask", side_effect=[True, False]
+    )  # proceed=True, save_context=False
     @patch("os.makedirs")
+    @patch("builtins.open", new_callable=mock_open)
     def test_story_auto_generated_directory(
-        self, mock_makedirs, mock_confirm, mock_gemini
+        self, mock_open, mock_makedirs, mock_confirm, mock_gemini
     ):
         """Test that story command generates output directory automatically."""
         mock_backend = MagicMock()
@@ -182,8 +194,7 @@ class TestCLIIntegration:
         mock_backend.generate_image_name.return_value = "test_image"
         mock_gemini.return_value = mock_backend
 
-        with patch("builtins.open", MagicMock()):
-            result = self.runner.invoke(app, ["story", "test prompt"])
+        result = self.runner.invoke(app, ["story", "test prompt"])
 
         # Should show generated directory message
         assert "Generated output directory:" in result.stdout
@@ -217,10 +228,13 @@ class TestCLIIntegration:
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storytime.gemini_backend.GeminiBackend")
-    @patch("rich.prompt.Confirm.ask", return_value=True)
+    @patch(
+        "rich.prompt.Confirm.ask", side_effect=[True, False]
+    )  # proceed=True, save_context=False
     @patch("os.makedirs")
+    @patch("builtins.open", new_callable=mock_open)
     def test_story_with_explicit_output_dir(
-        self, mock_makedirs, mock_confirm, mock_gemini
+        self, mock_open, mock_makedirs, mock_confirm, mock_gemini
     ):
         """Test that explicit output directory is used when provided."""
         mock_backend = MagicMock()
@@ -229,10 +243,9 @@ class TestCLIIntegration:
         mock_backend.generate_image_name.return_value = "test_image"
         mock_gemini.return_value = mock_backend
 
-        with patch("builtins.open", MagicMock()):
-            result = self.runner.invoke(
-                app, ["story", "test prompt", "--output-dir", "custom_dir"]
-            )
+        result = self.runner.invoke(
+            app, ["story", "test prompt", "--output-dir", "custom_dir"]
+        )
 
         # Should NOT show generated directory message
         assert "Generated output directory:" not in result.stdout
@@ -252,6 +265,33 @@ class TestCLIIntegration:
         assert "Length:" in result.stdout
         assert "Style:" in result.stdout
         assert "Tone:" in result.stdout
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
+    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch(
+        "rich.prompt.Confirm.ask", side_effect=[True, True]
+    )  # proceed=True, save_context=True
+    @patch("os.makedirs")
+    @patch("builtins.open", new_callable=mock_open)
+    def test_story_context_saving(
+        self, mock_open, mock_makedirs, mock_confirm, mock_gemini
+    ):
+        """Test that story command can save context when requested."""
+        mock_backend = MagicMock()
+        mock_backend.generate_story.return_value = "Test story content"
+        mock_backend.generate_image.return_value = (MagicMock(), b"fake_image_bytes")
+        mock_backend.generate_image_name.return_value = "test_image"
+        mock_gemini.return_value = mock_backend
+
+        result = self.runner.invoke(app, ["story", "test prompt"])
+
+        # Should ask for confirmation twice: once to proceed, once for context saving
+        assert mock_confirm.call_count == 2
+        # Should show context saved message
+        assert "Context saved as:" in result.stdout
+        # Should create both main directory and context directory
+        assert mock_makedirs.call_count >= 2
+        assert result.exit_code == 0
 
     def test_image_prompt_summary_format(self):
         """Test that image prompt summary shows expected format."""

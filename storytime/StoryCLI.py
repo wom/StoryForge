@@ -272,6 +272,64 @@ def story(
                 "[yellow]Warning:[/yellow] Failed to generate image, "
                 "but story was created successfully."
             )
+
+            # Save story as text file even without image
+            story_filename = "story.txt"
+            story_path = os.path.join(output_dir, story_filename)
+            with open(story_path, "w", encoding="utf-8") as f:
+                f.write(f"Story: {prompt}\n\n")
+                f.write(story)
+
+            console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
+
+            # Ask if user wants to save as future context
+            save_as_context = Confirm.ask(
+                "[bold blue]Save this story as future context for "
+                "character development?[/bold blue]"
+            )
+
+            if save_as_context:
+                # Create context directory if it doesn't exist
+                context_dir = "context"
+                os.makedirs(context_dir, exist_ok=True)
+
+                # Generate context filename with timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                context_filename = f"story_{timestamp}.md"
+                context_path = os.path.join(context_dir, context_filename)
+
+                # Write in LLM-friendly markdown format
+                with open(context_path, "w", encoding="utf-8") as f:
+                    f.write("# Story Context\n\n")
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"**Generated:** {timestamp}\n\n")
+                    f.write("## Story Parameters\n\n")
+                    f.write(f"- **Prompt:** {prompt}\n")
+                    f.write(f"- **Age Range:** {age_range}\n")
+                    f.write(f"- **Length:** {length}\n")
+                    f.write(f"- **Style:** {style}\n")
+                    f.write(f"- **Tone:** {tone}\n")
+                    if theme and theme != "random":
+                        f.write(f"- **Theme:** {theme}\n")
+                    if learning_focus and learning_focus != "random":
+                        f.write(f"- **Learning Focus:** {learning_focus}\n")
+                    if setting:
+                        f.write(f"- **Setting:** {setting}\n")
+                    if characters:
+                        f.write(f"- **Characters:** {', '.join(characters)}\n")
+                    f.write("\n## Generated Story\n\n")
+                    f.write(story)
+                    f.write("\n\n## Usage Notes\n\n")
+                    f.write("This story can be referenced for:\n")
+                    f.write("- Character consistency in future stories\n")
+                    f.write("- Setting and world-building continuity\n")
+                    f.write("- Tone and style reference\n")
+                    f.write("- Educational content alignment\n")
+
+                console.print(
+                    f"[bold green]✅ Context saved as:[/bold green] {context_path}"
+                )
+
             return
 
         # Generate image filename
@@ -306,6 +364,63 @@ def story(
 
         if verbose:
             console.print(f"[dim]Image size: {len(image_bytes)} bytes[/dim]")
+
+        # Save story as text file
+        story_filename = image_name.replace(".png", ".txt")
+        story_path = os.path.join(output_dir, story_filename)
+        with open(story_path, "w", encoding="utf-8") as f:
+            f.write(f"Story: {prompt}\n\n")
+            f.write(story)
+
+        console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
+
+        # Ask if user wants to save as future context
+        save_as_context = Confirm.ask(
+            "[bold blue]Save this story as future context for "
+            "character development?[/bold blue]"
+        )
+
+        if save_as_context:
+            # Create context directory if it doesn't exist
+            context_dir = "context"
+            os.makedirs(context_dir, exist_ok=True)
+
+            # Generate context filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            context_filename = f"story_{timestamp}.md"
+            context_path = os.path.join(context_dir, context_filename)
+
+            # Write in LLM-friendly markdown format
+            with open(context_path, "w", encoding="utf-8") as f:
+                f.write("# Story Context\n\n")
+                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                f.write(f"**Generated:** {timestamp}\n\n")
+                f.write("## Story Parameters\n\n")
+                f.write(f"- **Prompt:** {prompt}\n")
+                f.write(f"- **Age Range:** {age_range}\n")
+                f.write(f"- **Length:** {length}\n")
+                f.write(f"- **Style:** {style}\n")
+                f.write(f"- **Tone:** {tone}\n")
+                if theme and theme != "random":
+                    f.write(f"- **Theme:** {theme}\n")
+                if learning_focus and learning_focus != "random":
+                    f.write(f"- **Learning Focus:** {learning_focus}\n")
+                if setting:
+                    f.write(f"- **Setting:** {setting}\n")
+                if characters:
+                    f.write(f"- **Characters:** {', '.join(characters)}\n")
+                f.write("\n## Generated Story\n\n")
+                f.write(story)
+                f.write("\n\n## Usage Notes\n\n")
+                f.write("This story can be referenced for:\n")
+                f.write("- Character consistency in future stories\n")
+                f.write("- Setting and world-building continuity\n")
+                f.write("- Tone and style reference\n")
+                f.write("- Educational content alignment\n")
+
+            console.print(
+                f"[bold green]✅ Context saved as:[/bold green] {context_path}"
+            )
 
     except RuntimeError as e:
         if "GEMINI_API_KEY" in str(e):
