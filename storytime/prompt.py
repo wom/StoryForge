@@ -8,6 +8,7 @@ It encapsulates all parameters needed for story generation, image generation,
 and image naming across different LLM backends.
 """
 
+import random
 from dataclasses import dataclass
 from typing import Literal
 
@@ -49,34 +50,55 @@ class Prompt:
     age_range: Literal["toddler", "preschool", "early_reader", "middle_grade"] = (
         "preschool"
     )
-    style: Literal["adventure", "comedy", "fantasy", "fairy_tale", "friendship"] = (
+    style: Literal["adventure", "comedy", "fantasy", "fairy_tale", "friendship", "random"] = (
         "adventure"
     )
-    tone: Literal["gentle", "exciting", "silly", "heartwarming", "magical"] = (
+    tone: Literal["gentle", "exciting", "silly", "heartwarming", "magical", "random"] = (
         "heartwarming"
     )
     theme: (
         Literal[
-            "courage", "kindness", "teamwork", "problem_solving", "creativity", "family"
+            "courage", "kindness", "teamwork", "problem_solving", "creativity", "family", "random"
         ]
         | None
     ) = None
     setting: str | None = None
     characters: list[str] | None = None
     learning_focus: (
-        Literal["counting", "colors", "letters", "emotions", "nature"] | None
+        Literal["counting", "colors", "letters", "emotions", "nature", "random"] | None
     ) = None
 
     def __post_init__(self) -> None:
-        """Validate parameters after initialization."""
+        """Resolve random parameters and validate after initialization."""
+        self._resolve_random_parameters()
         self._validate_parameters()
+
+    def _resolve_random_parameters(self) -> None:
+        """Replace 'random' values with randomly selected valid values."""
+        valid_values = self.get_valid_values()
+        
+        # Resolve random style
+        if self.style == "random":
+            self.style = random.choice(valid_values["style"])
+        
+        # Resolve random tone
+        if self.tone == "random":
+            self.tone = random.choice(valid_values["tone"])
+        
+        # Resolve random theme
+        if self.theme == "random":
+            self.theme = random.choice(valid_values["theme"])
+        
+        # Resolve random learning_focus
+        if self.learning_focus == "random":
+            self.learning_focus = random.choice(valid_values["learning_focus"])
 
     def _validate_parameters(self) -> None:
         """Validate that all parameters have acceptable values."""
         valid_lengths = ["flash", "short", "medium", "bedtime"]
         valid_age_ranges = ["toddler", "preschool", "early_reader", "middle_grade"]
-        valid_styles = ["adventure", "comedy", "fantasy", "fairy_tale", "friendship"]
-        valid_tones = ["gentle", "exciting", "silly", "heartwarming", "magical"]
+        valid_styles = ["adventure", "comedy", "fantasy", "fairy_tale", "friendship", "random"]
+        valid_tones = ["gentle", "exciting", "silly", "heartwarming", "magical", "random"]
         valid_themes = [
             "courage",
             "kindness",
@@ -84,8 +106,9 @@ class Prompt:
             "problem_solving",
             "creativity",
             "family",
+            "random",
         ]
-        valid_learning = ["counting", "colors", "letters", "emotions", "nature"]
+        valid_learning = ["counting", "colors", "letters", "emotions", "nature", "random"]
 
         if self.length not in valid_lengths:
             raise ValueError(
@@ -327,10 +350,10 @@ class Prompt:
     @classmethod
     def get_valid_values(cls) -> dict[str, list[str]]:
         """
-        Get all valid values for each parameter.
+        Get all valid values for each parameter (excluding 'random').
 
         Returns:
-            dict: Parameter names mapped to their valid values
+            dict: Parameter names mapped to their valid values for random selection
         """
         return {
             "length": ["flash", "short", "medium", "bedtime"],

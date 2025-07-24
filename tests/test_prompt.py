@@ -298,3 +298,139 @@ class TestBackwardCompatibility:
         # Test with simple string
         result3 = simulate_backend_usage("Test adventure")
         assert result3 == "Legacy: Test adventure"
+
+
+class TestRandomParameterFunctionality:
+    """Test the new random parameter functionality."""
+
+    def test_random_style_resolution(self):
+        """Test that random style values are resolved to valid options."""
+        prompt = Prompt(prompt="Test story", style="random")
+        
+        valid_styles = Prompt.get_valid_values()["style"]
+        assert prompt.style in valid_styles
+        assert prompt.style != "random"
+
+    def test_random_tone_resolution(self):
+        """Test that random tone values are resolved to valid options."""
+        prompt = Prompt(prompt="Test story", tone="random")
+        
+        valid_tones = Prompt.get_valid_values()["tone"]
+        assert prompt.tone in valid_tones
+        assert prompt.tone != "random"
+
+    def test_random_theme_resolution(self):
+        """Test that random theme values are resolved to valid options."""
+        prompt = Prompt(prompt="Test story", theme="random")
+        
+        valid_themes = Prompt.get_valid_values()["theme"]
+        assert prompt.theme in valid_themes
+        assert prompt.theme != "random"
+
+    def test_random_learning_focus_resolution(self):
+        """Test that random learning_focus values are resolved to valid options."""
+        prompt = Prompt(prompt="Test story", learning_focus="random")
+        
+        valid_learning = Prompt.get_valid_values()["learning_focus"]
+        assert prompt.learning_focus in valid_learning
+        assert prompt.learning_focus != "random"
+
+    def test_multiple_random_parameters(self):
+        """Test that multiple random parameters are all resolved."""
+        prompt = Prompt(
+            prompt="Test story",
+            style="random",
+            tone="random",
+            theme="random",
+            learning_focus="random"
+        )
+        
+        valid_values = Prompt.get_valid_values()
+        assert prompt.style in valid_values["style"]
+        assert prompt.tone in valid_values["tone"]
+        assert prompt.theme in valid_values["theme"]
+        assert prompt.learning_focus in valid_values["learning_focus"]
+        
+        # None should still be "random"
+        assert prompt.style != "random"
+        assert prompt.tone != "random"
+        assert prompt.theme != "random"
+        assert prompt.learning_focus != "random"
+
+    def test_mixed_random_and_specific_parameters(self):
+        """Test mixing random and specific parameter values."""
+        prompt = Prompt(
+            prompt="Test story",
+            style="adventure",  # specific
+            tone="random",      # random
+            theme="kindness",   # specific
+            learning_focus="random"  # random
+        )
+        
+        # Specific values should remain unchanged
+        assert prompt.style == "adventure"
+        assert prompt.theme == "kindness"
+        
+        # Random values should be resolved
+        valid_values = Prompt.get_valid_values()
+        assert prompt.tone in valid_values["tone"]
+        assert prompt.learning_focus in valid_values["learning_focus"]
+        assert prompt.tone != "random"
+        assert prompt.learning_focus != "random"
+
+    def test_random_parameters_in_prompts(self):
+        """Test that resolved random parameters appear in generated prompts."""
+        prompt = Prompt(
+            prompt="A brave mouse adventure",
+            style="random",
+            tone="random"
+        )
+        
+        story_prompt = prompt.story
+        image_prompt = prompt.image
+        
+        # The resolved values should appear in some form (as descriptive text)
+        # Check that we have a valid style and tone
+        valid_values = Prompt.get_valid_values()
+        assert prompt.style in valid_values["style"]
+        assert prompt.tone in valid_values["tone"]
+        
+        # Check that the prompts contain relevant descriptive text
+        assert len(story_prompt) > 0
+        assert len(image_prompt) > 0
+        assert "A brave mouse adventure" in story_prompt
+        assert "A brave mouse adventure" in image_prompt
+        
+        # "random" should not appear in the prompts
+        assert "random" not in story_prompt
+        assert "random" not in image_prompt
+
+    def test_random_parameter_validation_still_works(self):
+        """Test that validation still works properly with random parameters."""
+        # Valid random parameters should work
+        prompt = Prompt(prompt="Test", style="random", tone="random")
+        assert isinstance(prompt.style, str)
+        assert isinstance(prompt.tone, str)
+        
+        # Invalid non-random parameters should still be rejected
+        with pytest.raises(ValueError, match="Invalid style"):
+            Prompt(prompt="Test", style="invalid_style")
+            
+        with pytest.raises(ValueError, match="Invalid tone"):
+            Prompt(prompt="Test", tone="invalid_tone")
+
+    def test_randomness_varies_between_instances(self):
+        """Test that random resolution actually varies between different instances."""
+        # Create multiple prompts with random parameters
+        prompts = [
+            Prompt(prompt="Test story", style="random", tone="random")
+            for _ in range(10)
+        ]
+        
+        # Collect all resolved values
+        styles = [p.style for p in prompts]
+        tones = [p.tone for p in prompts]
+        
+        # With 10 instances and multiple valid options, we should see some variation
+        # (This is probabilistic, but very likely to pass)
+        assert len(set(styles)) > 1 or len(set(tones)) > 1, "Expected some variation in random values"

@@ -7,6 +7,7 @@ from rich.text import Text
 
 from .context import ContextManager
 from .llm_backend import get_backend
+from .prompt import Prompt
 
 console = Console()
 app = typer.Typer(
@@ -24,36 +25,34 @@ class CLIArgs:
     color: str
 
 
-@app.command()
-def hello(
-    name: str = typer.Argument(..., help="Your name"),
-    age: int | None = typer.Option(None, "--age", "-a", help="Your age (optional)"),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Enable verbose output"
-    ),
-    color: str = typer.Option(
-        "green",
-        "--color",
-        "-c",
-        help="Text color",
-        show_choices=True,
-        case_sensitive=False,
-    ),
-):
-    """Say hello to someone (original greeting command)."""
-    args = CLIArgs(name, age, verbose, color)
-    greeting = f"Hello, {args.name}!"
-    if args.age is not None:
-        greeting += f" You are {args.age} years old."
-    if args.verbose:
-        greeting += " (Verbose mode enabled)"
-    text = Text(greeting, style=args.color)
-    console.print(text)
-
 
 @app.command()
 def story(
     prompt: str = typer.Argument(..., help="The story prompt to generate from"),
+    length: str = typer.Option(
+        "short", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
+    ),
+    age_range: str = typer.Option(
+        "preschool", "--age-range", "-a", help="Target age group (toddler, preschool, early_reader, middle_grade)"
+    ),
+    style: str = typer.Option(
+        "random", "--style", "-s", help="Story style (adventure, comedy, fantasy, fairy_tale, friendship, random)"
+    ),
+    tone: str = typer.Option(
+        "random", "--tone", "-t", help="Story tone (gentle, exciting, silly, heartwarming, magical, random)"
+    ),
+    theme: str | None = typer.Option(
+        "random", "--theme", help="Story theme (courage, kindness, teamwork, problem_solving, creativity, family, random)"
+    ),
+    learning_focus: str | None = typer.Option(
+        "random", "--learning-focus", help="Learning focus (counting, colors, letters, emotions, nature, random)"
+    ),
+    setting: str | None = typer.Option(
+        None, "--setting", help="Story setting"
+    ),
+    characters: list[str] = typer.Option(
+        [], "--character", help="Character names/descriptions (can be used multiple times)"
+    ),
     output_dir: str = typer.Option(
         ".", "--output-dir", "-o", help="Directory to save the image"
     ),
@@ -93,6 +92,39 @@ def story(
         elif verbose:
             console.print("[dim]No context file loaded[/dim]")
 
+        # Create Prompt instance
+        try:
+            # Handle None values and convert to appropriate types
+            characters_list = characters if characters else None
+            theme_value = theme if theme else None
+            learning_focus_value = learning_focus if learning_focus else None
+            
+            story_prompt = Prompt(
+                prompt=prompt,
+                context=context,
+                length=length,
+                age_range=age_range,
+                style=style,
+                tone=tone,
+                theme=theme_value,
+                setting=setting,
+                characters=characters_list,
+                learning_focus=learning_focus_value,
+            )
+            
+            if verbose:
+                console.print(f"[dim]Created prompt with parameters:[/dim]")
+                console.print(f"[dim]  Length: {story_prompt.length}[/dim]")
+                console.print(f"[dim]  Age Range: {story_prompt.age_range}[/dim]")
+                console.print(f"[dim]  Style: {story_prompt.style}[/dim]")
+                console.print(f"[dim]  Tone: {story_prompt.tone}[/dim]")
+                console.print(f"[dim]  Theme: {story_prompt.theme}[/dim]")
+                console.print(f"[dim]  Learning Focus: {story_prompt.learning_focus}[/dim]")
+                
+        except ValueError as e:
+            console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
+            raise typer.Exit(1) from e
+
         # Generate story
         with Progress(
             SpinnerColumn(),
@@ -101,7 +133,7 @@ def story(
             transient=True,
         ) as progress:
             progress.add_task("story", total=None)
-            story = backend.generate_story(prompt, context)
+            story = backend.generate_story(story_prompt)
 
         if story == "[Error generating story]":
             console.print(
@@ -126,7 +158,7 @@ def story(
             transient=True,
         ) as progress:
             progress.add_task("image", total=None)
-            image, image_bytes = backend.generate_image(prompt)
+            image, image_bytes = backend.generate_image(story_prompt)
 
         if image is None or image_bytes is None:
             console.print(
@@ -143,7 +175,7 @@ def story(
             transient=True,
         ) as progress:
             progress.add_task("filename", total=None)
-            image_name = backend.generate_image_name(prompt, story)
+            image_name = backend.generate_image_name(story_prompt, story)
 
         if not image_name:
             image_name = "story_image"
@@ -200,6 +232,30 @@ def story(
 @app.command()
 def image(
     prompt: str = typer.Argument(..., help="The image prompt to generate from"),
+    length: str = typer.Option(
+        "short", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
+    ),
+    age_range: str = typer.Option(
+        "preschool", "--age-range", "-a", help="Target age group (toddler, preschool, early_reader, middle_grade)"
+    ),
+    style: str = typer.Option(
+        "random", "--style", "-s", help="Story style (adventure, comedy, fantasy, fairy_tale, friendship, random)"
+    ),
+    tone: str = typer.Option(
+        "random", "--tone", "-t", help="Story tone (gentle, exciting, silly, heartwarming, magical, random)"
+    ),
+    theme: str | None = typer.Option(
+        "random", "--theme", help="Story theme (courage, kindness, teamwork, problem_solving, creativity, family, random)"
+    ),
+    learning_focus: str | None = typer.Option(
+        "random", "--learning-focus", help="Learning focus (counting, colors, letters, emotions, nature, random)"
+    ),
+    setting: str | None = typer.Option(
+        None, "--setting", help="Story setting"
+    ),
+    characters: list[str] = typer.Option(
+        [], "--character", help="Character names/descriptions (can be used multiple times)"
+    ),
     output_dir: str = typer.Option(
         ".", "--output-dir", "-o", help="Directory to save the image"
     ),
@@ -225,6 +281,37 @@ def image(
 
         backend = get_backend()
 
+        # Create Prompt instance
+        try:
+            # Handle None values and convert to appropriate types
+            characters_list = characters if characters else None
+            theme_value = theme if theme else None
+            learning_focus_value = learning_focus if learning_focus else None
+            
+            image_prompt = Prompt(
+                prompt=prompt,
+                context=None,  # No context for standalone image generation
+                length=length,
+                age_range=age_range,
+                style=style,
+                tone=tone,
+                theme=theme_value,
+                setting=setting,
+                characters=characters_list,
+                learning_focus=learning_focus_value,
+            )
+            
+            if verbose:
+                console.print(f"[dim]Created prompt with parameters:[/dim]")
+                console.print(f"[dim]  Style: {image_prompt.style}[/dim]")
+                console.print(f"[dim]  Tone: {image_prompt.tone}[/dim]")
+                console.print(f"[dim]  Theme: {image_prompt.theme}[/dim]")
+                console.print(f"[dim]  Learning Focus: {image_prompt.learning_focus}[/dim]")
+                
+        except ValueError as e:
+            console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
+            raise typer.Exit(1) from e
+
         # Generate image
         with Progress(
             SpinnerColumn(),
@@ -233,7 +320,7 @@ def image(
             transient=True,
         ) as progress:
             progress.add_task("image", total=None)
-            image, image_bytes = backend.generate_image(prompt)
+            image, image_bytes = backend.generate_image(image_prompt)
 
         if image is None or image_bytes is None:
             console.print(
@@ -256,7 +343,7 @@ def image(
             ) as progress:
                 progress.add_task("filename", total=None)
                 raw_name = backend.generate_image_name(
-                    prompt, prompt
+                    image_prompt, prompt
                 )  # Use prompt as "story" for naming
 
             if not raw_name or raw_name == "story_image":
