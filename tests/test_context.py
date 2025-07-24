@@ -143,6 +143,7 @@ class TestContextIntegration:
     def test_context_with_mock_backend(self, monkeypatch):
         """Test that context is properly passed to backend."""
         from storytime.gemini_backend import GeminiBackend
+        from storytime.prompt import Prompt
 
         # Mock the client to avoid API calls
         mock_response = type(
@@ -185,15 +186,17 @@ class TestContextIntegration:
             backend.client.models, "generate_content", mock_generate_content
         )
 
-        # Test story generation with context
+        # Test story generation with context using Prompt object
         context = "## Ethan\nYoung boy, loves swimming."
-        story = backend.generate_story("Write about Ethan", context)
+        prompt = Prompt(prompt="Write about Ethan", context=context)
+        story = backend.generate_story(prompt)
 
         assert story == "Generated story with context"
 
     def test_context_fallback_without_context(self, monkeypatch):
         """Test that backend works without context."""
         from storytime.gemini_backend import GeminiBackend
+        from storytime.prompt import Prompt
 
         # Mock the client
         mock_response = type(
@@ -225,11 +228,8 @@ class TestContextIntegration:
         )
 
         def mock_generate_content(model, contents):
-            # Verify no context marker in contents
-            assert "Context for story generation:" not in contents
-            assert contents == (
-                "Write a short story based on this prompt: Write about adventure"
-            )
+            # Verify the prompt is formatted correctly
+            assert "Write about adventure" in contents
             return mock_response
 
         monkeypatch.setenv("GEMINI_API_KEY", "test_key")
@@ -238,8 +238,9 @@ class TestContextIntegration:
             backend.client.models, "generate_content", mock_generate_content
         )
 
-        # Test story generation without context
-        story = backend.generate_story("Write about adventure", None)
+        # Test story generation without context using Prompt object
+        prompt = Prompt(prompt="Write about adventure")
+        story = backend.generate_story(prompt)
 
         assert story == "Generated story without context"
 

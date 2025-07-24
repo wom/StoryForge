@@ -4,36 +4,40 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from storytime.llm_backend import LLMBackend, get_backend, list_available_backends
+from storytime.prompt import Prompt
 
 
 class DummyBackend(LLMBackend):
-    def generate_story(self, prompt: str) -> str:
+    def generate_story(self, prompt: Prompt) -> str:
         raise NotImplementedError("Test implementation")
 
-    def generate_image(self, prompt: str):
+    def generate_image(self, prompt: Prompt):
         raise NotImplementedError("Test implementation")
 
-    def generate_image_name(self, prompt: str, story: str) -> str:
+    def generate_image_name(self, prompt: Prompt, story: str) -> str:
         raise NotImplementedError("Test implementation")
 
 
 # Original abstract base class tests
 def test_generate_story_not_implemented():
     backend = DummyBackend()
+    prompt = Prompt(prompt="test prompt")
     with pytest.raises(NotImplementedError):
-        backend.generate_story("prompt")
+        backend.generate_story(prompt)
 
 
 def test_generate_image_not_implemented():
     backend = DummyBackend()
+    prompt = Prompt(prompt="test prompt")
     with pytest.raises(NotImplementedError):
-        backend.generate_image("prompt")
+        backend.generate_image(prompt)
 
 
 def test_generate_image_name_not_implemented():
     backend = DummyBackend()
+    prompt = Prompt(prompt="test prompt")
     with pytest.raises(NotImplementedError):
-        backend.generate_image_name("prompt", "story")
+        backend.generate_image_name(prompt, "story")
 
 
 # Factory function tests

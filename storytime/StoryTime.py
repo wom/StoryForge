@@ -11,6 +11,7 @@ from textual.widgets import Button, Input, LoadingIndicator, Log, Static
 
 from .context import get_default_context_manager
 from .gemini_backend import GeminiBackend
+from .prompt import Prompt
 
 
 class StoryApp(App):
@@ -131,15 +132,16 @@ class StoryApp(App):
             # Future enhancement: Smart filtering based on prompt analysis
             context = self.context_manager.extract_relevant_context(prompt)
 
+            # Create Prompt object
+            prompt_obj = Prompt(prompt=prompt, context=context)
+
             # Generate story in a thread to avoid blocking UI
-            story = await asyncio.to_thread(
-                self.backend.generate_story, prompt, context
-            )
+            story = await asyncio.to_thread(self.backend.generate_story, prompt_obj)
             output_log.write(f"[green]Story:[/green]\n{story}")
             output_log.write("[bold]Generating image...[/bold]")
             # Generate image in a thread
             image, image_bytes = await asyncio.to_thread(
-                self.backend.generate_image, prompt
+                self.backend.generate_image, prompt_obj
             )
             if image is None:
                 output_log.write("[red]Failed to generate image.[/red]")
@@ -147,7 +149,7 @@ class StoryApp(App):
             output_log.write("[bold]Generating image name...[/bold]")
             # Generate image filename in a thread
             image_name = await asyncio.to_thread(
-                self.backend.generate_image_name, prompt, story
+                self.backend.generate_image_name, prompt_obj, story
             )
             if not image_name:
                 image_name = "story_image.png"
