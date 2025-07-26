@@ -4,8 +4,11 @@ StoryTime is a Textual-based terminal application that uses Google's Gemini API 
 
 **Features:**
 - Enter a custom story prompt and generate a short story using LLM.
-- Generate a unique AI image illustration for the story.
-- Save the generated image to disk with a creative, context-aware filename.
+- Generate AI image illustrations for your story with flexible options:
+  - Use the story as context and describe the image yourself
+  - Break the story into logical chunks (paragraphs) and generate an image for each, with consistent style
+  - Skip image generation if desired
+- Save generated images to disk with creative, context-aware filenames.
 - All interactions are handled in a modern, responsive terminal UI.
 - Includes unit tests for core logic and easy setup with uv and pytest.
 
@@ -60,7 +63,20 @@ You can use the command-line interface directly with the unified entry point:
 
 ```bash
 storytime story "Tell me a story about a robot"
+```
+
+After generating a story, you will be prompted to choose how to generate illustrations:
+- Use the story as context and describe the image yourself
+- Break the story into logical chunks (paragraphs) and generate an image for each, with consistent style
+- Skip image generation
+
+You can also generate a standalone image:
+```bash
 storytime image "A beautiful sunset over mountains"
+```
+
+Or launch the interactive TUI:
+```bash
 storytime tui
 ```
 

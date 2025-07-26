@@ -22,6 +22,10 @@ class Prompt:
     educational, and engaging stories and images for children. It provides properties
     to access prompts for story generation, image generation, and image naming.
 
+    When generating an image prompt, if context is provided, it is included as a
+    separate section before the image instructions. This ensures that the illustration
+    is informed by the same context as the story.
+
     Attributes:
         prompt (str): The main story prompt or description
         context (str, optional): Background information for story consistency
@@ -284,12 +288,17 @@ class Prompt:
     @property
     def image(self) -> str:
         """
-        Get a prompt for image generation based on the story parameters.
+        Get a prompt for image generation based on the story parameters,
+        including context as a separate section if provided.
 
         Returns:
             str: A prompt suitable for image generation
         """
         image_parts = []
+
+        # Add context as a separate section if present
+        if self.context:
+            image_parts.append(f"Context for illustration:\n{self.context}\n\n")
 
         # Base instruction
         image_parts.append("Create a detailed, beautiful, child-friendly illustration")

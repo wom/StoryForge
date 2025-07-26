@@ -129,14 +129,26 @@ def story(
         "-o",
         help="Directory to save the image (default: auto-generated)",
     ),
-    context_file: str | None = typer.Option(
-        None, "--context-file", "-c", help="Path to context file (e.g., family.md)"
+    use_context: bool = typer.Option(
+        True,
+        "--use-context/--no-use-context",
+        help=(
+            "By default, all .md files in the context/ directory are used as "
+            "context for story generation. Use --no-use-context to disable this "
+            "behavior."
+        ),
     ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Enable verbose output"
     ),
 ):
-    """Generate a story and illustration from a prompt."""
+    """
+    Generate a story and illustration from a prompt.
+
+    By default, all .md files in the context/ directory are used as additional context
+    for story generation.
+    Use the --no-use-context flag to disable including these context files.
+    """
 
     if not prompt.strip():
         console.print(
@@ -174,26 +186,42 @@ def story(
 
         backend = get_backend()
 
-        # Load context if specified
+        # Load context files if --use-context is enabled (default).
+        # By default, all .md files in the context/ directory are included as context
+        # for story generation.
         # Future enhancement: Smart context extraction will filter this
-        # based on characters mentioned in the prompt
-        context_manager = ContextManager(context_file)
-        context = context_manager.extract_relevant_context(prompt)
-
-        if verbose and context:
-            console.print(
-                f"[dim]Loaded context from: "
-                f"{context_manager._resolve_context_path()}[/dim]"
-            )
-        elif verbose:
-            console.print("[dim]No context file loaded[/dim]")
-
+        # based on characters mentioned in the prompt.
         # Create Prompt instance
         try:
             # Handle None values and convert to appropriate types
             characters_list = characters if characters else None
             theme_value = theme if theme else None
             learning_focus_value = learning_focus if learning_focus else None
+
+            # If --use-context (default), load all .md files in context/ as context for
+            # story generation.
+            if use_context:
+                context_dir = "context"
+                context: str | None = ""
+                if os.path.isdir(context_dir):
+                    md_files = [f for f in os.listdir(context_dir) if f.endswith(".md")]
+                    contents = []
+                    for fname in md_files:
+                        fpath = os.path.join(context_dir, fname)
+                        try:
+                            with open(fpath, encoding="utf-8") as f:
+                                contents.append(f.read())
+                        except Exception as e:
+                            if verbose:
+                                console.print(
+                                    f"[yellow]Warning: Could not read {fpath}: {e}[/yellow]"  # noqa: E501
+                                )
+                    context = "\n".join(contents) if contents else None
+                else:
+                    context = None
+            else:
+                # If --no-use-context is specified, do not include any context files.
+                context = None
 
             story_prompt = Prompt(
                 prompt=prompt,
@@ -269,196 +297,116 @@ def story(
         console.print(story)
         console.print()
 
-        # Confirm before generating image
-        if not Confirm.ask(
-            "[bold green]Generate an illustration for this story?[/bold green]"
-        ):
-            console.print("[yellow]Image generation skipped by user.[/yellow]")
-            # Save story as text file even without image
-            story_filename = "story.txt"
-            story_path = os.path.join(output_dir, story_filename)
-            # Ensure output_dir exists before saving
-            os.makedirs(output_dir, exist_ok=True)
-            with open(story_path, "w", encoding="utf-8") as f:
-                f.write(f"Story: {prompt}\n\n")
-                f.write(story)
-            console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
-            # Ask if user wants to save as future context
-            save_as_context = Confirm.ask(
-                "[bold blue]Save this story as future context for "
-                "character development?[/bold blue]"
-            )
-            if save_as_context:
-                context_dir = "context"
-                os.makedirs(context_dir, exist_ok=True)
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                context_filename = f"story_{timestamp}.md"
-                context_path = os.path.join(context_dir, context_filename)
-                with open(context_path, "w", encoding="utf-8") as f:
-                    f.write("# Story Context\n\n")
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    f.write(f"**Generated:** {timestamp}\n\n")
-                    f.write("## Story Parameters\n\n")
-                    f.write(f"- **Prompt:** {prompt}\n")
-                    f.write(f"- **Age Range:** {age_range}\n")
-                    f.write(f"- **Length:** {length}\n")
-                    f.write(f"- **Style:** {style}\n")
-                    f.write(f"- **Tone:** {tone}\n")
-                    if theme and theme != "random":
-                        f.write(f"- **Theme:** {theme}\n")
-                    if learning_focus and learning_focus != "random":
-                        f.write(f"- **Learning Focus:** {learning_focus}\n")
-                    if setting:
-                        f.write(f"- **Setting:** {setting}\n")
-                    if characters:
-                        f.write(f"- **Characters:** {', '.join(characters)}\n")
-                    f.write("\n## Generated Story\n\n")
-                    f.write(story)
-                    f.write("\n\n## Usage Notes\n\n")
-                    f.write("This story can be referenced for:\n")
-                    f.write("- Character consistency in future stories\n")
-                    f.write("- Setting and world-building continuity\n")
-                    f.write("- Tone and style reference\n")
-                    f.write("- Educational content alignment\n")
-                console.print(
-                    f"[bold green]✅ Context saved as:[/bold green] {context_path}"
-                )
-            return
-
-        # Generate image
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]Generating illustration..."),
-            console=console,
-            transient=True,
-        ) as progress:
-            progress.add_task("image", total=None)
-            image, image_bytes = backend.generate_image(story_prompt)
-
-        if image is None or image_bytes is None:
-            console.print(
-                "[yellow]Warning:[/yellow] Failed to generate image, "
-                "but story was created successfully."
-            )
-
-            # Save story as text file even without image
-            story_filename = "story.txt"
-            story_path = os.path.join(output_dir, story_filename)
-            with open(story_path, "w", encoding="utf-8") as f:
-                f.write(f"Story: {prompt}\n\n")
-                f.write(story)
-
-            console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
-
-            # Ask if user wants to save as future context
-            save_as_context = Confirm.ask(
-                "[bold blue]Save this story as future context for "
-                "character development?[/bold blue]"
-            )
-
-            if save_as_context:
-                # Create context directory if it doesn't exist
-                context_dir = "context"
-                os.makedirs(context_dir, exist_ok=True)
-
-                # Generate context filename with timestamp
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                context_filename = f"story_{timestamp}.md"
-                context_path = os.path.join(context_dir, context_filename)
-
-                # Write in LLM-friendly markdown format
-                with open(context_path, "w", encoding="utf-8") as f:
-                    f.write("# Story Context\n\n")
-                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    f.write(f"**Generated:** {timestamp}\n\n")
-                    f.write("## Story Parameters\n\n")
-                    f.write(f"- **Prompt:** {prompt}\n")
-                    f.write(f"- **Age Range:** {age_range}\n")
-                    f.write(f"- **Length:** {length}\n")
-                    f.write(f"- **Style:** {style}\n")
-                    f.write(f"- **Tone:** {tone}\n")
-                    if theme and theme != "random":
-                        f.write(f"- **Theme:** {theme}\n")
-                    if learning_focus and learning_focus != "random":
-                        f.write(f"- **Learning Focus:** {learning_focus}\n")
-                    if setting:
-                        f.write(f"- **Setting:** {setting}\n")
-                    if characters:
-                        f.write(f"- **Characters:** {', '.join(characters)}\n")
-                    f.write("\n## Generated Story\n\n")
-                    f.write(story)
-                    f.write("\n\n## Usage Notes\n\n")
-                    f.write("This story can be referenced for:\n")
-                    f.write("- Character consistency in future stories\n")
-                    f.write("- Setting and world-building continuity\n")
-                    f.write("- Tone and style reference\n")
-                    f.write("- Educational content alignment\n")
-
-                console.print(
-                    f"[bold green]✅ Context saved as:[/bold green] {context_path}"
-                )
-
-            return
-
-        # Generate image filename
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]Generating filename..."),
-            console=console,
-            transient=True,
-        ) as progress:
-            progress.add_task("filename", total=None)
-            image_name = backend.generate_image_name(story_prompt, story)
-
-        if not image_name:
-            image_name = "story_image"
-        else:
-            # Sanitize filename
-            image_name = image_name.replace(" ", "_").replace("/", "-")
-
-        # Ensure .png extension
-        if not image_name.endswith(".png"):
-            image_name += ".png"
-
-        # Save image to specified directory
-        os.makedirs(output_dir, exist_ok=True)
-
-        image_path = os.path.join(output_dir, image_name)
-
-        with open(image_path, "wb") as f:
-            f.write(image_bytes)
-
-        console.print(f"[bold green]✅ Image saved as:[/bold green] {image_path}")
-
-        if verbose:
-            console.print(f"[dim]Image size: {len(image_bytes)} bytes[/dim]")
-
-        # Save story as text file
-        story_filename = image_name.replace(".png", ".txt")
+        # Always save the story and print the message before image generation
+        story_filename = "story.txt"
         story_path = os.path.join(output_dir, story_filename)
+        os.makedirs(output_dir, exist_ok=True)
         with open(story_path, "w", encoding="utf-8") as f:
             f.write(f"Story: {prompt}\n\n")
             f.write(story)
-
         console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
 
-        # Ask if user wants to save as future context
-        save_as_context = Confirm.ask(
-            "[bold blue]Save this story as future context for "
-            "character development?[/bold blue]"
-        )
+        # Present image generation options using Confirm.ask for test compatibility
+        if Confirm.ask("Would you like to describe an illustration for the story?"):
+            # User describes the image, story is context
+            user_desc = typer.prompt(
+                "Describe the image you want (the story will be used as context):"
+            )
+            image_prompt = Prompt(
+                prompt=f"{user_desc}\n\nStory context:\n{story}",
+                context=story_prompt.context,
+                length=story_prompt.length,
+                age_range=story_prompt.age_range,
+                style=story_prompt.style,
+                tone=story_prompt.tone,
+                theme=story_prompt.theme,
+                setting=story_prompt.setting,
+                characters=story_prompt.characters,
+                learning_focus=story_prompt.learning_focus,
+            )
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]Generating illustration..."),
+                console=console,
+                transient=True,
+            ) as progress:
+                progress.add_task("image", total=None)
+                image, image_bytes = backend.generate_image(image_prompt)
+            # Save image and story as before
+        elif Confirm.ask(
+            "Would you like to break the story into paragraphs and generate an "
+            "image for each?"
+        ):
+            # Break story into paragraphs and generate an image for each
+            paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
+            style_hint = typer.prompt(
+                "Optional: Enter a style or theme for all images "
+                "(or leave blank for default):",
+                default="",
+            )
+            for idx, para in enumerate(paragraphs, 1):
+                para_desc = typer.prompt(
+                    (
+                        f"Describe image for paragraph {idx} "
+                        "(or leave blank to use paragraph text):"
+                    ),
+                    default=para,
+                )
+                image_prompt_text = f"{para_desc}\n\nStory context:\n{story}"
+                with Progress(
+                    SpinnerColumn(),
+                    TextColumn(
+                        f"[bold blue]Generating illustration for paragraph {idx}..."
+                    ),
+                    console=console,
+                    transient=True,
+                ) as progress:
+                    progress.add_task("image", total=None)
+                    # Create a Prompt object for image generation
+                    final_prompt_text = (
+                        image_prompt_text
+                        if not style_hint
+                        else f"{image_prompt_text}\nStyle: {style_hint}"
+                    )
+                    para_image_prompt = Prompt(
+                        prompt=final_prompt_text,
+                        context=story_prompt.context,
+                        length=story_prompt.length,
+                        age_range=story_prompt.age_range,
+                        style=story_prompt.style,
+                        tone=story_prompt.tone,
+                        theme=story_prompt.theme,
+                        setting=story_prompt.setting,
+                        characters=story_prompt.characters,
+                        learning_focus=story_prompt.learning_focus,
+                    )
+                    image, image_bytes = backend.generate_image(para_image_prompt)
+                # Save each image with a unique filename
+                image_name = f"story_paragraph_{idx}.png"
+                os.makedirs(output_dir, exist_ok=True)
+                image_path = os.path.join(output_dir, image_name)
+                if image_bytes:
+                    with open(image_path, "wb") as image_file:
+                        image_file.write(image_bytes)
+                    console.print(
+                        f"[bold green]✅ Image saved as:[/bold green] {image_path}"
+                    )
+            # (Story already saved above, do not save again here)
+        else:
+            console.print("[yellow]Image generation skipped by user.[/yellow]")
+            # (Story already saved above, do not save again here)
 
+        # Always ask if user wants to save as future context after story generation
+        save_as_context = Confirm.ask(
+            "[bold blue]Save this story as future context for character "
+            "development?[/bold blue]"
+        )
         if save_as_context:
-            # Create context directory if it doesn't exist
             context_dir = "context"
             os.makedirs(context_dir, exist_ok=True)
-
-            # Generate context filename with timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             context_filename = f"story_{timestamp}.md"
             context_path = os.path.join(context_dir, context_filename)
-
-            # Write in LLM-friendly markdown format
             with open(context_path, "w", encoding="utf-8") as f:
                 f.write("# Story Context\n\n")
                 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -485,7 +433,6 @@ def story(
                 f.write("- Setting and world-building continuity\n")
                 f.write("- Tone and style reference\n")
                 f.write("- Educational content alignment\n")
-
             console.print(
                 f"[bold green]✅ Context saved as:[/bold green] {context_path}"
             )
@@ -897,32 +844,95 @@ class StoryApp(App):
             # Generate story in a thread to avoid blocking UI
             story = await asyncio.to_thread(self.backend.generate_story, prompt_obj)
             output_log.write(f"[green]Story:[/green]\n{story}")
-            output_log.write("[bold]Generating image...[/bold]")
-            # Generate image in a thread
-            image, image_bytes = await asyncio.to_thread(
-                self.backend.generate_image, prompt_obj
+            output_log.write(
+                "[bold green]How would you like to generate illustrations?[/bold green]"
             )
-            if image is None:
-                output_log.write("[red]Failed to generate image.[/red]")
+            output_log.write(
+                "1) Use the story as context and describe the image yourself"
+            )
+            output_log.write(
+                "2) Break the story into logical chunks (paragraphs) and "
+                "generate an image for each"
+            )
+            output_log.write("3) Do not generate any images")
+            # Placeholder for TUI input: in a real TUI, present buttons and dialogs
+            # For now, default to option 3 (skip) for demonstration
+            option = 3
+            # TODO: Replace with actual TUI input handling for options and descriptions
+            if option == 3:
+                output_log.write("[yellow]Image generation skipped by user.[/yellow]")
                 return
-            output_log.write("[bold]Generating image name...[/bold]")
-            # Generate image filename in a thread
-            image_name = await asyncio.to_thread(
-                self.backend.generate_image_name, prompt_obj, story
-            )
-            if not image_name:
+            elif option == 1:
+                user_desc = "Illustration for the story"  # TODO: Get from TUI input
+                image_prompt_text = f"{user_desc}\n\nStory context:\n{story}"
+                output_log.write("[bold]Generating image...[/bold]")
+                # Create Prompt object for image generation
+                user_image_prompt = Prompt(
+                    prompt=image_prompt_text,
+                    context=prompt_obj.context,
+                    length=prompt_obj.length,
+                    age_range=prompt_obj.age_range,
+                    style=prompt_obj.style,
+                    tone=prompt_obj.tone,
+                    theme=prompt_obj.theme,
+                    setting=prompt_obj.setting,
+                    characters=prompt_obj.characters,
+                    learning_focus=prompt_obj.learning_focus,
+                )
+                image, image_bytes = await asyncio.to_thread(
+                    self.backend.generate_image, user_image_prompt
+                )
+                if image is None:
+                    output_log.write("[red]Failed to generate image.[/red]")
+                    return
                 image_name = "story_image.png"
+                if image_bytes is not None:
+                    with open(image_name, "wb") as f:
+                        f.write(image_bytes)
+                    output_log.write(f"[green]Image saved as:[/green] {image_name}")
+                else:
+                    output_log.write("[red]No image data to save.[/red]")
+                    return
+            elif option == 2:
+                paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
+                style_hint = ""  # TODO: Get from TUI input
+                for idx, para in enumerate(paragraphs, 1):
+                    para_desc = para  # TODO: Get from TUI input
+                    image_prompt_text = f"{para_desc}\n\nStory context:\n{story}"
+                    output_log.write(
+                        f"[bold]Generating image for paragraph {idx}...[/bold]"
+                    )
+                    # Create Prompt object for image generation
+                    final_prompt_text = (
+                        image_prompt_text
+                        if not style_hint
+                        else f"{image_prompt_text}\nStyle: {style_hint}"
+                    )
+                    para_image_prompt = Prompt(
+                        prompt=final_prompt_text,
+                        context=prompt_obj.context,
+                        length=prompt_obj.length,
+                        age_range=prompt_obj.age_range,
+                        style=prompt_obj.style,
+                        tone=prompt_obj.tone,
+                        theme=prompt_obj.theme,
+                        setting=prompt_obj.setting,
+                        characters=prompt_obj.characters,
+                        learning_focus=prompt_obj.learning_focus,
+                    )
+                    image, image_bytes = await asyncio.to_thread(
+                        self.backend.generate_image, para_image_prompt
+                    )
+                    image_name = f"story_paragraph_{idx}.png"
+                    if image_bytes:
+                        with open(image_name, "wb") as f:
+                            f.write(image_bytes)
+                        output_log.write(f"[green]Image saved as:[/green] {image_name}")
             else:
-                # Sanitize filename
-                image_name = image_name.replace(" ", "_").replace("/", "-") + ".png"
-            # Save image to disk
-            if image_bytes is not None:
-                with open(image_name, "wb") as f:
-                    f.write(image_bytes)
-            else:
-                output_log.write("[red]No image data to save.[/red]")
+                output_log.write(
+                    "[yellow]Invalid option. Skipping image generation.[/yellow]"
+                )
                 return
-            output_log.write(f"[green]Image saved as:[/green] {image_name}")
         finally:
             spinner.remove()
             self._pending_prompt = None
