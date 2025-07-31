@@ -354,15 +354,25 @@ class TestCLIIntegration:
     @patch("storytime.gemini_backend.GeminiBackend")
     @patch("rich.prompt.Confirm.ask", side_effect=[True, False, False])
     def test_story_command_uses_context_by_default(self, mock_confirm, mock_gemini):
-        """Test that story command uses .md files in context/ by default."""
+        """
+        Test that story command uses .md files in user data context dir by default.
+        """
+        from pathlib import Path
+
+        import platformdirs
+
         mock_backend = MagicMock()
         mock_backend.generate_story.return_value = "Test story content"
         mock_backend.generate_image.return_value = (MagicMock(), b"fake_image_bytes")
         mock_gemini.return_value = mock_backend
 
         with self.runner.isolated_filesystem():
-            os.makedirs("context", exist_ok=True)
-            with open("context/test_context.md", "w") as f:
+            # Create the context file in the user data directory
+            context_dir = (
+                Path(platformdirs.user_data_dir("StoryTime", "StoryTime")) / "context"
+            )
+            context_dir.mkdir(parents=True, exist_ok=True)
+            with open(context_dir / "test_context.md", "w") as f:
                 f.write("This is context for the story.")
 
             result = self.runner.invoke(app, ["story", "test prompt"])

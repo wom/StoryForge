@@ -10,9 +10,14 @@ import asyncio
 import os
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Literal, cast
 
 import typer
+from platformdirs import user_data_dir
+
+# Use "StoryTime" as appauthor for user_data_dir to ensure user-agnostic,
+# organization-consistent data storage
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
@@ -201,20 +206,21 @@ def story(
             # If --use-context (default), load all .md files in context/ as context for
             # story generation.
             if use_context:
-                context_dir = "context"
+                # Use cross-platform user data directory for context files
+                context_dir = Path(user_data_dir("StoryTime", "StoryTime")) / "context"
                 context: str | None = ""
-                if os.path.isdir(context_dir):
-                    md_files = [f for f in os.listdir(context_dir) if f.endswith(".md")]
+                if context_dir.is_dir():
+                    md_files = [f for f in context_dir.iterdir() if f.suffix == ".md"]
                     contents = []
-                    for fname in md_files:
-                        fpath = os.path.join(context_dir, fname)
+                    for fpath in md_files:
                         try:
                             with open(fpath, encoding="utf-8") as f:
                                 contents.append(f.read())
                         except Exception as e:
                             if verbose:
                                 console.print(
-                                    f"[yellow]Warning: Could not read {fpath}: {e}[/yellow]"  # noqa: E501
+                                    f"[yellow]Warning: Could not read {fpath}: "
+                                    f"{e}[/yellow]"
                                 )
                     context = "\n".join(contents) if contents else None
                 else:
@@ -402,40 +408,46 @@ def story(
             "development?[/bold blue]"
         )
         if save_as_context:
-            context_dir = "context"
-            os.makedirs(context_dir, exist_ok=True)
+            # Use cross-platform user data directory for context files
+            context_dir = Path(user_data_dir("StoryTime", "StoryTime")) / "context"
+            context_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             context_filename = f"story_{timestamp}.md"
-            context_path = os.path.join(context_dir, context_filename)
-            with open(context_path, "w", encoding="utf-8") as f:
-                f.write("# Story Context\n\n")
-                timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                f.write(f"**Generated:** {timestamp}\n\n")
-                f.write("## Story Parameters\n\n")
-                f.write(f"- **Prompt:** {prompt}\n")
-                f.write(f"- **Age Range:** {age_range}\n")
-                f.write(f"- **Length:** {length}\n")
-                f.write(f"- **Style:** {style}\n")
-                f.write(f"- **Tone:** {tone}\n")
-                if theme and theme != "random":
-                    f.write(f"- **Theme:** {theme}\n")
-                if learning_focus and learning_focus != "random":
-                    f.write(f"- **Learning Focus:** {learning_focus}\n")
-                if setting:
-                    f.write(f"- **Setting:** {setting}\n")
-                if characters:
-                    f.write(f"- **Characters:** {', '.join(characters)}\n")
-                f.write("\n## Generated Story\n\n")
-                f.write(story)
-                f.write("\n\n## Usage Notes\n\n")
-                f.write("This story can be referenced for:\n")
-                f.write("- Character consistency in future stories\n")
-                f.write("- Setting and world-building continuity\n")
-                f.write("- Tone and style reference\n")
-                f.write("- Educational content alignment\n")
-            console.print(
-                f"[bold green]✅ Context saved as:[/bold green] {context_path}"
-            )
+            context_path = context_dir / context_filename
+            try:
+                with open(context_path, "w", encoding="utf-8") as f:
+                    f.write("# Story Context\n\n")
+                    timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    f.write(f"**Generated:** {timestamp_str}\n\n")
+                    f.write("## Story Parameters\n\n")
+                    f.write(f"- **Prompt:** {prompt}\n")
+                    f.write(f"- **Age Range:** {age_range}\n")
+                    f.write(f"- **Length:** {length}\n")
+                    f.write(f"- **Style:** {style}\n")
+                    f.write(f"- **Tone:** {tone}\n")
+                    if theme and theme != "random":
+                        f.write(f"- **Theme:** {theme}\n")
+                    if learning_focus and learning_focus != "random":
+                        f.write(f"- **Learning Focus:** {learning_focus}\n")
+                    if setting:
+                        f.write(f"- **Setting:** {setting}\n")
+                    if characters:
+                        f.write(f"- **Characters:** {', '.join(characters)}\n")
+                    f.write("\n## Generated Story\n\n")
+                    f.write(story)
+                    f.write("\n\n## Usage Notes\n\n")
+                    f.write("This story can be referenced for:\n")
+                    f.write("- Character consistency in future stories\n")
+                    f.write("- Setting and world-building continuity\n")
+                    f.write("- Tone and style reference\n")
+                    f.write("- Educational content alignment\n")
+                console.print(
+                    f"[bold green]✅ Context saved as:[/bold green] {context_path}"
+                )
+            except Exception as e:
+                console.print(
+                    f"[red]Error saving context file:[/red] {e}", style="bold"
+                )
 
     except RuntimeError as e:
         if "GEMINI_API_KEY" in str(e):

@@ -79,6 +79,55 @@ Description of character 2.
         finally:
             Path(temp_path).unlink()
 
+    def test_context_manager_multiple_md_files_concat_by_mtime(self):
+        """Test loading and concatenating multiple .md files by modified date."""
+
+        contents = [
+            "# First File\nFirst content.",
+            "# Second File\nSecond content.",
+            "# Third File\nThird content.",
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = []
+            for idx, content in enumerate(contents):
+                file_path = Path(tmpdir) / f"file{idx + 1}.md"
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(content)
+                # Set mtime to ensure order: oldest to newest
+                mtime = 1000000000 + idx
+                file_path.touch()
+                file_path.stat()  # Ensure file exists before setting mtime
+                Path(file_path).chmod(0o600)
+                # Use os.utime to set mtime
+                import os
+
+                os.utime(file_path, (mtime, mtime))
+                paths.append(file_path)
+
+            # Shuffle paths to ensure order is by mtime, not filename
+            paths = paths[::-1]
+
+            # Patch user_data_dir to point to tmpdir
+            from storytime import context as context_mod
+
+            orig_user_data_dir = context_mod.user_data_dir
+            context_mod.user_data_dir = lambda *a, **kw: tmpdir
+
+            import os
+
+            try:
+                os.environ["STORYTIME_TEST_CONTEXT_DIR"] = tmpdir
+                manager = ContextManager(None)
+                manager.clear_cache()
+                loaded = manager.load_context()
+                # Should concatenate in mtime order
+                expected = "\n\n".join(contents)
+                assert loaded == expected
+            finally:
+                context_mod.user_data_dir = orig_user_data_dir
+                if "STORYTIME_TEST_CONTEXT_DIR" in os.environ:
+                    del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+
     def test_extract_relevant_context_basic(self):
         """Test basic context extraction (currently returns all context)."""
         test_content = """# Family Context

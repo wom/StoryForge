@@ -14,7 +14,8 @@ dependencies = [
     "textual[syntax]>=0.54.1",
     "textual-dev>=0.00.1",
     "typer>=0.9.0",
-    "rich>=13.0.0"
+    "rich>=13.0.0",
+    "platformdirs>=4.2.0"
 ]
 
 [project.optional-dependencies]

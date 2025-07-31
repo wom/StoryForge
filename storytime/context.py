@@ -4,6 +4,10 @@ Context Management for StoryTime.
 This module provides utilities for loading and managing story context from files
 like character descriptions, background information, and story examples.
 
+Changelog:
+- 2025-07: Context loading now concatenates all .md files in the context directory,
+  ordered by last modified date (oldest to newest).
+
 Future enhancements:
 - Intelligent character detection from prompts
 - Context relevance scoring and filtering
@@ -12,6 +16,11 @@ Future enhancements:
 """
 
 from pathlib import Path
+
+from platformdirs import user_data_dir
+
+# Use "StoryTime" as appauthor for user_data_dir to ensure user-agnostic,
+# organization-consistent data storage
 
 
 class ContextManager:
@@ -38,29 +47,70 @@ class ContextManager:
 
     def load_context(self) -> str | None:
         """
-        Load context from the configured file.
+        Load context from all markdown files in the context directory.
 
         Returns:
-            str: The loaded context content, or None if file not found/readable.
+            str: The concatenated context content from all .md files,
+            or None if none found.
 
-        Future enhancements:
-        - Parse and structure context data (characters, relationships, etc.)
-        - Validate context format
-        - Support multiple context file formats (JSON, YAML, etc.)
+        New behavior:
+        - Finds all .md files in the context directory (default or specified)
+        - Sorts them by last modified date (oldest to newest)
+        - Concatenates their contents
+
         """
         if self._cached_context is not None:
             return self._cached_context
 
-        context_path = self._resolve_context_path()
-        if not context_path or not context_path.exists():
+        # If a specific file is set, use only that file
+        if self.context_file_path:
+            context_files = [Path(self.context_file_path)]
+        else:
+            import os
+
+            # Allow tests to override the context directory via env var
+            test_context_dir = os.environ.get("STORYTIME_TEST_CONTEXT_DIR")
+            if test_context_dir:
+                context_dir = Path(test_context_dir)
+                if context_dir.exists() and context_dir.is_dir():
+                    context_files = sorted(
+                        context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime
+                    )
+                else:
+                    context_files = []
+            else:
+                # Prefer ./context/ in the current working directory if it exists
+                local_context_dir = Path("context")
+                if local_context_dir.exists() and local_context_dir.is_dir():
+                    context_files = sorted(
+                        local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime
+                    )
+                else:
+                    user_dir = Path(user_data_dir("StoryTime", "StoryTime")) / "context"
+                    if user_dir.exists() and user_dir.is_dir():
+                        context_files = sorted(
+                            user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime
+                        )
+                    else:
+                        context_files = []
+
+        if not context_files:
             return None
 
-        try:
-            with open(context_path, encoding="utf-8") as f:
-                self._cached_context = f.read().strip()
-            return self._cached_context
-        except OSError:
+        contents = []
+        for file_path in context_files:
+            if file_path.exists():
+                try:
+                    with open(file_path, encoding="utf-8") as f:
+                        contents.append(f.read().strip())
+                except OSError:
+                    continue
+
+        if not contents:
             return None
+
+        self._cached_context = "\n\n".join(contents)
+        return self._cached_context
 
     def _resolve_context_path(self) -> Path | None:
         """
@@ -77,16 +127,12 @@ class ContextManager:
         if self.context_file_path:
             return Path(self.context_file_path)
 
-        # Default: look for data/family.md relative to project root
-        # Find project root by looking for pyproject.toml
-        current_dir = Path(__file__).parent
-        while current_dir.parent != current_dir:  # Not at filesystem root
-            if (current_dir / "pyproject.toml").exists():
-                default_path = current_dir / "data" / "family.md"
-                if default_path.exists():
-                    return default_path
-                break
-            current_dir = current_dir.parent
+        # Use cross-platform user data directory for context files
+        context_dir = Path(user_data_dir("StoryTime", "StoryTime")) / "context"
+        context_dir.mkdir(parents=True, exist_ok=True)
+        default_path = context_dir / "family.md"
+        if default_path.exists():
+            return default_path
 
         return None
 
