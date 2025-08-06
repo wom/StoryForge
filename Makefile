@@ -19,29 +19,29 @@ test: install
 
 # Run the app
 run: install
-	$(VENV_ACTIVATE) storytime
+	$(VENV_ACTIVATE) storyforge
 
 # [venv] Run attaching to debug console
 debug:
-	$(VENV_ACTIVATE) textual run --dev `which storytime`
+	$(VENV_ACTIVATE) textual run --dev `which storyforge`
 # [venv] Run textual debug server
 console:
 	$(VENV_ACTIVATE) textual console 
 
 # Lint the code (mirrors pre-commit hook behavior)
 lint: install
-	$(VENV_ACTIVATE) ruff check --fix storytime tests
-	$(VENV_ACTIVATE) ruff format storytime tests
-	$(VENV_ACTIVATE) mypy storytime
+	$(VENV_ACTIVATE) ruff check --fix storyforge tests
+	$(VENV_ACTIVATE) ruff format storyforge tests
+	$(VENV_ACTIVATE) mypy storyforge
 
 # Lint check only (no auto-fixes)
 lint-check: install
-	$(VENV_ACTIVATE) ruff check storytime tests
-	$(VENV_ACTIVATE) mypy storytime
+	$(VENV_ACTIVATE) ruff check storyforge tests
+	$(VENV_ACTIVATE) mypy storyforge
 
 # Type check only
 typecheck: install
-	$(VENV_ACTIVATE) mypy storytime
+	$(VENV_ACTIVATE) mypy storyforge
 
 # Clean up Python cache and test artifacts
 clean:
@@ -50,7 +50,7 @@ clean:
 	rm -rf .pytest_cache \
 		.mypy_cache \
 		.ruff_cache \
-		StoryTime.egg-info \
+		*.egg-info \
 		build/ \
 		.venv \
 		uv.lock

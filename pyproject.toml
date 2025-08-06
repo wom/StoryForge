@@ -1,5 +1,5 @@
 [project]
-name = "StoryTime"
+name = "StoryForge"
 version = "0.0.1"
 description = "A TUI app that generates short stories and AI images from prompts using a language model."
 authors = [
@@ -28,14 +28,14 @@ dev = [
 ]
 
 [project.scripts]
-storytime = "storytime.StoryTime:app"
+storyforge = "storyforge.StoryForge:app"
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["storytime*"]
+include = ["storyforge*"]
 exclude = ["data*", "tests*"]
 
 [tool.ruff]

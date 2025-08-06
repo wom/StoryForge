@@ -1,5 +1,5 @@
 """
-StoryTime: Unified CLI and TUI app for generating illustrated stories
+StoryForge: Unified CLI and TUI app for generating illustrated stories
 using Gemini LLM backend.
 
 Provides both command-line interface with 'story', 'image', and 'tui' commands,
@@ -32,7 +32,7 @@ from .prompt import Prompt
 console = Console()
 app = typer.Typer(
     add_completion=True,
-    help="StoryTime - Generate stories and images with AI",
+    help="StoryForge - Generate stories and images with AI",
     context_settings={"help_option_names": ["-h", "--help"]},
 )
 
@@ -48,7 +48,7 @@ class CLIArgs:
 def generate_default_output_dir() -> str:
     """Generate a timestamped output directory name."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = f"storytime_output_{timestamp}"
+    output_dir = f"storyforge_output_{timestamp}"
     return output_dir
 
 
@@ -728,7 +728,7 @@ def tui(
     ),
 ):
     """Launch the interactive TUI (Text User Interface) for story generation."""
-    console.print("[bold blue]Launching StoryTime TUI...[/bold blue]")
+    console.print("[bold blue]Launching StoryForge TUI...[/bold blue]")
     StoryApp(context_file=context_file).run()
 
 

@@ -1,6 +1,6 @@
-# StoryTime
+# StoryForge
 
-StoryTime is a Textual-based terminal application that uses Google's Gemini API to generate short stories and AI-generated images from user prompts. The app provides a simple TUI (Text User Interface) for entering prompts, confirming actions, and viewing results. When a user submits a prompt, the app generates a story and a corresponding image, saving the image to disk with a descriptive filename. The project is designed for creative exploration, rapid prototyping, and as a demonstration of integrating LLMs and generative image models into a modern Python TUI.
+StoryForge is a Textual-based terminal application that uses Google's Gemini API to generate short stories and AI-generated images from user prompts. The app provides a simple TUI (Text User Interface) for entering prompts, confirming actions, and viewing results. When a user submits a prompt, the app generates a story and a corresponding image, saving the image to disk with a descriptive filename. The project is designed for creative exploration, rapid prototyping, and as a demonstration of integrating LLMs and generative image models into a modern Python TUI.
 
 **Features:**
 - Enter a custom story prompt and generate a short story using LLM.
@@ -52,7 +52,7 @@ Or, if not in an activated venv:
 After installing in editable mode, run the app with:
 
 ```
-storytime
+storyforge
 ```
 
 This command is available as long as your virtual environment is activated.
@@ -62,7 +62,7 @@ This command is available as long as your virtual environment is activated.
 You can use the command-line interface directly with the unified entry point:
 
 ```bash
-storytime story "Tell me a story about a robot"
+storyforge story "Tell me a story about a robot"
 ```
 
 After generating a story, you will be prompted to choose how to generate illustrations:
@@ -72,24 +72,24 @@ After generating a story, you will be prompted to choose how to generate illustr
 
 You can also generate a standalone image:
 ```bash
-storytime image "A beautiful sunset over mountains"
+storyforge image "A beautiful sunset over mountains"
 ```
 
 Or launch the interactive TUI:
 ```bash
-storytime tui
+storyforge tui
 ```
 
 ## Tab Completion
 
-StoryTime CLI supports tab completion for commands, options, and arguments.
+StoryForge CLI supports tab completion for commands, options, and arguments.
 
 ### Quick Setup (Automatic)
 
 Enable tab completion with:
 
 ```bash
-storytime --install-completion
+storyforge --install-completion
 ```
 
 **Note:** If you get an error about existing files, use the manual setup below.
@@ -100,17 +100,17 @@ If automatic installation doesn't work, you can set up completion manually for y
 
 **Bash** (add to `~/.bashrc`):
 ```bash
-eval "$(storytime --show-completion)"
+eval "$(storyforge --show-completion)"
 ```
 
 **Zsh** (add to `~/.zshrc`):
 ```bash
-eval "$(storytime --show-completion)"
+eval "$(storyforge --show-completion)"
 ```
 
 **Fish** (add to `~/.config/fish/config.fish`):
 ```bash
-storytime --show-completion | source
+storyforge --show-completion | source
 ```
 
 After adding the line to your shell configuration, restart your terminal or run:
@@ -123,15 +123,15 @@ source ~/.zshrc   # for zsh
 
 Once enabled, you can use tab completion for:
 
-- **Commands**: `storytime <TAB>` shows available commands (`story`, `image`, `tui`)
-- **Options**: `storytime story --<TAB>` shows options like `--output-dir`, `--verbose`, etc.
-- **Help**: Use `storytime <command> --help` to see all available options
+- **Commands**: `storyforge <TAB>` shows available commands (`story`, `image`, `tui`)
+- **Options**: `storyforge story --<TAB>` shows options like `--output-dir`, `--verbose`, etc.
+- **Help**: Use `storyforge <command> --help` to see all available options
 
 ## Editing and Debugging
 
-- All source code is in the `storytime/` package. When editing or adding files, use package imports (e.g., `from storytime.gemini_backend import GeminiBackend`).
-- To add a new backend, create a new file in `storytime/` and implement the `LLMBackend` interface.
-- To debug, you can add print statements or use a debugger in any module in the `storytime/` package.
+- All source code is in the `storyforge/` package. When editing or adding files, use package imports (e.g., `from storyforge.gemini_backend import GeminiBackend`).
+- To add a new backend, create a new file in `storyforge/` and implement the `LLMBackend` interface.
+- To debug, you can add print statements or use a debugger in any module in the `storyforge/` package.
 - After making changes, rerun the tests with `pytest` to ensure everything works.
 
 ## Adding New Dependencies

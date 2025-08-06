@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from storytime.llm_backend import LLMBackend, get_backend, list_available_backends
-from storytime.prompt import Prompt
+from storyforge.llm_backend import LLMBackend, get_backend, list_available_backends
+from storyforge.prompt import Prompt
 
 
 class DummyBackend(LLMBackend):
@@ -45,7 +45,7 @@ class TestGetBackend:
     """Test the get_backend factory function."""
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     def test_get_backend_auto_detect_gemini(self, mock_gemini):
         """Test auto-detection of Gemini backend via API key."""
         mock_instance = MagicMock()
@@ -59,7 +59,7 @@ class TestGetBackend:
     @patch.dict(
         os.environ, {"LLM_BACKEND": "gemini", "GEMINI_API_KEY": "test_key"}, clear=True
     )
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     def test_get_backend_explicit_gemini(self, mock_gemini):
         """Test explicit Gemini backend selection."""
         mock_instance = MagicMock()

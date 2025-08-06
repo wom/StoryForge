@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, mock_open, patch
 
 from typer.testing import CliRunner
 
-from storytime.prompt import Prompt
-from storytime.StoryTime import app
+from storyforge.prompt import Prompt
+from storyforge.StoryTime import app
 
 
 class TestCLIIntegration:
@@ -21,7 +21,7 @@ class TestCLIIntegration:
         assert "StoryTime" in result.stdout
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch("typer.prompt", return_value="A test image description")
     @patch("rich.prompt.Confirm.ask", side_effect=[True, True, False, False])
     @patch("os.makedirs")
@@ -61,7 +61,7 @@ class TestCLIIntegration:
         # (Do not assert mock_open.assert_called() since error path may skip it)
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch(
         "rich.prompt.Confirm.ask", side_effect=[True, False, False, False]
     )  # proceed=True, generate_image=False, save_context=False
@@ -98,7 +98,7 @@ class TestCLIIntegration:
         assert result.exit_code in (0, 1)
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
     @patch("os.makedirs")  # Mock directory creation
     def test_image_command_uses_factory(self, mock_makedirs, mock_confirm, mock_gemini):
@@ -155,7 +155,7 @@ class TestCLIIntegration:
     @patch.dict(
         os.environ, {"LLM_BACKEND": "gemini", "GEMINI_API_KEY": "test_key"}, clear=True
     )
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
     @patch("os.makedirs")  # Mock directory creation
     def test_explicit_backend_selection(self, mock_makedirs, mock_confirm, mock_gemini):
@@ -218,7 +218,7 @@ class TestCLIIntegration:
         assert "Image generation cancelled" in result.stdout
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch(
         "rich.prompt.Confirm.ask", side_effect=[True, False, False]
     )  # proceed=True, generate_image=False, save_context=False
@@ -238,14 +238,14 @@ class TestCLIIntegration:
 
         # Should show generated directory message
         assert "Generated output directory:" in result.stdout
-        assert "storytime_output_" in result.stdout
+        assert "storyforge_output_" in result.stdout
         # Should call makedirs with the generated directory
         # Since makedirs is only called if image or context is saved, allow 0 or 1 calls
         assert mock_makedirs.call_count in (0, 1)
         assert result.exit_code in (0, 1)
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch("rich.prompt.Confirm.ask", return_value=True)
     @patch("os.makedirs")
     def test_image_auto_generated_directory(
@@ -262,13 +262,13 @@ class TestCLIIntegration:
 
         # Should show generated directory message
         assert "Generated output directory:" in result.stdout
-        assert "storytime_output_" in result.stdout
+        assert "storyforge_output_" in result.stdout
         # Should call makedirs with the generated directory
         mock_makedirs.assert_called_once()
         assert result.exit_code == 0
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch(
         "rich.prompt.Confirm.ask", side_effect=[True, False, False]
     )  # proceed=True, generate_image=False, save_context=False
@@ -310,7 +310,7 @@ class TestCLIIntegration:
         assert "Tone:" in result.stdout
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch("typer.prompt", return_value="A test image description")
     @patch("rich.prompt.Confirm.ask", side_effect=[True, True, True])
     @patch("os.makedirs")
@@ -351,7 +351,7 @@ class TestCLIIntegration:
         assert "Style:" in result.stdout
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch("rich.prompt.Confirm.ask", side_effect=[True, False, False])
     def test_story_command_uses_context_by_default(self, mock_confirm, mock_gemini):
         """
@@ -383,7 +383,7 @@ class TestCLIIntegration:
             assert result.exit_code in (0, 1)
 
     @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    @patch("storytime.gemini_backend.GeminiBackend")
+    @patch("storyforge.gemini_backend.GeminiBackend")
     @patch("rich.prompt.Confirm.ask", side_effect=[True, False, False])
     def test_story_command_no_use_context_flag(self, mock_confirm, mock_gemini):
         """Test that story command does not use context when --no-use-context is

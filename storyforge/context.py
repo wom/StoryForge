@@ -1,5 +1,5 @@
 """
-Context Management for StoryTime.
+Context Management for StoryForge.
 
 This module provides utilities for loading and managing story context from files
 like character descriptions, background information, and story examples.

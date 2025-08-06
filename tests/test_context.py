@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from storytime.context import ContextManager
+from storyforge.context import ContextManager
 
 
 class TestContextManager:
@@ -191,8 +191,8 @@ class TestContextIntegration:
 
     def test_context_with_mock_backend(self, monkeypatch):
         """Test that context is properly passed to backend."""
-        from storytime.gemini_backend import GeminiBackend
-        from storytime.prompt import Prompt
+        from storyforge.gemini_backend import GeminiBackend
+        from storyforge.prompt import Prompt
 
         # Mock the client to avoid API calls
         mock_response = type(
@@ -244,8 +244,8 @@ class TestContextIntegration:
 
     def test_context_fallback_without_context(self, monkeypatch):
         """Test that backend works without context."""
-        from storytime.gemini_backend import GeminiBackend
-        from storytime.prompt import Prompt
+        from storyforge.gemini_backend import GeminiBackend
+        from storyforge.prompt import Prompt
 
         # Mock the client
         mock_response = type(

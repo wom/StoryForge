@@ -4,7 +4,7 @@ Tests for the Prompt class.
 
 import pytest
 
-from storytime.prompt import Prompt
+from storyforge.prompt import Prompt
 
 
 class TestPromptBasic:

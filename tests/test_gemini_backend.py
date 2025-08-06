@@ -1,10 +1,10 @@
 from unittest.mock import MagicMock, patch
 
-from storytime.gemini_backend import GeminiBackend
-from storytime.prompt import Prompt
+from storyforge.gemini_backend import GeminiBackend
+from storyforge.prompt import Prompt
 
 
-@patch("storytime.gemini_backend.genai.Client")
+@patch("storyforge.gemini_backend.genai.Client")
 def test_generate_story_success(mock_client):
     backend = GeminiBackend()
     mock_response = MagicMock()
@@ -17,7 +17,7 @@ def test_generate_story_success(mock_client):
     assert result == "A story"
 
 
-@patch("storytime.gemini_backend.genai.Client")
+@patch("storyforge.gemini_backend.genai.Client")
 def test_generate_story_error(mock_client):
     backend = GeminiBackend()
     backend.client.models.generate_content.side_effect = Exception("fail")
@@ -26,7 +26,7 @@ def test_generate_story_error(mock_client):
     assert result == "[Error generating story]"
 
 
-@patch("storytime.gemini_backend.genai.Client")
+@patch("storyforge.gemini_backend.genai.Client")
 def test_generate_image_success(mock_client):
     backend = GeminiBackend()
     mock_part = MagicMock()
@@ -34,14 +34,14 @@ def test_generate_image_success(mock_client):
     mock_response = MagicMock()
     mock_response.candidates = [MagicMock(content=MagicMock(parts=[mock_part]))]
     backend.client.models.generate_content.return_value = mock_response
-    with patch("storytime.gemini_backend.Image.open", return_value="image_obj"):
+    with patch("storyforge.gemini_backend.Image.open", return_value="image_obj"):
         prompt = Prompt(prompt="test prompt")
         image, image_bytes = backend.generate_image(prompt)
         assert image == "image_obj"
         assert image_bytes == b"bytes"
 
 
-@patch("storytime.gemini_backend.genai.Client")
+@patch("storyforge.gemini_backend.genai.Client")
 def test_generate_image_none(mock_client):
     backend = GeminiBackend()
     mock_part = MagicMock()
@@ -55,7 +55,7 @@ def test_generate_image_none(mock_client):
     assert image_bytes is None
 
 
-@patch("storytime.gemini_backend.genai.Client")
+@patch("storyforge.gemini_backend.genai.Client")
 def test_generate_image_name_success(mock_client):
     backend = GeminiBackend()
     mock_part = MagicMock()
@@ -68,7 +68,7 @@ def test_generate_image_name_success(mock_client):
     assert name == "filename"
 
 
-@patch("storytime.gemini_backend.genai.Client")
+@patch("storyforge.gemini_backend.genai.Client")
 def test_generate_image_name_error(mock_client):
     backend = GeminiBackend()
     backend.client.models.generate_content.side_effect = Exception("fail")
