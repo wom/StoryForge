@@ -108,7 +108,7 @@ Description of character 2.
             paths = paths[::-1]
 
             # Patch user_data_dir to point to tmpdir
-            from storytime import context as context_mod
+            from storyforge import context as context_mod
 
             orig_user_data_dir = context_mod.user_data_dir
             context_mod.user_data_dir = lambda *a, **kw: tmpdir

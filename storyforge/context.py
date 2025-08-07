@@ -19,7 +19,7 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-# Use "StoryTime" as appauthor for user_data_dir to ensure user-agnostic,
+# Use "StoryForge" as appauthor for user_data_dir to ensure user-agnostic,
 # organization-consistent data storage
 
 
@@ -86,7 +86,7 @@ class ContextManager:
                         local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime
                     )
                 else:
-                    user_dir = Path(user_data_dir("StoryTime", "StoryTime")) / "context"
+                    user_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
                     if user_dir.exists() and user_dir.is_dir():
                         context_files = sorted(
                             user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime
@@ -128,7 +128,7 @@ class ContextManager:
             return Path(self.context_file_path)
 
         # Use cross-platform user data directory for context files
-        context_dir = Path(user_data_dir("StoryTime", "StoryTime")) / "context"
+        context_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
         context_dir.mkdir(parents=True, exist_ok=True)
         default_path = context_dir / "family.md"
         if default_path.exists():

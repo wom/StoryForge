@@ -1,6 +1,6 @@
 import pytest
 
-from storyforge.StoryTime import StoryApp
+from storyforge.StoryForge import StoryApp
 
 
 class DummyResponse:

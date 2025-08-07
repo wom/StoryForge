@@ -16,7 +16,7 @@ from typing import Annotated, Literal, cast
 import typer
 from platformdirs import user_data_dir
 
-# Use "StoryTime" as appauthor for user_data_dir to ensure user-agnostic,
+# Use "StoryForge" as appauthor for user_data_dir to ensure user-agnostic,
 # organization-consistent data storage
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
@@ -207,7 +207,7 @@ def story(
             # story generation.
             if use_context:
                 # Use cross-platform user data directory for context files
-                context_dir = Path(user_data_dir("StoryTime", "StoryTime")) / "context"
+                context_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
                 context: str | None = ""
                 if context_dir.is_dir():
                     md_files = [f for f in context_dir.iterdir() if f.suffix == ".md"]
@@ -409,7 +409,7 @@ def story(
         )
         if save_as_context:
             # Use cross-platform user data directory for context files
-            context_dir = Path(user_data_dir("StoryTime", "StoryTime")) / "context"
+            context_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
             context_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             context_filename = f"story_{timestamp}.md"
