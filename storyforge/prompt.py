@@ -75,7 +75,7 @@ class Prompt:
     setting: str | None = None
     characters: list[str] | None = None
     learning_focus: (
-        Literal["counting", "colors", "letters", "emotions", "nature", "random"] | None
+        Literal["counting", "colors", "letters", "emotions", "nature"] | None
     ) = None
 
     def __post_init__(self) -> None:
@@ -100,7 +100,7 @@ class Prompt:
             self.theme = random.choice(valid_values["theme"])  # type: ignore
 
         # Resolve random learning_focus
-        if self.learning_focus == "random":
+        if self.learning_focus is not None and self.learning_focus == "random":
             self.learning_focus = random.choice(valid_values["learning_focus"])  # type: ignore
 
     def _validate_parameters(self) -> None:
@@ -138,7 +138,6 @@ class Prompt:
             "letters",
             "emotions",
             "nature",
-            "random",
         ]
 
         if self.length not in valid_lengths:
@@ -179,7 +178,7 @@ class Prompt:
             "flash": "very short (1-2 paragraphs)",
             "short": "short (3-4 paragraphs)",
             "medium": "medium-length (5-7 paragraphs)",
-            "bedtime": "perfect bedtime story length (4-6 paragraphs with a "
+            "bedtime": "perfect bedtime story length (2-3 paragraphs with a "
             "calming ending)",
         }
         return length_descriptions[self.length]
@@ -285,14 +284,22 @@ class Prompt:
 
         return "".join(prompt_parts)
 
-    @property
-    def image(self) -> str:
+    def image(self, num_images: int) -> list:
         """
-        Get a prompt for image generation based on the story parameters,
-        including context as a separate section if provided.
+        Generate a detailed, progressive image prompt for illustration.
+
+        Args:
+            num_images (int): The number of images to generate prompts for. Use this to create
+                detailed, progressive prompts for multiple illustrations or scenes.
+
+        This method generates a highly detailed image prompt based on the story parameters,
+        focusing on small details (such as hair color, breed of dog, glasses, etc.) and context.
+        The prompt is suitable for creating child-friendly illustrations that visually represent
+        specific scenes from the story, supporting progressive image generation.
 
         Returns:
-            str: A prompt suitable for image generation
+            str: A detailed image prompt describing a scene from the story, emphasizing small details
+                 and context for use in illustration generation.
         """
         image_parts = []
 
@@ -370,19 +377,6 @@ class Prompt:
             "\nReturn only the filename, nothing else."
         )
 
-    # Backward compatibility methods (deprecated)
-    def build_story_prompt(self) -> str:
-        """Deprecated: Use .story property instead."""
-        return self.story
-
-    def build_image_prompt(self) -> str:
-        """Deprecated: Use .image property instead."""
-        return self.image
-
-    def build_image_name_prompt(self, story: str) -> str:
-        """Deprecated: Use .image_name(story) method instead."""
-        return self.image_name(story)
-
     @classmethod
     def get_valid_values(cls) -> dict[str, list[str]]:
         """
@@ -406,7 +400,3 @@ class Prompt:
             ],
             "learning_focus": ["counting", "colors", "letters", "emotions", "nature"],
         }
-
-
-# Backward compatibility alias
-StoryPrompt = Prompt

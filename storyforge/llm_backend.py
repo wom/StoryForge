@@ -82,6 +82,25 @@ class LLMBackend(ABC):
         raise NotImplementedError("Subclass must implement generate_image_name method")
 
 
+    @abstractmethod
+    def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
+        """
+        Break the given story into `num_prompts` image prompts that each progressively tell the story.
+        Each prompt should be incredibly detailed, with a strong focus on small things (e.g., hair color, breed of dog, glasses).
+
+        Args:
+            story (str): The generated story to break into image prompts.
+            context (str): Additional context for the story.
+            num_prompts (int): The number of image prompts to return.
+
+        Returns:
+            list[str]: A list of image prompts, each describing a detailed scene from the story.
+
+        Raises:
+            NotImplementedError: If the method is not implemented by a subclass.
+        """
+        raise NotImplementedError("Subclass must implement generate_image_prompt method")
+
 def get_backend(backend_name: str | None = None) -> LLMBackend:
     """
     Factory function to get an appropriate LLM backend instance.

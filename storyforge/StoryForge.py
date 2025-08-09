@@ -8,6 +8,7 @@ and a Textual TUI app for interactive story generation.
 
 import asyncio
 import os
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -34,7 +35,31 @@ app = typer.Typer(
     add_completion=True,
     help="StoryForge - Generate stories and images with AI",
     context_settings={"help_option_names": ["-h", "--help"]},
+    invoke_without_command=True,
 )
+
+@app.callback()
+def main(ctx: typer.Context, prompt: str = typer.Argument(None, help="Story prompt")):
+    """
+    If called as 'storytime <prompt>', run the story command by default.
+    """
+    if ctx.invoked_subcommand is None and prompt:
+        # Only forward the prompt argument to the story command, use defaults for options
+        story_params = {
+            "prompt": prompt,
+            "length": "bedtime",
+            "age_range": "early_reader",
+            "style": "random",
+            "tone": "random",
+            "theme": "random",
+            "learning_focus": None,
+            "setting": None,
+            "characters": None,
+            "output_dir": None,
+            "use_context": True,
+            "verbose": False,
+        }
+        ctx.invoke(story, **story_params)
 
 
 @dataclass
@@ -65,6 +90,25 @@ def show_prompt_summary_and_confirm(
     generation_type: str = "story",
 ) -> bool:
     """Display a summary of the prompt and ask for user confirmation."""
+
+    # If any argument is a Typer Option/Argument object, replace with its default or None
+    def _extract_value(val):
+        # Typer Option/Argument objects have __class__.__name__ like 'OptionInfo'
+        if hasattr(val, "__class__") and "OptionInfo" in val.__class__.__name__:
+            return val.default if hasattr(val, "default") else None
+        return val
+
+    prompt = _extract_value(prompt)
+    age_range = _extract_value(age_range)
+    style = _extract_value(style)
+    tone = _extract_value(tone)
+    theme = _extract_value(theme)
+    length = _extract_value(length)
+    setting = _extract_value(setting)
+    learning_focus = _extract_value(learning_focus)
+    if characters is not None and isinstance(characters, list):
+        characters = [_extract_value(c) for c in characters]
+
     console.print(
         f"\n[bold cyan]📋 {generation_type.title()} Generation Summary:[/bold cyan]"
     )
@@ -76,7 +120,7 @@ def show_prompt_summary_and_confirm(
 
     if theme and theme != "random":
         console.print(f"[bold]Theme:[/bold] {theme}")
-    if learning_focus and learning_focus != "random":
+    if learning_focus:
         console.print(f"[bold]Learning Focus:[/bold] {learning_focus}")
     if setting:
         console.print(f"[bold]Setting:[/bold] {setting}")
@@ -93,7 +137,7 @@ def show_prompt_summary_and_confirm(
 def story(
     prompt: str = typer.Argument(..., help="The story prompt to generate from"),
     length: str = typer.Option(
-        "short", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
+        "bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
     ),
     age_range: str = typer.Option(
         "early_reader",
@@ -119,9 +163,9 @@ def story(
         help="Story theme (courage, kindness, teamwork, problem_solving, creativity)",
     ),
     learning_focus: str | None = typer.Option(
-        "random",
+        None,
         "--learning-focus",
-        help="Learning focus (counting, colors, letters, emotions, nature)",
+        help="Learning focus (counting, colors, letters, emotions, nature). Default: None (no learning focus)",
     ),
     setting: str | None = typer.Option(None, "--setting", help="Story setting"),
     characters: Annotated[
@@ -287,6 +331,8 @@ def story(
         ) as progress:
             progress.add_task("story", total=None)
             story = backend.generate_story(story_prompt)
+            # read in a file and populate a variable `story`
+            # story = load_story_from_file()
 
         if story == "[Error generating story]":
             console.print(
@@ -313,91 +359,12 @@ def story(
         console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
 
         # Present image generation options using Confirm.ask for test compatibility
-        if Confirm.ask("Would you like to describe an illustration for the story?"):
-            # User describes the image, story is context
-            user_desc = typer.prompt(
-                "Describe the image you want (the story will be used as context):"
-            )
-            image_prompt = Prompt(
-                prompt=f"{user_desc}\n\nStory context:\n{story}",
-                context=story_prompt.context,
-                length=story_prompt.length,
-                age_range=story_prompt.age_range,
-                style=story_prompt.style,
-                tone=story_prompt.tone,
-                theme=story_prompt.theme,
-                setting=story_prompt.setting,
-                characters=story_prompt.characters,
-                learning_focus=story_prompt.learning_focus,
-            )
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]Generating illustration..."),
-                console=console,
-                transient=True,
-            ) as progress:
-                progress.add_task("image", total=None)
-                image, image_bytes = backend.generate_image(image_prompt)
-            # Save image and story as before
-        elif Confirm.ask(
-            "Would you like to break the story into paragraphs and generate an "
-            "image for each?"
-        ):
-            # Break story into paragraphs and generate an image for each
-            paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
-            style_hint = typer.prompt(
-                "Optional: Enter a style or theme for all images "
-                "(or leave blank for default):",
-                default="",
-            )
-            for idx, para in enumerate(paragraphs, 1):
-                para_desc = typer.prompt(
-                    (
-                        f"Describe image for paragraph {idx} "
-                        "(or leave blank to use paragraph text):"
-                    ),
-                    default=para,
-                )
-                image_prompt_text = f"{para_desc}\n\nStory context:\n{story}"
-                with Progress(
-                    SpinnerColumn(),
-                    TextColumn(
-                        f"[bold blue]Generating illustration for paragraph {idx}..."
-                    ),
-                    console=console,
-                    transient=True,
-                ) as progress:
-                    progress.add_task("image", total=None)
-                    # Create a Prompt object for image generation
-                    final_prompt_text = (
-                        image_prompt_text
-                        if not style_hint
-                        else f"{image_prompt_text}\nStyle: {style_hint}"
-                    )
-                    para_image_prompt = Prompt(
-                        prompt=final_prompt_text,
-                        context=story_prompt.context,
-                        length=story_prompt.length,
-                        age_range=story_prompt.age_range,
-                        style=story_prompt.style,
-                        tone=story_prompt.tone,
-                        theme=story_prompt.theme,
-                        setting=story_prompt.setting,
-                        characters=story_prompt.characters,
-                        learning_focus=story_prompt.learning_focus,
-                    )
-                    image, image_bytes = backend.generate_image(para_image_prompt)
-                # Save each image with a unique filename
-                image_name = f"story_paragraph_{idx}.png"
-                os.makedirs(output_dir, exist_ok=True)
-                image_path = os.path.join(output_dir, image_name)
-                if image_bytes:
-                    with open(image_path, "wb") as image_file:
-                        image_file.write(image_bytes)
-                    console.print(
-                        f"[bold green]✅ Image saved as:[/bold green] {image_path}"
-                    )
-            # (Story already saved above, do not save again here)
+        if Confirm.ask("Would you like to generate illustrations for the story?"):
+            # make num_paragraphs be the number of paragraphs in the story
+            num_paragrpahs = len([p.strip() for p in story.split("\n") if p.strip()])
+            print(num_paragrpahs)
+            sys.exit(1)
+            
         else:
             console.print("[yellow]Image generation skipped by user.[/yellow]")
             # (Story already saved above, do not save again here)
@@ -413,7 +380,8 @@ def story(
             context_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             context_filename = f"story_{timestamp}.md"
-            context_path = context_dir / context_filename
+            # Use pathlib for cross-platform compatibility and error handling
+            context_path = Path(context_dir) / context_filename
             try:
                 with open(context_path, "w", encoding="utf-8") as f:
                     f.write("# Story Context\n\n")
@@ -427,7 +395,7 @@ def story(
                     f.write(f"- **Tone:** {tone}\n")
                     if theme and theme != "random":
                         f.write(f"- **Theme:** {theme}\n")
-                    if learning_focus and learning_focus != "random":
+                    if learning_focus:
                         f.write(f"- **Learning Focus:** {learning_focus}\n")
                     if setting:
                         f.write(f"- **Setting:** {setting}\n")
@@ -479,7 +447,7 @@ def story(
 def image(
     prompt: str = typer.Argument(..., help="The image prompt to generate from"),
     length: str = typer.Option(
-        "short", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
+        "bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
     ),
     age_range: str = typer.Option(
         "preschool",
@@ -505,9 +473,9 @@ def image(
         help="Story theme (courage, kindness, teamwork, problem_solving, creativity)",
     ),
     learning_focus: str | None = typer.Option(
-        "random",
+        None,
         "--learning-focus",
-        help="Learning focus (counting, colors, letters, emotions, nature)",
+        help="Learning focus (counting, colors, letters, emotions, nature). Default: None (no learning focus)",
     ),
     setting: str | None = typer.Option(None, "--setting", help="Story setting"),
     characters: Annotated[
@@ -732,6 +700,25 @@ def tui(
     StoryApp(context_file=context_file).run()
 
 
+def load_story_from_file() -> str | None:
+    """
+    Load story content from the default story file.
+    
+    Returns:
+        str | None: The story content with newlines replaced by spaces, 
+                   or None if the file doesn't exist.
+    """
+    story_file = Path("storytime/test_story.txt")
+    if not story_file.exists():
+        print(f"[yellow]Warning:[/yellow] Story file {story_file} does not exist.")
+        return None
+    
+    with open(story_file, "r", encoding="utf-8") as f:
+        story = f.read().strip()
+    # return story.replace("\n", " ")
+    return story
+
+
 class StoryApp(App):
     """
     Main Textual application for interactive story and image generation.
@@ -855,6 +842,7 @@ class StoryApp(App):
 
             # Generate story in a thread to avoid blocking UI
             story = await asyncio.to_thread(self.backend.generate_story, prompt_obj)
+
             output_log.write(f"[green]Story:[/green]\n{story}")
             output_log.write(
                 "[bold green]How would you like to generate illustrations?[/bold green]"
@@ -948,22 +936,6 @@ class StoryApp(App):
         finally:
             spinner.remove()
             self._pending_prompt = None
-
-
-def main(context_file: str | None = None):
-    """
-    Entry point for running the CLI or TUI app.
-
-    Args:
-        context_file: Optional path to context file (for backwards compatibility)
-    """
-    import sys
-
-    # If called directly with no args, show help
-    if len(sys.argv) == 1:
-        app()
-    else:
-        app()
 
 
 if __name__ == "__main__":

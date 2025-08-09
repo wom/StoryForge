@@ -20,6 +20,25 @@ class GeminiBackend(LLMBackend):
     Requires GEMINI_API_KEY environment variable to be set.
     """
 
+    def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
+        """
+        Return a list of image prompts by splitting the story into num_prompts chunks.
+        This is a stub implementation to satisfy the abstract base class.
+        """
+        # Simple fallback: split story into paragraphs, or repeat the story if not enough
+        paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
+        prompts = []
+        for i in range(num_prompts):
+            if i < len(paragraphs):
+                base = paragraphs[i]
+            else:
+                base = story
+            prompt = f"Create a detailed, child-friendly illustration for this part of the story: {base}"
+            if context:
+                prompt += f"\nContext: {context}"
+            prompts.append(prompt)
+        return prompts
+
     def __init__(self) -> None:
         """
         Initialize the Gemini client using the API key from environment variables.
@@ -47,7 +66,8 @@ class GeminiBackend(LLMBackend):
             contents = prompt.story
 
             response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
+                # model="gemini-2.5-flash",
+                model="gemini-2.5-pro",
                 contents=contents,
             )
             # Extract the story text from the response with proper null checking

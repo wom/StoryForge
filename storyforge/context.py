@@ -4,10 +4,6 @@ Context Management for StoryForge.
 This module provides utilities for loading and managing story context from files
 like character descriptions, background information, and story examples.
 
-Changelog:
-- 2025-07: Context loading now concatenates all .md files in the context directory,
-  ordered by last modified date (oldest to newest).
-
 Future enhancements:
 - Intelligent character detection from prompts
 - Context relevance scoring and filtering

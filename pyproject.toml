@@ -29,6 +29,7 @@ dev = [
 
 [project.scripts]
 storyforge = "storyforge.StoryForge:app"
+sf = "storyforge.StoryForge:app"
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]
