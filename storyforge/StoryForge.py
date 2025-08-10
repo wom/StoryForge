@@ -44,8 +44,7 @@ def main(ctx: typer.Context, prompt: str = typer.Argument(None, help="Story prom
     If called as 'storytime <prompt>', run the story command by default.
     """
     if ctx.invoked_subcommand is None and prompt:
-        # Only forward the prompt argument to the story command, use defaults for options
-        story_params = {
+        story_params: dict[str, object] = {
             "prompt": prompt,
             "length": "bedtime",
             "age_range": "early_reader",
@@ -91,23 +90,24 @@ def show_prompt_summary_and_confirm(
 ) -> bool:
     """Display a summary of the prompt and ask for user confirmation."""
 
-    # If any argument is a Typer Option/Argument object, replace with its default or None
-    def _extract_value(val):
+    # If any argument is a Typer Option/Argument object, replace with its default
+    # or None
+    def _extract_value(val: object) -> object:
         # Typer Option/Argument objects have __class__.__name__ like 'OptionInfo'
         if hasattr(val, "__class__") and "OptionInfo" in val.__class__.__name__:
-            return val.default if hasattr(val, "default") else None
+            return getattr(val, "default", None)
         return val
 
-    prompt = _extract_value(prompt)
-    age_range = _extract_value(age_range)
-    style = _extract_value(style)
-    tone = _extract_value(tone)
-    theme = _extract_value(theme)
-    length = _extract_value(length)
-    setting = _extract_value(setting)
-    learning_focus = _extract_value(learning_focus)
+    prompt = str(_extract_value(prompt))
+    age_range = str(_extract_value(age_range))
+    style = str(_extract_value(style))
+    tone = str(_extract_value(tone))
+    theme = cast(str | None, _extract_value(theme))
+    length = str(_extract_value(length))
+    setting = cast(str | None, _extract_value(setting))
+    learning_focus = cast(str | None, _extract_value(learning_focus))
     if characters is not None and isinstance(characters, list):
-        characters = [_extract_value(c) for c in characters]
+        characters = [str(_extract_value(c)) for c in characters]
 
     console.print(
         f"\n[bold cyan]📋 {generation_type.title()} Generation Summary:[/bold cyan]"
@@ -165,7 +165,10 @@ def story(
     learning_focus: str | None = typer.Option(
         None,
         "--learning-focus",
-        help="Learning focus (counting, colors, letters, emotions, nature). Default: None (no learning focus)",
+        help=(
+            "Learning focus (counting, colors, letters, emotions, nature). "
+            "Default: None (no learning focus)"
+        ),
     ),
     setting: str | None = typer.Option(None, "--setting", help="Story setting"),
     characters: Annotated[
@@ -282,25 +285,21 @@ def story(
                     age_range,
                 ),
                 style=cast(
-                    "Literal['adventure', 'comedy', 'fantasy', 'fairy_tale', "
-                    "'friendship', 'random']",
+                    Literal['adventure', 'comedy', 'fantasy', 'fairy_tale', 'friendship', 'random'],
                     style,
                 ),
                 tone=cast(
-                    "Literal['gentle', 'exciting', 'silly', 'heartwarming', "
-                    "'magical', 'random']",
+                    Literal['gentle', 'exciting', 'silly', 'heartwarming', 'magical', 'random'],
                     tone,
                 ),
                 theme=cast(
-                    "Literal['courage', 'kindness', 'teamwork', 'problem_solving', "
-                    "'creativity', 'family', 'random'] | None",
+                    Literal['courage', 'kindness', 'teamwork', 'problem_solving', 'creativity', 'family', 'random'] | None,
                     theme_value,
                 ),
                 setting=setting,
                 characters=characters_list,
                 learning_focus=cast(
-                    "Literal['counting', 'colors', 'letters', 'emotions', "
-                    "'nature', 'random'] | None",
+                    Literal['counting', 'colors', 'letters', 'emotions', 'nature'] | None,
                     learning_focus_value,
                 ),
             )
@@ -364,7 +363,6 @@ def story(
             num_paragrpahs = len([p.strip() for p in story.split("\n") if p.strip()])
             print(num_paragrpahs)
             sys.exit(1)
-            
         else:
             console.print("[yellow]Image generation skipped by user.[/yellow]")
             # (Story already saved above, do not save again here)
@@ -475,7 +473,10 @@ def image(
     learning_focus: str | None = typer.Option(
         None,
         "--learning-focus",
-        help="Learning focus (counting, colors, letters, emotions, nature). Default: None (no learning focus)",
+        help=(
+            "Learning focus (counting, colors, letters, emotions, nature). "
+            "Default: None (no learning focus)"
+        ),
     ),
     setting: str | None = typer.Option(None, "--setting", help="Story setting"),
     characters: Annotated[
@@ -549,26 +550,22 @@ def image(
                     age_range,
                 ),
                 style=cast(
-                    "Literal['adventure', 'comedy', 'fantasy', 'fairy_tale', "
-                    "'friendship', 'random']",
+                    Literal['adventure', 'comedy', 'fantasy', 'fairy_tale', 'friendship', 'random'],
                     style,
                 ),
                 tone=cast(
-                    "Literal['gentle', 'exciting', 'silly', 'heartwarming', "
-                    "'magical', 'random']",
+                    Literal['gentle', 'exciting', 'silly', 'heartwarming', 'magical', 'random'],
                     tone,
                 ),
                 theme=cast(
-                    "Literal['courage', 'kindness', 'teamwork', 'problem_solving', "
-                    "'creativity', 'family', 'random'] | None",
+                    Literal['courage', 'kindness', 'teamwork', 'problem_solving', 'creativity', 'family', 'random'] | None,
                     theme_value,
                 ),
                 setting=setting,
                 characters=characters_list,
                 learning_focus=cast(
-                    "Literal['counting', 'colors', 'letters', 'emotions', "
-                    "'nature', 'random'] | None",
-                    learning_focus_value,
+                    Literal['counting', 'colors', 'letters', 'emotions', 'nature'] | None,
+                    learning_focus_value if learning_focus_value != "random" else None,
                 ),
             )
 
@@ -703,23 +700,22 @@ def tui(
 def load_story_from_file() -> str | None:
     """
     Load story content from the default story file.
-    
+
     Returns:
-        str | None: The story content with newlines replaced by spaces, 
+        str | None: The story content with newlines replaced by spaces,
                    or None if the file doesn't exist.
     """
     story_file = Path("storytime/test_story.txt")
     if not story_file.exists():
         print(f"[yellow]Warning:[/yellow] Story file {story_file} does not exist.")
         return None
-    
-    with open(story_file, "r", encoding="utf-8") as f:
+    with open(story_file, encoding="utf-8") as f:
         story = f.read().strip()
     # return story.replace("\n", " ")
     return story
 
 
-class StoryApp(App):
+class StoryApp(App[None]):
     """
     Main Textual application for interactive story and image generation.
     Presents a prompt input, output log, and confirmation dialogs.

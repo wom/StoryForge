@@ -41,7 +41,7 @@ exclude = ["data*", "tests*"]
 
 [tool.ruff]
 target-version = "py312"
-line-length = 88
+line-length = 119
 
 [tool.ruff.lint]
 select = [
