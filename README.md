@@ -129,6 +129,17 @@ Once enabled, you can use tab completion for:
 
 ## Editing and Debugging
 
+### Debug Mode
+
+You can use the `--debug` flag with the `story` command to load a story from a local file instead of generating it with the backend. This is useful for development, testing, or offline workflows.
+
+Example:
+```bash
+storyforge story "Tell me a story about a robot" --debug
+```
+
+When `--debug` is set, StoryForge will load the story from a local file (see `load_story_from_file()` in the code) instead of calling the backend. The default is `False`.
+
 - All source code is in the `storyforge/` package. When editing or adding files, use package imports (e.g., `from storyforge.gemini_backend import GeminiBackend`).
 - To add a new backend, create a new file in `storyforge/` and implement the `LLMBackend` interface.
 - To debug, you can add print statements or use a debugger in any module in the `storyforge/` package.

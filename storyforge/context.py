@@ -69,24 +69,18 @@ class ContextManager:
             if test_context_dir:
                 context_dir = Path(test_context_dir)
                 if context_dir.exists() and context_dir.is_dir():
-                    context_files = sorted(
-                        context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime
-                    )
+                    context_files = sorted(context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
                 else:
                     context_files = []
             else:
                 # Prefer ./context/ in the current working directory if it exists
                 local_context_dir = Path("context")
                 if local_context_dir.exists() and local_context_dir.is_dir():
-                    context_files = sorted(
-                        local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime
-                    )
+                    context_files = sorted(local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
                 else:
                     user_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
                     if user_dir.exists() and user_dir.is_dir():
-                        context_files = sorted(
-                            user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime
-                        )
+                        context_files = sorted(user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
                     else:
                         context_files = []
 

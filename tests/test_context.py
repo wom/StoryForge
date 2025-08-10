@@ -231,9 +231,7 @@ class TestContextIntegration:
 
         monkeypatch.setenv("GEMINI_API_KEY", "test_key")
         backend = GeminiBackend()
-        monkeypatch.setattr(
-            backend.client.models, "generate_content", mock_generate_content
-        )
+        monkeypatch.setattr(backend.client.models, "generate_content", mock_generate_content)
 
         # Test story generation with context using Prompt object
         context = "## Ethan\nYoung boy, loves swimming."
@@ -283,9 +281,7 @@ class TestContextIntegration:
 
         monkeypatch.setenv("GEMINI_API_KEY", "test_key")
         backend = GeminiBackend()
-        monkeypatch.setattr(
-            backend.client.models, "generate_content", mock_generate_content
-        )
+        monkeypatch.setattr(backend.client.models, "generate_content", mock_generate_content)
 
         # Test story generation without context using Prompt object
         prompt = Prompt(prompt="Write about adventure")

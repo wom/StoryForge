@@ -26,9 +26,7 @@ class TestCLIIntegration:
     @patch("rich.prompt.Confirm.ask", side_effect=[True, True, False, False])
     @patch("os.makedirs")
     @patch("builtins.open", new_callable=mock_open)
-    def test_story_command_uses_factory(
-        self, mock_open, mock_makedirs, mock_confirm, mock_prompt, mock_gemini, *args
-    ):
+    def test_story_command_uses_factory(self, mock_open, mock_makedirs, mock_confirm, mock_prompt, mock_gemini, *args):
         """Test that story command uses the backend factory with user confirmation."""
         # Mock the backend
         mock_backend = MagicMock()
@@ -36,7 +34,7 @@ class TestCLIIntegration:
         mock_backend.generate_image.return_value = (MagicMock(), b"fake_image_bytes")
         mock_gemini.return_value = mock_backend
 
-        result = self.runner.invoke(app, ["story", "test prompt"])
+        result = self.runner.invoke(app, ["story", "test prompt", "--verbose"])
 
         # Should create backend via factory
         mock_gemini.assert_called_once()
@@ -67,9 +65,7 @@ class TestCLIIntegration:
     )  # proceed=True, generate_image=False, save_context=False
     @patch("os.makedirs")  # Mock directory creation
     @patch("builtins.open", new_callable=mock_open)
-    def test_story_command_skips_image_if_declined(
-        self, mock_open, mock_makedirs, mock_confirm, mock_gemini
-    ):
+    def test_story_command_skips_image_if_declined(self, mock_open, mock_makedirs, mock_confirm, mock_gemini):
         #  "Test that story command skips image generation if
         #       user declines at image prompt."
 
@@ -79,7 +75,7 @@ class TestCLIIntegration:
         mock_backend.generate_image.return_value = (MagicMock(), b"fake_image_bytes")
         mock_gemini.return_value = mock_backend
 
-        result = self.runner.invoke(app, ["story", "test prompt"])
+        result = self.runner.invoke(app, ["story", "test prompt", "--verbose"])
 
         # Should create backend via factory
         mock_gemini.assert_called_once()
@@ -110,9 +106,7 @@ class TestCLIIntegration:
         mock_gemini.return_value = mock_backend
 
         with patch("builtins.open", MagicMock()):
-            result = self.runner.invoke(
-                app, ["image", "test prompt", "--filename", "custom_name"]
-            )
+            result = self.runner.invoke(app, ["image", "test prompt", "--filename", "custom_name", "--verbose"])
 
         # Should create backend via factory
         mock_gemini.assert_called_once()
@@ -132,7 +126,7 @@ class TestCLIIntegration:
     @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
     def test_story_command_no_backend_error(self, mock_confirm):
         """Test story command fails gracefully when no backend available."""
-        result = self.runner.invoke(app, ["story", "test prompt"])
+        result = self.runner.invoke(app, ["story", "test prompt", "--verbose"])
 
         assert result.exit_code == 1
         # Should ask for confirmation before failing
@@ -144,7 +138,7 @@ class TestCLIIntegration:
     @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
     def test_image_command_no_backend_error(self, mock_confirm):
         """Test image command fails gracefully when no backend available."""
-        result = self.runner.invoke(app, ["image", "test prompt"])
+        result = self.runner.invoke(app, ["image", "test prompt", "--verbose"])
 
         assert result.exit_code == 1
         # Should ask for confirmation before failing
@@ -152,9 +146,7 @@ class TestCLIIntegration:
         # Should show error about missing API key
         assert result.stdout != ""
 
-    @patch.dict(
-        os.environ, {"LLM_BACKEND": "gemini", "GEMINI_API_KEY": "test_key"}, clear=True
-    )
+    @patch.dict(os.environ, {"LLM_BACKEND": "gemini", "GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storyforge.gemini_backend.GeminiBackend")
     @patch("rich.prompt.Confirm.ask", return_value=True)  # Mock user confirmation
     @patch("os.makedirs")  # Mock directory creation
@@ -166,9 +158,7 @@ class TestCLIIntegration:
         mock_gemini.return_value = mock_backend
 
         with patch("builtins.open", MagicMock()):
-            result = self.runner.invoke(
-                app, ["image", "test", "--filename", "explicit_test"]
-            )
+            result = self.runner.invoke(app, ["image", "test", "--filename", "explicit_test", "--verbose"])
 
         mock_gemini.assert_called_once()
         mock_confirm.assert_called_once()
@@ -224,9 +214,7 @@ class TestCLIIntegration:
     )  # proceed=True, generate_image=False, save_context=False
     @patch("os.makedirs")
     @patch("builtins.open", new_callable=mock_open)
-    def test_story_auto_generated_directory(
-        self, mock_open, mock_makedirs, mock_confirm, mock_gemini
-    ):
+    def test_story_auto_generated_directory(self, mock_open, mock_makedirs, mock_confirm, mock_gemini):
         """Test that story command generates output directory automatically."""
         mock_backend = MagicMock()
         mock_backend.generate_story.return_value = "Test story"
@@ -248,9 +236,7 @@ class TestCLIIntegration:
     @patch("storyforge.gemini_backend.GeminiBackend")
     @patch("rich.prompt.Confirm.ask", return_value=True)
     @patch("os.makedirs")
-    def test_image_auto_generated_directory(
-        self, mock_makedirs, mock_confirm, mock_gemini
-    ):
+    def test_image_auto_generated_directory(self, mock_makedirs, mock_confirm, mock_gemini):
         """Test that image command generates output directory automatically."""
         mock_backend = MagicMock()
         mock_backend.generate_image.return_value = (MagicMock(), b"fake_bytes")
@@ -274,9 +260,7 @@ class TestCLIIntegration:
     )  # proceed=True, generate_image=False, save_context=False
     @patch("os.makedirs")
     @patch("builtins.open", new_callable=mock_open)
-    def test_story_with_explicit_output_dir(
-        self, mock_open, mock_makedirs, mock_confirm, mock_gemini
-    ):
+    def test_story_with_explicit_output_dir(self, mock_open, mock_makedirs, mock_confirm, mock_gemini):
         """Test that explicit output directory is used when provided."""
         mock_backend = MagicMock()
         mock_backend.generate_story.return_value = "Test story"
@@ -284,9 +268,7 @@ class TestCLIIntegration:
         mock_backend.generate_image_name.return_value = "test_image"
         mock_gemini.return_value = mock_backend
 
-        result = self.runner.invoke(
-            app, ["story", "test prompt", "--output-dir", "custom_dir"]
-        )
+        result = self.runner.invoke(app, ["story", "test prompt", "--output-dir", "custom_dir"])
 
         # Should NOT show generated directory message
         assert "Generated output directory:" not in result.stdout
@@ -315,9 +297,7 @@ class TestCLIIntegration:
     @patch("rich.prompt.Confirm.ask", side_effect=[True, True, True])
     @patch("os.makedirs")
     @patch("builtins.open", new_callable=mock_open)
-    def test_story_context_saving(
-        self, mock_open, mock_makedirs, mock_confirm, mock_prompt, mock_gemini, *args
-    ):
+    def test_story_context_saving(self, mock_open, mock_makedirs, mock_confirm, mock_prompt, mock_gemini, *args):
         """Test that story command can save context when requested."""
         mock_backend = MagicMock()
         mock_backend.generate_story.return_value = "Test story content"
@@ -368,9 +348,7 @@ class TestCLIIntegration:
 
         with self.runner.isolated_filesystem():
             # Create the context file in the user data directory
-            context_dir = (
-                Path(platformdirs.user_data_dir("StoryForge", "StoryForge")) / "context"
-            )
+            context_dir = Path(platformdirs.user_data_dir("StoryForge", "StoryForge")) / "context"
             context_dir.mkdir(parents=True, exist_ok=True)
             with open(context_dir / "test_context.md", "w") as f:
                 f.write("This is context for the story.")
@@ -398,9 +376,7 @@ class TestCLIIntegration:
             with open("context/test_context.md", "w") as f:
                 f.write("This is context for the story.")
 
-            result = self.runner.invoke(
-                app, ["story", "test prompt", "--no-use-context"]
-            )
+            result = self.runner.invoke(app, ["story", "test prompt", "--no-use-context"])
 
             args, kwargs = mock_backend.generate_story.call_args
             prompt_obj = args[0]

@@ -81,12 +81,12 @@ class LLMBackend(ABC):
         """
         raise NotImplementedError("Subclass must implement generate_image_name method")
 
-
     @abstractmethod
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
         """
         Break the given story into `num_prompts` image prompts that each progressively tell the story.
-        Each prompt should be incredibly detailed, with a strong focus on small things (e.g., hair color, breed of dog, glasses).
+        Each prompt should be incredibly detailed, with a strong focus on small things
+        (e.g., hair color, breed of dog, glasses).
 
         Args:
             story (str): The generated story to break into image prompts.
@@ -100,6 +100,7 @@ class LLMBackend(ABC):
             NotImplementedError: If the method is not implemented by a subclass.
         """
         raise NotImplementedError("Subclass must implement generate_image_prompt method")
+
 
 def get_backend(backend_name: str | None = None) -> LLMBackend:
     """
@@ -156,27 +157,21 @@ def get_backend(backend_name: str | None = None) -> LLMBackend:
         elif backend_name == "openai":
             # Future implementation
             raise RuntimeError(
-                "OpenAI backend not yet implemented. "
-                "Please use Gemini backend by setting GEMINI_API_KEY."
+                "OpenAI backend not yet implemented. Please use Gemini backend by setting GEMINI_API_KEY."
             )
 
         elif backend_name == "anthropic":
             # Future implementation
             raise RuntimeError(
-                "Anthropic backend not yet implemented. "
-                "Please use Gemini backend by setting GEMINI_API_KEY."
+                "Anthropic backend not yet implemented. Please use Gemini backend by setting GEMINI_API_KEY."
             )
 
         else:
-            raise RuntimeError(
-                f"Unknown backend '{backend_name}'. "
-                f"Supported backends: gemini (more coming soon)"
-            )
+            raise RuntimeError(f"Unknown backend '{backend_name}'. Supported backends: gemini (more coming soon)")
 
     except ImportError as e:
         raise ImportError(
-            f"Failed to import {backend_name} backend. "
-            f"Please ensure required dependencies are installed: {e}"
+            f"Failed to import {backend_name} backend. Please ensure required dependencies are installed: {e}"
         ) from e
 
 

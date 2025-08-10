@@ -10,7 +10,6 @@ and image naming across different LLM backends.
 
 import random
 from dataclasses import dataclass
-from typing import Literal
 
 
 @dataclass
@@ -50,33 +49,14 @@ class Prompt:
 
     prompt: str
     context: str | None = None
-    length: Literal["flash", "short", "medium", "bedtime"] = "short"
-    age_range: Literal["toddler", "preschool", "early_reader", "middle_grade"] = (
-        "preschool"
-    )
-    style: Literal[
-        "adventure", "comedy", "fantasy", "fairy_tale", "friendship", "random"
-    ] = "adventure"
-    tone: Literal[
-        "gentle", "exciting", "silly", "heartwarming", "magical", "random"
-    ] = "heartwarming"
-    theme: (
-        Literal[
-            "courage",
-            "kindness",
-            "teamwork",
-            "problem_solving",
-            "creativity",
-            "family",
-            "random",
-        ]
-        | None
-    ) = None
+    length: str = "short"
+    age_range: str = "preschool"
+    style: str = "adventure"
+    tone: str = "heartwarming"
+    theme: str | None = None
     setting: str | None = None
     characters: list[str] | None = None
-    learning_focus: (
-        Literal["counting", "colors", "letters", "emotions", "nature"] | None
-    ) = None
+    learning_focus: str | None = None
 
     def __post_init__(self) -> None:
         """Resolve random parameters and validate after initialization."""
@@ -89,19 +69,19 @@ class Prompt:
 
         # Resolve random style
         if self.style == "random":
-            self.style = random.choice(valid_values["style"])  # type: ignore
+            self.style = random.choice(valid_values["style"])
 
         # Resolve random tone
         if self.tone == "random":
-            self.tone = random.choice(valid_values["tone"])  # type: ignore
+            self.tone = random.choice(valid_values["tone"])
 
         # Resolve random theme
         if self.theme == "random":
-            self.theme = random.choice(valid_values["theme"])  # type: ignore
+            self.theme = random.choice(valid_values["theme"])
 
         # Resolve random learning_focus
         if self.learning_focus is not None and self.learning_focus == "random":
-            self.learning_focus = random.choice(valid_values["learning_focus"])  # type: ignore
+            self.learning_focus = random.choice(valid_values["learning_focus"])
 
     def _validate_parameters(self) -> None:
         """Validate that all parameters have acceptable values."""
@@ -141,36 +121,22 @@ class Prompt:
         ]
 
         if self.length not in valid_lengths:
-            raise ValueError(
-                f"Invalid length '{self.length}'. Must be one of: {valid_lengths}"
-            )
+            raise ValueError(f"Invalid length '{self.length}'. Must be one of: {valid_lengths}")
 
         if self.age_range not in valid_age_ranges:
-            raise ValueError(
-                f"Invalid age_range '{self.age_range}'. "
-                f"Must be one of: {valid_age_ranges}"
-            )
+            raise ValueError(f"Invalid age_range '{self.age_range}'. Must be one of: {valid_age_ranges}")
 
         if self.style not in valid_styles:
-            raise ValueError(
-                f"Invalid style '{self.style}'. Must be one of: {valid_styles}"
-            )
+            raise ValueError(f"Invalid style '{self.style}'. Must be one of: {valid_styles}")
 
         if self.tone not in valid_tones:
-            raise ValueError(
-                f"Invalid tone '{self.tone}'. Must be one of: {valid_tones}"
-            )
+            raise ValueError(f"Invalid tone '{self.tone}'. Must be one of: {valid_tones}")
 
         if self.theme and self.theme not in valid_themes:
-            raise ValueError(
-                f"Invalid theme '{self.theme}'. Must be one of: {valid_themes}"
-            )
+            raise ValueError(f"Invalid theme '{self.theme}'. Must be one of: {valid_themes}")
 
         if self.learning_focus and self.learning_focus not in valid_learning:
-            raise ValueError(
-                f"Invalid learning_focus '{self.learning_focus}'. "
-                f"Must be one of: {valid_learning}"
-            )
+            raise ValueError(f"Invalid learning_focus '{self.learning_focus}'. Must be one of: {valid_learning}")
 
     def _get_length_description(self) -> str:
         """Get description text for the story length."""
@@ -178,8 +144,7 @@ class Prompt:
             "flash": "very short (1-2 paragraphs)",
             "short": "short (3-4 paragraphs)",
             "medium": "medium-length (5-7 paragraphs)",
-            "bedtime": "perfect bedtime story length (2-3 paragraphs with a "
-            "calming ending)",
+            "bedtime": "perfect bedtime story length (2-3 paragraphs with a calming ending)",
         }
         return length_descriptions[self.length]
 
@@ -206,12 +171,9 @@ class Prompt:
         style_descriptions = {
             "adventure": "an exciting journey or quest with age-appropriate challenges",
             "comedy": "a funny, lighthearted story that will make children laugh",
-            "fantasy": "a magical story with fantastical elements like talking "
-            "animals or fairy creatures",
-            "fairy_tale": "a classic fairy tale style story with a clear moral "
-            "and happy ending",
-            "friendship": "a heartwarming story about friendship, cooperation, "
-            "and caring for others",
+            "fantasy": "a magical story with fantastical elements like talking animals or fairy creatures",
+            "fairy_tale": "a classic fairy tale style story with a clear moral and happy ending",
+            "friendship": "a heartwarming story about friendship, cooperation, and caring for others",
         }
         return style_descriptions[self.style]
 
@@ -252,39 +214,28 @@ class Prompt:
 
         # Add theme if specified
         if self.theme:
-            prompt_parts.append(
-                f" The story should emphasize the theme of {self.theme}"
-            )
+            prompt_parts.append(f" The story should emphasize the theme of {self.theme}")
 
         # Add learning focus if specified
         if self.learning_focus:
-            prompt_parts.append(
-                f" Incorporate learning about {self.learning_focus} naturally "
-                "into the story"
-            )
+            prompt_parts.append(f" Incorporate learning about {self.learning_focus} naturally into the story")
 
         # Add age-appropriate guidance
-        prompt_parts.append(
-            f"\n\nAge-appropriate guidelines: {self._get_age_appropriate_guidance()}"
-        )
+        prompt_parts.append(f"\n\nAge-appropriate guidelines: {self._get_age_appropriate_guidance()}")
 
         # Add safety and quality guidelines
         prompt_parts.append("\n\nEnsure the story is:")
         prompt_parts.append("- Completely safe and appropriate for children")
-        prompt_parts.append(
-            "- Positive and uplifting with a happy or meaningful ending"
-        )
+        prompt_parts.append("- Positive and uplifting with a happy or meaningful ending")
         prompt_parts.append("- Educational or character-building in some way")
         prompt_parts.append("- Engaging and fun to read aloud")
 
         if self.context:
-            prompt_parts.append(
-                "- Consistent with the provided context and character descriptions"
-            )
+            prompt_parts.append("- Consistent with the provided context and character descriptions")
 
         return "".join(prompt_parts)
 
-    def image(self, num_images: int) -> list:
+    def image(self, num_images: int) -> list[str]:
         """
         Generate a detailed, progressive image prompt for illustration.
 
@@ -292,68 +243,61 @@ class Prompt:
             num_images (int): The number of images to generate prompts for. Use this to create
                 detailed, progressive prompts for multiple illustrations or scenes.
 
-        This method generates a highly detailed image prompt based on the story parameters,
-        focusing on small details (such as hair color, breed of dog, glasses, etc.) and context.
-        The prompt is suitable for creating child-friendly illustrations that visually represent
-        specific scenes from the story, supporting progressive image generation.
-
         Returns:
-            str: A detailed image prompt describing a scene from the story, emphasizing small details
-                 and context for use in illustration generation.
+            list[str]: A list of detailed image prompts, one for each image.
         """
-        image_parts = []
+        prompts = []
+        for _i in range(num_images):
+            image_parts = []
 
-        # Add context as a separate section if present
-        if self.context:
-            image_parts.append(f"Context for illustration:\n{self.context}\n\n")
+            # Add context as a separate section if present
+            if self.context:
+                image_parts.append(f"Context for illustration:\n{self.context}\n\n")
 
-        # Base instruction
-        image_parts.append("Create a detailed, beautiful, child-friendly illustration")
+            # Base instruction
+            image_parts.append("Create a detailed, beautiful, child-friendly illustration")
 
-        # Add style guidance
-        style_guidance = {
-            "adventure": "showing an exciting adventure scene",
-            "comedy": "showing a fun, silly, and cheerful scene",
-            "fantasy": "showing a magical, whimsical fantasy scene",
-            "fairy_tale": "in classic fairy tale illustration style",
-            "friendship": "showing characters together in a warm, friendly scene",
-        }
-        image_parts.append(f" {style_guidance[self.style]}")
+            # Add style guidance
+            style_guidance = {
+                "adventure": "showing an exciting adventure scene",
+                "comedy": "showing a fun, silly, and cheerful scene",
+                "fantasy": "showing a magical, whimsical fantasy scene",
+                "fairy_tale": "in classic fairy tale illustration style",
+                "friendship": "showing characters together in a warm, friendly scene",
+            }
+            image_parts.append(f" {style_guidance.get(self.style, '')}")
 
-        # Add the main prompt
-        image_parts.append(f" for this story: {self.prompt}")
+            # Add the main prompt
+            image_parts.append(f" for this story: {self.prompt}")
 
-        # Add setting if specified
-        if self.setting:
-            image_parts.append(f" Set in: {self.setting}")
+            # Add setting if specified
+            if self.setting:
+                image_parts.append(f" Set in: {self.setting}")
 
-        # Add tone guidance
-        tone_guidance = {
-            "gentle": "Use soft, calming colors and peaceful imagery",
-            "exciting": "Use bright, vibrant colors and dynamic composition",
-            "silly": "Use playful, cartoon-like style with expressive characters",
-            "heartwarming": "Use warm colors and cozy, comfortable imagery",
-            "magical": "Use sparkles, glowing effects, and enchanting details",
-        }
-        image_parts.append(f" {tone_guidance[self.tone]}")
+            # Add tone guidance
+            tone_guidance = {
+                "gentle": "Use soft, calming colors and peaceful imagery",
+                "exciting": "Use bright, vibrant colors and dynamic composition",
+                "silly": "Use playful, cartoon-like style with expressive characters",
+                "heartwarming": "Use warm colors and cozy, comfortable imagery",
+                "magical": "Use sparkles, glowing effects, and enchanting details",
+            }
+            image_parts.append(f" {tone_guidance.get(self.tone, '')}")
 
-        # Add age-appropriate guidance
-        age_art_guidance = {
-            "toddler": "Simple, clear shapes with bright primary colors",
-            "preschool": "Colorful, engaging artwork with clear details",
-            "early_reader": "Rich, detailed illustrations with interesting "
-            "elements to discover",
-            "middle_grade": "Sophisticated artwork with depth and artistic detail",
-        }
-        image_parts.append(f" Style: {age_art_guidance[self.age_range]}")
+            # Add age-appropriate guidance
+            age_art_guidance = {
+                "toddler": "Simple, clear shapes with bright primary colors",
+                "preschool": "Colorful, engaging artwork with clear details",
+                "early_reader": "Rich, detailed illustrations with interesting elements to discover",
+                "middle_grade": "Sophisticated artwork with depth and artistic detail",
+            }
+            image_parts.append(f" Style: {age_art_guidance.get(self.age_range, '')}")
 
-        # Safety guidelines
-        image_parts.append(
-            " Ensure the image is completely safe, positive, and appropriate "
-            "for children."
-        )
+            # Safety guidelines
+            image_parts.append(" Ensure the image is completely safe, positive, and appropriate for children.")
 
-        return "".join(image_parts)
+            prompts.append("".join(image_parts))
+        return prompts
 
     def image_name(self, story: str) -> str:
         """

@@ -98,7 +98,7 @@ class GeminiBackend(LLMBackend):
             and its raw bytes, or (None, None) on failure.
         """
         # Use the Prompt's comprehensive image prompt building
-        contents = prompt.image
+        contents = prompt.image(1)[0]
 
         response = self.client.models.generate_content(
             model="gemini-2.0-flash-preview-image-generation",
@@ -106,11 +106,7 @@ class GeminiBackend(LLMBackend):
             config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
         )
         # Iterate through response parts to find image data with proper null checking
-        if (
-            response.candidates
-            and response.candidates[0].content
-            and response.candidates[0].content.parts
-        ):
+        if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
             for part in response.candidates[0].content.parts:
                 if part.inline_data is not None and part.inline_data.data is not None:
                     try:

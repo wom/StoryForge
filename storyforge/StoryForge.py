@@ -8,11 +8,10 @@ and a Textual TUI app for interactive story generation.
 
 import asyncio
 import os
-import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Literal, cast
+from typing import Annotated, cast
 
 import typer
 from platformdirs import user_data_dir
@@ -38,27 +37,28 @@ app = typer.Typer(
     invoke_without_command=True,
 )
 
-@app.callback()
-def main(ctx: typer.Context, prompt: str = typer.Argument(None, help="Story prompt")):
-    """
-    If called as 'storytime <prompt>', run the story command by default.
-    """
-    if ctx.invoked_subcommand is None and prompt:
-        story_params: dict[str, object] = {
-            "prompt": prompt,
-            "length": "bedtime",
-            "age_range": "early_reader",
-            "style": "random",
-            "tone": "random",
-            "theme": "random",
-            "learning_focus": None,
-            "setting": None,
-            "characters": None,
-            "output_dir": None,
-            "use_context": True,
-            "verbose": False,
-        }
-        ctx.invoke(story, **story_params)
+
+# @app.callback()
+# def main(ctx: typer.Context, prompt: str = typer.Argument(None, help="Story prompt")):
+#     """
+#     If called as 'storytime <prompt>', run the story command by default.
+#     """
+#     if ctx.invoked_subcommand is None and prompt:
+#         story_params: dict[str, object] = {
+#             "prompt": prompt,
+#             "length": "bedtime",
+#             "age_range": "early_reader",
+#             "style": "random",
+#             "tone": "random",
+#             "theme": "random",
+#             "learning_focus": None,
+#             "setting": None,
+#             "characters": None,
+#             "output_dir": None,
+#             "use_context": True,
+#             "verbose": False,
+#         }
+#         ctx.invoke(story, **story_params)
 
 
 @dataclass
@@ -109,9 +109,7 @@ def show_prompt_summary_and_confirm(
     if characters is not None and isinstance(characters, list):
         characters = [str(_extract_value(c)) for c in characters]
 
-    console.print(
-        f"\n[bold cyan]📋 {generation_type.title()} Generation Summary:[/bold cyan]"
-    )
+    console.print(f"\n[bold cyan]📋 {generation_type.title()} Generation Summary:[/bold cyan]")
     console.print(f"[bold]Prompt:[/bold] {prompt}")
     console.print(f"[bold]Age Range:[/bold] {age_range}")
     console.print(f"[bold]Length:[/bold] {length}")
@@ -128,17 +126,13 @@ def show_prompt_summary_and_confirm(
         console.print(f"[bold]Characters:[/bold] {', '.join(characters)}")
 
     console.print()
-    return Confirm.ask(
-        f"[bold green]Proceed with {generation_type} generation?[/bold green]"
-    )
+    return Confirm.ask(f"[bold green]Proceed with {generation_type} generation?[/bold green]")
 
 
 @app.command()
 def story(
     prompt: str = typer.Argument(..., help="The story prompt to generate from"),
-    length: str = typer.Option(
-        "bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
-    ),
+    length: str = typer.Option("bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"),
     age_range: str = typer.Option(
         "early_reader",
         "--age-range",
@@ -165,10 +159,7 @@ def story(
     learning_focus: str | None = typer.Option(
         None,
         "--learning-focus",
-        help=(
-            "Learning focus (counting, colors, letters, emotions, nature). "
-            "Default: None (no learning focus)"
-        ),
+        help=("Learning focus (counting, colors, letters, emotions, nature). Default: None (no learning focus)"),
     ),
     setting: str | None = typer.Option(None, "--setting", help="Story setting"),
     characters: Annotated[
@@ -190,8 +181,9 @@ def story(
             "behavior."
         ),
     ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Enable verbose output"
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
+    debug: bool = typer.Option(
+        False, "--debug", help="Enable debug mode (use local file instead of backend for story generation)"
     ),
 ):
     """
@@ -203,17 +195,13 @@ def story(
     """
 
     if not prompt.strip():
-        console.print(
-            "[red]Error:[/red] Please provide a non-empty story prompt.", style="bold"
-        )
+        console.print("[red]Error:[/red] Please provide a non-empty story prompt.", style="bold")
         raise typer.Exit(1)
 
     # Generate output directory if not provided
     if output_dir is None:
         output_dir = generate_default_output_dir()
-        console.print(
-            f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}"
-        )
+        console.print(f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}")
 
     # Show prompt summary and get confirmation
     if not show_prompt_summary_and_confirm(
@@ -265,10 +253,7 @@ def story(
                                 contents.append(f.read())
                         except Exception as e:
                             if verbose:
-                                console.print(
-                                    f"[yellow]Warning: Could not read {fpath}: "
-                                    f"{e}[/yellow]"
-                                )
+                                console.print(f"[yellow]Warning: Could not read {fpath}: {e}[/yellow]")
                     context = "\n".join(contents) if contents else None
                 else:
                     context = None
@@ -279,29 +264,14 @@ def story(
             story_prompt = Prompt(
                 prompt=prompt,
                 context=context,
-                length=cast("Literal['flash', 'short', 'medium', 'bedtime']", length),
-                age_range=cast(
-                    "Literal['toddler', 'preschool', 'early_reader', 'middle_grade']",
-                    age_range,
-                ),
-                style=cast(
-                    Literal['adventure', 'comedy', 'fantasy', 'fairy_tale', 'friendship', 'random'],
-                    style,
-                ),
-                tone=cast(
-                    Literal['gentle', 'exciting', 'silly', 'heartwarming', 'magical', 'random'],
-                    tone,
-                ),
-                theme=cast(
-                    Literal['courage', 'kindness', 'teamwork', 'problem_solving', 'creativity', 'family', 'random'] | None,
-                    theme_value,
-                ),
+                length=length,
+                age_range=age_range,
+                style=style,
+                tone=tone,
+                theme=theme_value,
                 setting=setting,
                 characters=characters_list,
-                learning_focus=cast(
-                    Literal['counting', 'colors', 'letters', 'emotions', 'nature'] | None,
-                    learning_focus_value,
-                ),
+                learning_focus=learning_focus_value,
             )
 
             if verbose:
@@ -311,14 +281,10 @@ def story(
                 console.print(f"[dim]  Style: {story_prompt.style}[/dim]")
                 console.print(f"[dim]  Tone: {story_prompt.tone}[/dim]")
                 console.print(f"[dim]  Theme: {story_prompt.theme}[/dim]")
-                console.print(
-                    f"[dim]  Learning Focus: {story_prompt.learning_focus}[/dim]"
-                )
+                console.print(f"[dim]  Learning Focus: {story_prompt.learning_focus}[/dim]")
 
         except ValueError as e:
-            console.print(
-                f"[red]Error:[/red] Invalid parameter value: {e}", style="bold"
-            )
+            console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
             raise typer.Exit(1) from e
 
         # Generate story
@@ -329,14 +295,27 @@ def story(
             transient=True,
         ) as progress:
             progress.add_task("story", total=None)
-            story = backend.generate_story(story_prompt)
-            # read in a file and populate a variable `story`
-            # story = load_story_from_file()
+            if debug:
+                try:
+                    story = load_story_from_file()
+                    # Save the story as in the normal path
+                    story_filename = "story.txt"
+                    story_path = os.path.join(output_dir, story_filename)
+                    os.makedirs(output_dir, exist_ok=True)
+                    with open(story_path, "w", encoding="utf-8") as f:
+                        f.write(f"Story: {prompt}\n\n")
+                        f.write(story if story is not None else "")
+                    console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
+                    raise typer.Exit(0)
+                except Exception as e:
+                    print(f"DEBUG ERROR: {e}")
+                    raise typer.Exit(1) from e
+            else:
+                story = backend.generate_story(story_prompt)
 
-        if story == "[Error generating story]":
+        if story is None or story == "[Error generating story]":
             console.print(
-                "[red]Error:[/red] Failed to generate story. "
-                "Please check your API key and try again.",
+                "[red]Error:[/red] Failed to generate story. Please check your API key and try again.",
                 style="bold",
             )
             raise typer.Exit(1)
@@ -354,23 +333,22 @@ def story(
         os.makedirs(output_dir, exist_ok=True)
         with open(story_path, "w", encoding="utf-8") as f:
             f.write(f"Story: {prompt}\n\n")
-            f.write(story)
+            f.write(story if story is not None else "")
         console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
 
         # Present image generation options using Confirm.ask for test compatibility
         if Confirm.ask("Would you like to generate illustrations for the story?"):
             # make num_paragraphs be the number of paragraphs in the story
-            num_paragrpahs = len([p.strip() for p in story.split("\n") if p.strip()])
+            num_paragrpahs = len([p.strip() for p in (story or "").split("\n") if p.strip()])
             print(num_paragrpahs)
-            sys.exit(1)
+            raise typer.Exit(0)
         else:
             console.print("[yellow]Image generation skipped by user.[/yellow]")
             # (Story already saved above, do not save again here)
 
         # Always ask if user wants to save as future context after story generation
         save_as_context = Confirm.ask(
-            "[bold blue]Save this story as future context for character "
-            "development?[/bold blue]"
+            "[bold blue]Save this story as future context for character development?[/bold blue]"
         )
         if save_as_context:
             # Use cross-platform user data directory for context files
@@ -380,6 +358,7 @@ def story(
             context_filename = f"story_{timestamp}.md"
             # Use pathlib for cross-platform compatibility and error handling
             context_path = Path(context_dir) / context_filename
+            print("DEBUG EXIT REACHED")
             try:
                 with open(context_path, "w", encoding="utf-8") as f:
                     f.write("# Story Context\n\n")
@@ -400,20 +379,16 @@ def story(
                     if characters:
                         f.write(f"- **Characters:** {', '.join(characters)}\n")
                     f.write("\n## Generated Story\n\n")
-                    f.write(story)
+                    f.write(story if story is not None else "")
                     f.write("\n\n## Usage Notes\n\n")
                     f.write("This story can be referenced for:\n")
                     f.write("- Character consistency in future stories\n")
                     f.write("- Setting and world-building continuity\n")
                     f.write("- Tone and style reference\n")
                     f.write("- Educational content alignment\n")
-                console.print(
-                    f"[bold green]✅ Context saved as:[/bold green] {context_path}"
-                )
+                console.print(f"[bold green]✅ Context saved as:[/bold green] {context_path}")
             except Exception as e:
-                console.print(
-                    f"[red]Error saving context file:[/red] {e}", style="bold"
-                )
+                console.print(f"[red]Error saving context file:[/red] {e}", style="bold")
 
     except RuntimeError as e:
         if "GEMINI_API_KEY" in str(e):
@@ -421,10 +396,7 @@ def story(
                 "[red]Error:[/red] GEMINI_API_KEY environment variable not set.",
                 style="bold",
             )
-            console.print(
-                "[dim]Please set your Gemini API key: "
-                "export GEMINI_API_KEY=your_key_here[/dim]"
-            )
+            console.print("[dim]Please set your Gemini API key: export GEMINI_API_KEY=your_key_here[/dim]")
         else:
             console.print(f"[red]Error:[/red] {e}", style="bold")
         raise typer.Exit(1) from e
@@ -434,8 +406,7 @@ def story(
             console.print(f"[red]Unexpected error:[/red] {e}", style="bold")
         else:
             console.print(
-                "[red]Error:[/red] An unexpected error occurred. "
-                "Use --verbose for details.",
+                "[red]Error:[/red] An unexpected error occurred. Use --verbose for details.",
                 style="bold",
             )
         raise typer.Exit(1) from e
@@ -444,9 +415,7 @@ def story(
 @app.command()
 def image(
     prompt: str = typer.Argument(..., help="The image prompt to generate from"),
-    length: str = typer.Option(
-        "bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"
-    ),
+    length: str = typer.Option("bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"),
     age_range: str = typer.Option(
         "preschool",
         "--age-range",
@@ -473,10 +442,7 @@ def image(
     learning_focus: str | None = typer.Option(
         None,
         "--learning-focus",
-        help=(
-            "Learning focus (counting, colors, letters, emotions, nature). "
-            "Default: None (no learning focus)"
-        ),
+        help=("Learning focus (counting, colors, letters, emotions, nature). Default: None (no learning focus)"),
     ),
     setting: str | None = typer.Option(None, "--setting", help="Story setting"),
     characters: Annotated[
@@ -489,27 +455,19 @@ def image(
         "-o",
         help="Directory to save the image (default: auto-generated)",
     ),
-    filename: str | None = typer.Option(
-        None, "--filename", "-f", help="Custom filename (without extension)"
-    ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Enable verbose output"
-    ),
+    filename: str | None = typer.Option(None, "--filename", "-f", help="Custom filename (without extension)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
 ):
     """Generate an image from a prompt."""
 
     if not prompt.strip():
-        console.print(
-            "[red]Error:[/red] Please provide a non-empty image prompt.", style="bold"
-        )
+        console.print("[red]Error:[/red] Please provide a non-empty image prompt.", style="bold")
         raise typer.Exit(1)
 
     # Generate output directory if not provided
     if output_dir is None:
         output_dir = generate_default_output_dir()
-        console.print(
-            f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}"
-        )
+        console.print(f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}")
 
     # Show prompt summary and get confirmation
     if not show_prompt_summary_and_confirm(
@@ -544,29 +502,14 @@ def image(
             image_prompt = Prompt(
                 prompt=prompt,
                 context=None,  # No context for standalone image generation
-                length=cast("Literal['flash', 'short', 'medium', 'bedtime']", length),
-                age_range=cast(
-                    "Literal['toddler', 'preschool', 'early_reader', 'middle_grade']",
-                    age_range,
-                ),
-                style=cast(
-                    Literal['adventure', 'comedy', 'fantasy', 'fairy_tale', 'friendship', 'random'],
-                    style,
-                ),
-                tone=cast(
-                    Literal['gentle', 'exciting', 'silly', 'heartwarming', 'magical', 'random'],
-                    tone,
-                ),
-                theme=cast(
-                    Literal['courage', 'kindness', 'teamwork', 'problem_solving', 'creativity', 'family', 'random'] | None,
-                    theme_value,
-                ),
+                length=length,
+                age_range=age_range,
+                style=style,
+                tone=tone,
+                theme=theme_value,
                 setting=setting,
                 characters=characters_list,
-                learning_focus=cast(
-                    Literal['counting', 'colors', 'letters', 'emotions', 'nature'] | None,
-                    learning_focus_value if learning_focus_value != "random" else None,
-                ),
+                learning_focus=learning_focus_value if learning_focus_value != "random" else None,
             )
 
             if verbose:
@@ -574,14 +517,10 @@ def image(
                 console.print(f"[dim]  Style: {image_prompt.style}[/dim]")
                 console.print(f"[dim]  Tone: {image_prompt.tone}[/dim]")
                 console.print(f"[dim]  Theme: {image_prompt.theme}[/dim]")
-                console.print(
-                    f"[dim]  Learning Focus: {image_prompt.learning_focus}[/dim]"
-                )
+                console.print(f"[dim]  Learning Focus: {image_prompt.learning_focus}[/dim]")
 
         except ValueError as e:
-            console.print(
-                f"[red]Error:[/red] Invalid parameter value: {e}", style="bold"
-            )
+            console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
             raise typer.Exit(1) from e
 
         # Generate image
@@ -596,8 +535,7 @@ def image(
 
         if image is None or image_bytes is None:
             console.print(
-                "[red]Error:[/red] Failed to generate image. "
-                "Please check your API key and try again.",
+                "[red]Error:[/red] Failed to generate image. Please check your API key and try again.",
                 style="bold",
             )
             raise typer.Exit(1)
@@ -614,9 +552,7 @@ def image(
                 transient=True,
             ) as progress:
                 progress.add_task("filename", total=None)
-                raw_name = backend.generate_image_name(
-                    image_prompt, prompt
-                )  # Use prompt as "story" for naming
+                raw_name = backend.generate_image_name(image_prompt, prompt)  # Use prompt as "story" for naming
 
             if not raw_name or raw_name == "story_image":
                 # Fallback: create filename from prompt
@@ -628,9 +564,7 @@ def image(
                 # Take first word or phrase before common separators
                 for sep in [".", ",", ":", ";", "!", "?"]:
                     first_line = first_line.split(sep)[0]
-                image_name = (
-                    first_line.strip() if first_line.strip() else "generated_image"
-                )
+                image_name = first_line.strip() if first_line.strip() else "generated_image"
 
         # Sanitize filename using standard library methods
         import string
@@ -666,10 +600,7 @@ def image(
                 "[red]Error:[/red] GEMINI_API_KEY environment variable not set.",
                 style="bold",
             )
-            console.print(
-                "[dim]Please set your Gemini API key: "
-                "export GEMINI_API_KEY=your_key_here[/dim]"
-            )
+            console.print("[dim]Please set your Gemini API key: export GEMINI_API_KEY=your_key_here[/dim]")
         else:
             console.print(f"[red]Error:[/red] {e}", style="bold")
         raise typer.Exit(1) from e
@@ -679,8 +610,7 @@ def image(
             console.print(f"[red]Unexpected error:[/red] {e}", style="bold")
         else:
             console.print(
-                "[red]Error:[/red] An unexpected error occurred. "
-                "Use --verbose for details.",
+                "[red]Error:[/red] An unexpected error occurred. Use --verbose for details.",
                 style="bold",
             )
         raise typer.Exit(1) from e
@@ -779,11 +709,7 @@ class StoryApp(App[None]):
                 "and save the image to disk.\n\nContinue?\n\n"
             )
             confirm_dialog.remove_class("hidden")
-            confirm_dialog.mount(
-                Horizontal(
-                    Button("Yes", id="confirm_yes"), Button("No", id="confirm_no")
-                )
-            )
+            confirm_dialog.mount(Horizontal(Button("Yes", id="confirm_yes"), Button("No", id="confirm_no")))
             self.set_focus(confirm_dialog)
             self._pending_prompt = prompt  # Store prompt for later use
             return
@@ -840,16 +766,9 @@ class StoryApp(App[None]):
             story = await asyncio.to_thread(self.backend.generate_story, prompt_obj)
 
             output_log.write(f"[green]Story:[/green]\n{story}")
-            output_log.write(
-                "[bold green]How would you like to generate illustrations?[/bold green]"
-            )
-            output_log.write(
-                "1) Use the story as context and describe the image yourself"
-            )
-            output_log.write(
-                "2) Break the story into logical chunks (paragraphs) and "
-                "generate an image for each"
-            )
+            output_log.write("[bold green]How would you like to generate illustrations?[/bold green]")
+            output_log.write("1) Use the story as context and describe the image yourself")
+            output_log.write("2) Break the story into logical chunks (paragraphs) and generate an image for each")
             output_log.write("3) Do not generate any images")
             # Placeholder for TUI input: in a real TUI, present buttons and dialogs
             # For now, default to option 3 (skip) for demonstration
@@ -875,9 +794,7 @@ class StoryApp(App[None]):
                     characters=prompt_obj.characters,
                     learning_focus=prompt_obj.learning_focus,
                 )
-                image, image_bytes = await asyncio.to_thread(
-                    self.backend.generate_image, user_image_prompt
-                )
+                image, image_bytes = await asyncio.to_thread(self.backend.generate_image, user_image_prompt)
                 if image is None:
                     output_log.write("[red]Failed to generate image.[/red]")
                     return
@@ -895,14 +812,10 @@ class StoryApp(App[None]):
                 for idx, para in enumerate(paragraphs, 1):
                     para_desc = para  # TODO: Get from TUI input
                     image_prompt_text = f"{para_desc}\n\nStory context:\n{story}"
-                    output_log.write(
-                        f"[bold]Generating image for paragraph {idx}...[/bold]"
-                    )
+                    output_log.write(f"[bold]Generating image for paragraph {idx}...[/bold]")
                     # Create Prompt object for image generation
                     final_prompt_text = (
-                        image_prompt_text
-                        if not style_hint
-                        else f"{image_prompt_text}\nStyle: {style_hint}"
+                        image_prompt_text if not style_hint else f"{image_prompt_text}\nStyle: {style_hint}"
                     )
                     para_image_prompt = Prompt(
                         prompt=final_prompt_text,
@@ -916,18 +829,14 @@ class StoryApp(App[None]):
                         characters=prompt_obj.characters,
                         learning_focus=prompt_obj.learning_focus,
                     )
-                    image, image_bytes = await asyncio.to_thread(
-                        self.backend.generate_image, para_image_prompt
-                    )
+                    image, image_bytes = await asyncio.to_thread(self.backend.generate_image, para_image_prompt)
                     image_name = f"story_paragraph_{idx}.png"
                     if image_bytes:
                         with open(image_name, "wb") as f:
                             f.write(image_bytes)
                         output_log.write(f"[green]Image saved as:[/green] {image_name}")
             else:
-                output_log.write(
-                    "[yellow]Invalid option. Skipping image generation.[/yellow]"
-                )
+                output_log.write("[yellow]Invalid option. Skipping image generation.[/yellow]")
                 return
         finally:
             spinner.remove()
