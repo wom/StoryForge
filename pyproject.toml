@@ -1,6 +1,6 @@
 [project]
 name = "StoryForge"
-version = "0.0.1"
+version = "0.0.2"
 description = "A TUI app that generates short stories and AI images from prompts using a language model."
 authors = [
     { name = "wom" }
