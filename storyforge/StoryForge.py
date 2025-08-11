@@ -292,11 +292,64 @@ def main(
             f.write(story if story is not None else "")
         console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
 
+        # At this point, story is guaranteed to be a string (not None)
+        assert isinstance(story, str), "Story must be a string at this point"
+
         # Present image generation options using Confirm.ask for test compatibility
         if Confirm.ask("Would you like to generate illustrations for the story?"):
-            num_paragrpahs = len([p.strip() for p in (story or "").split("\n") if p.strip()])
-            console.print(f'Paragraphs: {num_paragrpahs}')
-            raise typer.Exit(0)
+            # Ask how many images to generate
+            num_images = typer.prompt("How many images would you like to generate?", type=int, default=1)
+
+            if num_images > 0:
+                console.print(f"[bold blue]Generating {num_images} image{'s' if num_images > 1 else ''}...[/bold blue]")
+
+                reference_image_bytes = None
+                for i in range(num_images):
+                    console.print(f"[dim]Generating image {i+1} of {num_images}...[/dim]")
+
+                    with Progress(
+                        SpinnerColumn(),
+                        TextColumn(f"[bold blue]Creating illustration {i+1}..."),
+                        console=console,
+                        transient=True,
+                    ) as progress:
+                        progress.add_task("image", total=None)
+
+                        # Use story as prompt for image generation
+                        image_prompt = Prompt(
+                            prompt=story,
+                            context=context,
+                            length=length,
+                            age_range=age_range,
+                            style=style,
+                            tone=tone,
+                            theme=theme_value,
+                            setting=setting,
+                            characters=characters_list,
+                            learning_focus=learning_focus_value,
+                        )
+
+                        # Generate image with reference for consistency (if available)
+                        image, image_bytes = backend.generate_image(image_prompt, reference_image_bytes)
+
+                    if image and image_bytes:
+                        # Generate filename
+                        image_name = backend.generate_image_name(image_prompt, story)
+                        image_filename = f"{image_name}_{i+1:02d}.png" if num_images > 1 else f"{image_name}.png"
+                        image_path = os.path.join(output_dir, image_filename)
+
+                        # Save image
+                        with open(image_path, "wb") as f:
+                            f.write(image_bytes)
+                        console.print(f"[bold green]✅ Image {i+1} saved as:[/bold green] {image_path}")
+
+                        # Use first image as reference for subsequent ones
+                        if i == 0:
+                            reference_image_bytes = image_bytes
+                    else:
+                        console.print(f"[red]❌ Failed to generate image {i+1}[/red]")
+            else:
+                console.print("[yellow]No images will be generated.[/yellow]")
         else:
             console.print("[yellow]Image generation skipped by user.[/yellow]")
 

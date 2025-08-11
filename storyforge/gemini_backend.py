@@ -84,21 +84,34 @@ class GeminiBackend(LLMBackend):
             # Return a generic error message if generation fails
             return "[Error generating story]"
 
-    def generate_image(self, prompt: Prompt) -> tuple[object | None, bytes | None]:
+    def generate_image(self, prompt: Prompt, reference_image_bytes: bytes | None = None) -> tuple[object | None, bytes | None]:
         """
         Generate an illustration image for the given Prompt object using Gemini
-        image model.
+        image model, optionally using a reference image for consistency.
 
         Args:
             prompt (Prompt): A Prompt object containing comprehensive image
                 generation parameters including style, tone, setting, etc.
+            reference_image_bytes (Optional[bytes]): Reference image bytes to maintain
+                consistency with previous images.
 
         Returns:
             Tuple[Optional[Image.Image], Optional[bytes]]: The PIL Image object
             and its raw bytes, or (None, None) on failure.
         """
         # Use the Prompt's comprehensive image prompt building
-        contents = prompt.image(1)[0]
+        text_prompt = prompt.image(1)[0]
+        
+        # Build contents with optional reference image
+        if reference_image_bytes:
+            # For subsequent images, include reference image for consistency
+            contents = [
+                types.Part(inline_data=types.Blob(mime_type="image/png", data=reference_image_bytes)),
+                f"Create the next illustration in the same visual style, with consistent characters and art style as the reference image. {text_prompt}"
+            ]
+        else:
+            # First image - no reference needed
+            contents = text_prompt
 
         response = self.client.models.generate_content(
             model="gemini-2.0-flash-preview-image-generation",
