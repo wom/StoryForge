@@ -1,72 +1,22 @@
 """
-StoryForge: Unified CLI and TUI app for generating illustrated stories
-using Gemini LLM backend.
-
-Provides both command-line interface with 'story', 'image', and 'tui' commands,
-and a Textual TUI app for interactive story generation.
+StoryForge: Simplified CLI for generating illustrated stories using Gemini LLM backend.
 """
 
-import asyncio
 import os
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, cast
+from typing import Annotated
 
 import typer
 from platformdirs import user_data_dir
-
-# Use "StoryForge" as appauthor for user_data_dir to ensure user-agnostic,
-# organization-consistent data storage
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
-from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical
-from textual.widgets import Button, Input, LoadingIndicator, Log, Static
 
-from .context import ContextManager, get_default_context_manager
 from .llm_backend import get_backend
 from .prompt import Prompt
 
 console = Console()
-app = typer.Typer(
-    add_completion=True,
-    help="StoryForge - Generate stories and images with AI",
-    context_settings={"help_option_names": ["-h", "--help"]},
-    invoke_without_command=True,
-)
-
-
-# @app.callback()
-# def main(ctx: typer.Context, prompt: str = typer.Argument(None, help="Story prompt")):
-#     """
-#     If called as 'storytime <prompt>', run the story command by default.
-#     """
-#     if ctx.invoked_subcommand is None and prompt:
-#         story_params: dict[str, object] = {
-#             "prompt": prompt,
-#             "length": "bedtime",
-#             "age_range": "early_reader",
-#             "style": "random",
-#             "tone": "random",
-#             "theme": "random",
-#             "learning_focus": None,
-#             "setting": None,
-#             "characters": None,
-#             "output_dir": None,
-#             "use_context": True,
-#             "verbose": False,
-#         }
-#         ctx.invoke(story, **story_params)
-
-
-@dataclass
-class CLIArgs:
-    name: str
-    age: int | None
-    verbose: bool
-    color: str
 
 
 def generate_default_output_dir() -> str:
@@ -89,33 +39,12 @@ def show_prompt_summary_and_confirm(
     generation_type: str = "story",
 ) -> bool:
     """Display a summary of the prompt and ask for user confirmation."""
-
-    # If any argument is a Typer Option/Argument object, replace with its default
-    # or None
-    def _extract_value(val: object) -> object:
-        # Typer Option/Argument objects have __class__.__name__ like 'OptionInfo'
-        if hasattr(val, "__class__") and "OptionInfo" in val.__class__.__name__:
-            return getattr(val, "default", None)
-        return val
-
-    prompt = str(_extract_value(prompt))
-    age_range = str(_extract_value(age_range))
-    style = str(_extract_value(style))
-    tone = str(_extract_value(tone))
-    theme = cast(str | None, _extract_value(theme))
-    length = str(_extract_value(length))
-    setting = cast(str | None, _extract_value(setting))
-    learning_focus = cast(str | None, _extract_value(learning_focus))
-    if characters is not None and isinstance(characters, list):
-        characters = [str(_extract_value(c)) for c in characters]
-
     console.print(f"\n[bold cyan]📋 {generation_type.title()} Generation Summary:[/bold cyan]")
     console.print(f"[bold]Prompt:[/bold] {prompt}")
     console.print(f"[bold]Age Range:[/bold] {age_range}")
     console.print(f"[bold]Length:[/bold] {length}")
     console.print(f"[bold]Style:[/bold] {style}")
     console.print(f"[bold]Tone:[/bold] {tone}")
-
     if theme and theme != "random":
         console.print(f"[bold]Theme:[/bold] {theme}")
     if learning_focus:
@@ -124,14 +53,27 @@ def show_prompt_summary_and_confirm(
         console.print(f"[bold]Setting:[/bold] {setting}")
     if characters:
         console.print(f"[bold]Characters:[/bold] {', '.join(characters)}")
-
     console.print()
     return Confirm.ask(f"[bold green]Proceed with {generation_type} generation?[/bold green]")
 
 
-@app.command()
-def story(
-    prompt: str = typer.Argument(..., help="The story prompt to generate from"),
+def load_story_from_file() -> str | None:
+    """
+    Load story content from the default story file.
+    Returns:
+        str | None: The story content, or None if the file doesn't exist.
+    """
+    story_file = Path("storyforge/test_story.txt")
+    if not story_file.exists():
+        print(f"[yellow]Warning:[/yellow] Story file {story_file} does not exist.")
+        return None
+    with open(story_file, encoding="utf-8") as f:
+        story = f.read().strip()
+    return story
+
+
+def main(
+    prompt: str = typer.Argument(..., help="The story prompt to generate from (positional, required)"),
     length: str = typer.Option("bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"),
     age_range: str = typer.Option(
         "early_reader",
@@ -186,15 +128,9 @@ def story(
         False, "--debug", help="Enable debug mode (use local file instead of backend for story generation)"
     ),
 ):
-    """
-    Generate a story and illustration from a prompt.
-
-    By default, all .md files in the context/ directory are used as additional context
-    for story generation.
-    Use the --no-use-context flag to disable including these context files.
-    """
-
-    if not prompt.strip():
+    if debug:
+        verbose = True # Ensure verbose is enabled in debug mode
+    if prompt is None or not str(prompt).strip():
         console.print("[red]Error:[/red] Please provide a non-empty story prompt.", style="bold")
         raise typer.Exit(1)
 
@@ -227,21 +163,14 @@ def story(
         backend = get_backend()
 
         # Load context files if --use-context is enabled (default).
-        # By default, all .md files in the context/ directory are included as context
-        # for story generation.
-        # Future enhancement: Smart context extraction will filter this
-        # based on characters mentioned in the prompt.
-        # Create Prompt instance
         try:
-            # Handle None values and convert to appropriate types
             characters_list = characters if characters else None
             theme_value = theme if theme else None
             learning_focus_value = learning_focus if learning_focus else None
 
-            # If --use-context (default), load all .md files in context/ as context for
-            # story generation.
+            if verbose:
+                console.print(f"[cyan][DEBUG] use_context flag is set to: {use_context}[/cyan]")
             if use_context:
-                # Use cross-platform user data directory for context files
                 context_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
                 context: str | None = ""
                 if context_dir.is_dir():
@@ -258,8 +187,12 @@ def story(
                 else:
                     context = None
             else:
-                # If --no-use-context is specified, do not include any context files.
                 context = None
+                if verbose:
+                    console.print("[cyan][DEBUG] Context loading skipped due to --no-use-context[/cyan]")
+
+            if verbose:
+                console.print(f"[cyan][DEBUG] Context value before Prompt creation: {repr(context)}[/cyan]")
 
             story_prompt = Prompt(
                 prompt=prompt,
@@ -282,6 +215,7 @@ def story(
                 console.print(f"[dim]  Tone: {story_prompt.tone}[/dim]")
                 console.print(f"[dim]  Theme: {story_prompt.theme}[/dim]")
                 console.print(f"[dim]  Learning Focus: {story_prompt.learning_focus}[/dim]")
+                console.print(f"[cyan][DEBUG] About to call generate_story (debug={debug})[/cyan]")
 
         except ValueError as e:
             console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
@@ -298,7 +232,6 @@ def story(
             if debug:
                 try:
                     story = load_story_from_file()
-                    # Save the story as in the normal path
                     story_filename = "story.txt"
                     story_path = os.path.join(output_dir, story_filename)
                     os.makedirs(output_dir, exist_ok=True)
@@ -312,6 +245,8 @@ def story(
                     raise typer.Exit(1) from e
             else:
                 story = backend.generate_story(story_prompt)
+                if verbose:
+                    console.print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
 
         if story is None or story == "[Error generating story]":
             console.print(
@@ -338,25 +273,21 @@ def story(
 
         # Present image generation options using Confirm.ask for test compatibility
         if Confirm.ask("Would you like to generate illustrations for the story?"):
-            # make num_paragraphs be the number of paragraphs in the story
             num_paragrpahs = len([p.strip() for p in (story or "").split("\n") if p.strip()])
             print(num_paragrpahs)
             raise typer.Exit(0)
         else:
             console.print("[yellow]Image generation skipped by user.[/yellow]")
-            # (Story already saved above, do not save again here)
 
         # Always ask if user wants to save as future context after story generation
         save_as_context = Confirm.ask(
             "[bold blue]Save this story as future context for character development?[/bold blue]"
         )
         if save_as_context:
-            # Use cross-platform user data directory for context files
             context_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
             context_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             context_filename = f"story_{timestamp}.md"
-            # Use pathlib for cross-platform compatibility and error handling
             context_path = Path(context_dir) / context_filename
             print("DEBUG EXIT REACHED")
             try:
@@ -412,436 +343,5 @@ def story(
         raise typer.Exit(1) from e
 
 
-@app.command()
-def image(
-    prompt: str = typer.Argument(..., help="The image prompt to generate from"),
-    length: str = typer.Option("bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"),
-    age_range: str = typer.Option(
-        "preschool",
-        "--age-range",
-        "-a",
-        help="Target age group (toddler, preschool, early_reader, middle_grade)",
-    ),
-    style: str = typer.Option(
-        "random",
-        "--style",
-        "-s",
-        help="Story style (adventure, comedy, fantasy, fairy_tale, friendship)",
-    ),
-    tone: str = typer.Option(
-        "random",
-        "--tone",
-        "-t",
-        help="Story tone (gentle, exciting, silly, heartwarming, magical)",
-    ),
-    theme: str | None = typer.Option(
-        "random",
-        "--theme",
-        help="Story theme (courage, kindness, teamwork, problem_solving, creativity)",
-    ),
-    learning_focus: str | None = typer.Option(
-        None,
-        "--learning-focus",
-        help=("Learning focus (counting, colors, letters, emotions, nature). Default: None (no learning focus)"),
-    ),
-    setting: str | None = typer.Option(None, "--setting", help="Story setting"),
-    characters: Annotated[
-        list[str] | None,
-        typer.Option("--character", help="Character names/descriptions (multi-use)"),
-    ] = None,
-    output_dir: str | None = typer.Option(
-        None,
-        "--output-dir",
-        "-o",
-        help="Directory to save the image (default: auto-generated)",
-    ),
-    filename: str | None = typer.Option(None, "--filename", "-f", help="Custom filename (without extension)"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
-):
-    """Generate an image from a prompt."""
-
-    if not prompt.strip():
-        console.print("[red]Error:[/red] Please provide a non-empty image prompt.", style="bold")
-        raise typer.Exit(1)
-
-    # Generate output directory if not provided
-    if output_dir is None:
-        output_dir = generate_default_output_dir()
-        console.print(f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}")
-
-    # Show prompt summary and get confirmation
-    if not show_prompt_summary_and_confirm(
-        prompt=prompt,
-        age_range=age_range,
-        style=style,
-        tone=tone,
-        theme=theme,
-        length=length,
-        setting=setting,
-        characters=characters,
-        learning_focus=learning_focus,
-        generation_type="image",
-    ):
-        console.print("[yellow]Image generation cancelled.[/yellow]")
-        raise typer.Exit(0)
-
-    try:
-        # Initialize backend
-        if verbose:
-            console.print("[dim]Initializing Gemini backend...[/dim]")
-
-        backend = get_backend()
-
-        # Create Prompt instance
-        try:
-            # Handle None values and convert to appropriate types
-            characters_list = characters if characters else None
-            theme_value = theme if theme else None
-            learning_focus_value = learning_focus if learning_focus else None
-
-            image_prompt = Prompt(
-                prompt=prompt,
-                context=None,  # No context for standalone image generation
-                length=length,
-                age_range=age_range,
-                style=style,
-                tone=tone,
-                theme=theme_value,
-                setting=setting,
-                characters=characters_list,
-                learning_focus=learning_focus_value if learning_focus_value != "random" else None,
-            )
-
-            if verbose:
-                console.print("[dim]Created prompt with parameters:[/dim]")
-                console.print(f"[dim]  Style: {image_prompt.style}[/dim]")
-                console.print(f"[dim]  Tone: {image_prompt.tone}[/dim]")
-                console.print(f"[dim]  Theme: {image_prompt.theme}[/dim]")
-                console.print(f"[dim]  Learning Focus: {image_prompt.learning_focus}[/dim]")
-
-        except ValueError as e:
-            console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
-            raise typer.Exit(1) from e
-
-        # Generate image
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]Generating image..."),
-            console=console,
-            transient=True,
-        ) as progress:
-            progress.add_task("image", total=None)
-            image, image_bytes = backend.generate_image(image_prompt)
-
-        if image is None or image_bytes is None:
-            console.print(
-                "[red]Error:[/red] Failed to generate image. Please check your API key and try again.",
-                style="bold",
-            )
-            raise typer.Exit(1)
-
-        # Determine filename
-        if filename:
-            image_name = filename
-        else:
-            # Generate filename based on prompt
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]Generating filename..."),
-                console=console,
-                transient=True,
-            ) as progress:
-                progress.add_task("filename", total=None)
-                raw_name = backend.generate_image_name(image_prompt, prompt)  # Use prompt as "story" for naming
-
-            if not raw_name or raw_name == "story_image":
-                # Fallback: create filename from prompt
-                image_name = prompt.lower().replace(" ", "_")[:30]  # Limit to 30 chars
-            else:
-                # Clean up the generated name - take only the first line/word
-                lines = raw_name.split("\n")
-                first_line = lines[0].strip()
-                # Take first word or phrase before common separators
-                for sep in [".", ",", ":", ";", "!", "?"]:
-                    first_line = first_line.split(sep)[0]
-                image_name = first_line.strip() if first_line.strip() else "generated_image"
-
-        # Sanitize filename using standard library methods
-        import string
-
-        # Keep alphanumeric, underscore, hyphen, and space
-        # (will convert space to underscore)
-        valid_chars = string.ascii_letters + string.digits + "_- "
-        # Filter to valid characters and replace spaces with underscores
-        clean_chars = "".join(c if c in valid_chars else "_" for c in image_name)
-        image_name = clean_chars.replace(" ", "_")
-
-        # Ensure .png extension
-        if not image_name.endswith(".png"):
-            image_name += ".png"
-
-        # Save image to specified directory
-        os.makedirs(output_dir, exist_ok=True)
-
-        image_path = os.path.join(output_dir, image_name)
-
-        with open(image_path, "wb") as f:
-            f.write(image_bytes)
-
-        console.print(f"[bold green]✅ Image saved as:[/bold green] {image_path}")
-        console.print(f"[dim]Prompt:[/dim] {prompt}")
-
-        if verbose:
-            console.print(f"[dim]Image size: {len(image_bytes)} bytes[/dim]")
-
-    except RuntimeError as e:
-        if "GEMINI_API_KEY" in str(e):
-            console.print(
-                "[red]Error:[/red] GEMINI_API_KEY environment variable not set.",
-                style="bold",
-            )
-            console.print("[dim]Please set your Gemini API key: export GEMINI_API_KEY=your_key_here[/dim]")
-        else:
-            console.print(f"[red]Error:[/red] {e}", style="bold")
-        raise typer.Exit(1) from e
-
-    except Exception as e:
-        if verbose:
-            console.print(f"[red]Unexpected error:[/red] {e}", style="bold")
-        else:
-            console.print(
-                "[red]Error:[/red] An unexpected error occurred. Use --verbose for details.",
-                style="bold",
-            )
-        raise typer.Exit(1) from e
-
-
-@app.command()
-def tui(
-    context_file: str | None = typer.Option(
-        None, "--context-file", "-c", help="Path to context file (e.g., family.md)"
-    ),
-):
-    """Launch the interactive TUI (Text User Interface) for story generation."""
-    console.print("[bold blue]Launching StoryForge TUI...[/bold blue]")
-    StoryApp(context_file=context_file).run()
-
-
-def load_story_from_file() -> str | None:
-    """
-    Load story content from the default story file.
-
-    Returns:
-        str | None: The story content with newlines replaced by spaces,
-                   or None if the file doesn't exist.
-    """
-    story_file = Path("storytime/test_story.txt")
-    if not story_file.exists():
-        print(f"[yellow]Warning:[/yellow] Story file {story_file} does not exist.")
-        return None
-    with open(story_file, encoding="utf-8") as f:
-        story = f.read().strip()
-    # return story.replace("\n", " ")
-    return story
-
-
-class StoryApp(App[None]):
-    """
-    Main Textual application for interactive story and image generation.
-    Presents a prompt input, output log, and confirmation dialogs.
-    """
-
-    CSS_PATH = None  # No custom CSS
-    BINDINGS = [("q", "quit", "Quit")]  # Keyboard shortcut to quit
-
-    def __init__(self, context_file: str | None = None, *args, **kwargs):
-        """
-        Initialize the StoryApp with backend and optional context.
-
-        Args:
-            context_file: Path to context file (e.g., family.md). If None,
-                         will use default context manager to find data/family.md
-        """
-        super().__init__(*args, **kwargs)
-        from .llm_backend import get_backend
-
-        self.backend = get_backend()
-        # Future enhancement: Context will be intelligently filtered per prompt
-        self.context_manager = get_default_context_manager()
-        if context_file:
-            self.context_manager = ContextManager(context_file)
-        self._pending_prompt: str | None = None
-
-    def compose(self) -> ComposeResult:
-        """
-        Compose the main UI layout: prompt input, generate button, output log,
-        and hidden confirmation dialog.
-        """
-        yield Vertical(
-            Static("Enter a story prompt:"),
-            Input(placeholder="Type your story prompt here...", id="prompt_input"),
-            Button("Generate Story & Image", id="generate_btn"),
-            Log(id="output_log", highlight=True, max_lines=100),
-            # Confirmation dialog, hidden by default
-            Static("", id="confirm_dialog", classes="hidden"),
-        )
-
-    async def on_button_pressed(self, event: Button.Pressed) -> None:
-        """
-        Handle button presses for generating stories/images and confirmation
-        dialog actions.
-        Args:
-            event (Button.Pressed): The button press event.
-        """
-        if event.button.id == "generate_btn":
-            # User clicked 'Generate Story & Image'
-            prompt_input = self.query_one("#prompt_input", Input)
-            output_log = self.query_one("#output_log", Log)
-            prompt = prompt_input.value.strip()
-            if not prompt:
-                output_log.write("[red]Please enter a story prompt.[/red]")
-                return
-            # Show confirmation dialog
-            confirm_dialog = self.query_one("#confirm_dialog", Static)
-            confirm_dialog.update(
-                "[bold]Are you sure?[/bold]\n\n"
-                "This will generate a story and an image based on your prompt, "
-                "and save the image to disk.\n\nContinue?\n\n"
-            )
-            confirm_dialog.remove_class("hidden")
-            confirm_dialog.mount(Horizontal(Button("Yes", id="confirm_yes"), Button("No", id="confirm_no")))
-            self.set_focus(confirm_dialog)
-            self._pending_prompt = prompt  # Store prompt for later use
-            return
-        elif event.button.id == "confirm_yes":
-            # User confirmed generation
-            await self._do_generation()
-            confirm_dialog = self.query_one("#confirm_dialog", Static)
-            confirm_dialog.update("")
-            confirm_dialog.add_class("hidden")
-            # Remove all children (buttons) from dialog
-            for child in list(confirm_dialog.children):
-                child.remove()
-        elif event.button.id == "confirm_no":
-            # User cancelled generation
-            confirm_dialog = self.query_one("#confirm_dialog", Static)
-            confirm_dialog.update("")
-            confirm_dialog.add_class("hidden")
-            # Remove all children (buttons) from dialog
-            for child in list(confirm_dialog.children):
-                child.remove()
-            # Remove spinner if present
-            try:
-                spinner = self.query("#working_spinner").first()
-                if spinner is not None:
-                    spinner.remove()
-            except Exception:
-                pass
-            self._pending_prompt = None
-
-    async def _do_generation(self):
-        """
-        Asynchronously generate the story and image, update the UI, and save
-        the image to disk.
-        Handles spinner display and error reporting.
-        """
-        prompt = getattr(self, "_pending_prompt", None)
-        if not prompt:
-            return
-        output_log = self.query_one("#output_log", Log)
-        spinner = LoadingIndicator(id="working_spinner")
-        self.mount(spinner)
-        try:
-            output_log.clear()
-            output_log.write(f"[bold]Generating story for:[/bold] {prompt}")
-            await asyncio.sleep(0.1)  # Let spinner show
-            # Load context for story generation
-            # Future enhancement: Smart filtering based on prompt analysis
-            context = self.context_manager.extract_relevant_context(prompt)
-
-            # Create Prompt object
-            prompt_obj = Prompt(prompt=prompt, context=context)
-
-            # Generate story in a thread to avoid blocking UI
-            story = await asyncio.to_thread(self.backend.generate_story, prompt_obj)
-
-            output_log.write(f"[green]Story:[/green]\n{story}")
-            output_log.write("[bold green]How would you like to generate illustrations?[/bold green]")
-            output_log.write("1) Use the story as context and describe the image yourself")
-            output_log.write("2) Break the story into logical chunks (paragraphs) and generate an image for each")
-            output_log.write("3) Do not generate any images")
-            # Placeholder for TUI input: in a real TUI, present buttons and dialogs
-            # For now, default to option 3 (skip) for demonstration
-            option = 3
-            # TODO: Replace with actual TUI input handling for options and descriptions
-            if option == 3:
-                output_log.write("[yellow]Image generation skipped by user.[/yellow]")
-                return
-            elif option == 1:
-                user_desc = "Illustration for the story"  # TODO: Get from TUI input
-                image_prompt_text = f"{user_desc}\n\nStory context:\n{story}"
-                output_log.write("[bold]Generating image...[/bold]")
-                # Create Prompt object for image generation
-                user_image_prompt = Prompt(
-                    prompt=image_prompt_text,
-                    context=prompt_obj.context,
-                    length=prompt_obj.length,
-                    age_range=prompt_obj.age_range,
-                    style=prompt_obj.style,
-                    tone=prompt_obj.tone,
-                    theme=prompt_obj.theme,
-                    setting=prompt_obj.setting,
-                    characters=prompt_obj.characters,
-                    learning_focus=prompt_obj.learning_focus,
-                )
-                image, image_bytes = await asyncio.to_thread(self.backend.generate_image, user_image_prompt)
-                if image is None:
-                    output_log.write("[red]Failed to generate image.[/red]")
-                    return
-                image_name = "story_image.png"
-                if image_bytes is not None:
-                    with open(image_name, "wb") as f:
-                        f.write(image_bytes)
-                    output_log.write(f"[green]Image saved as:[/green] {image_name}")
-                else:
-                    output_log.write("[red]No image data to save.[/red]")
-                    return
-            elif option == 2:
-                paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
-                style_hint = ""  # TODO: Get from TUI input
-                for idx, para in enumerate(paragraphs, 1):
-                    para_desc = para  # TODO: Get from TUI input
-                    image_prompt_text = f"{para_desc}\n\nStory context:\n{story}"
-                    output_log.write(f"[bold]Generating image for paragraph {idx}...[/bold]")
-                    # Create Prompt object for image generation
-                    final_prompt_text = (
-                        image_prompt_text if not style_hint else f"{image_prompt_text}\nStyle: {style_hint}"
-                    )
-                    para_image_prompt = Prompt(
-                        prompt=final_prompt_text,
-                        context=prompt_obj.context,
-                        length=prompt_obj.length,
-                        age_range=prompt_obj.age_range,
-                        style=prompt_obj.style,
-                        tone=prompt_obj.tone,
-                        theme=prompt_obj.theme,
-                        setting=prompt_obj.setting,
-                        characters=prompt_obj.characters,
-                        learning_focus=prompt_obj.learning_focus,
-                    )
-                    image, image_bytes = await asyncio.to_thread(self.backend.generate_image, para_image_prompt)
-                    image_name = f"story_paragraph_{idx}.png"
-                    if image_bytes:
-                        with open(image_name, "wb") as f:
-                            f.write(image_bytes)
-                        output_log.write(f"[green]Image saved as:[/green] {image_name}")
-            else:
-                output_log.write("[yellow]Invalid option. Skipping image generation.[/yellow]")
-                return
-        finally:
-            spinner.remove()
-            self._pending_prompt = None
-
-
 if __name__ == "__main__":
-    app()
+    typer.run(main)

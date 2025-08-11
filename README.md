@@ -62,7 +62,7 @@ This command is available as long as your virtual environment is activated.
 You can use the command-line interface directly with the unified entry point:
 
 ```bash
-storyforge story "Tell me a story about a robot"
+storyforge "Tell me a story about a robot"
 ```
 
 After generating a story, you will be prompted to choose how to generate illustrations:
@@ -123,9 +123,9 @@ source ~/.zshrc   # for zsh
 
 Once enabled, you can use tab completion for:
 
-- **Commands**: `storyforge <TAB>` shows available commands (`story`, `image`, `tui`)
-- **Options**: `storyforge story --<TAB>` shows options like `--output-dir`, `--verbose`, etc.
-- **Help**: Use `storyforge <command> --help` to see all available options
+- **Commands**: `storyforge <TAB>` shows available commands (`image`, `tui`)
+- **Options**: `storyforge --<TAB>` shows options like `--output-dir`, `--verbose`, etc.
+- **Help**: Use `storyforge --help` to see all available options
 
 ## Editing and Debugging
 
@@ -135,7 +135,7 @@ You can use the `--debug` flag with the `story` command to load a story from a l
 
 Example:
 ```bash
-storyforge story "Tell me a story about a robot" --debug
+storyforge "Tell me a story about a robot" --debug
 ```
 
 When `--debug` is set, StoryForge will load the story from a local file (see `load_story_from_file()` in the code) instead of calling the backend. The default is `False`.
