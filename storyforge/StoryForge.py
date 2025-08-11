@@ -36,6 +36,7 @@ def show_prompt_summary_and_confirm(
     setting: str | None,
     characters: list[str] | None,
     learning_focus: str | None,
+    image_style: str = "chibi",
     generation_type: str = "story",
 ) -> bool:
     """Display a summary of the prompt and ask for user confirmation."""
@@ -53,6 +54,7 @@ def show_prompt_summary_and_confirm(
         console.print(f"[bold]Setting:[/bold] {setting}")
     if characters:
         console.print(f"[bold]Characters:[/bold] {', '.join(characters)}")
+    console.print(f"[bold]Image Style:[/bold] {image_style}")
     console.print()
     return Confirm.ask(f"[bold green]Proceed with {generation_type} generation?[/bold green]")
 
@@ -108,6 +110,11 @@ def main(
         list[str] | None,
         typer.Option("--character", help="Character names/descriptions (multi-use)"),
     ] = None,
+    image_style: str = typer.Option(
+        "chibi",
+        "--image-style",
+        help="Image art style (chibi, realistic, cartoon, watercolor, sketch). Default: chibi",
+    ),
     output_dir: str | None = typer.Option(
         None,
         "--output-dir",
@@ -151,6 +158,7 @@ def main(
         setting=setting,
         characters=characters,
         learning_focus=learning_focus,
+        image_style=image_style,
         generation_type="story",
     ):
         console.print("[yellow]Story generation cancelled.[/yellow]")
@@ -206,6 +214,7 @@ def main(
                 setting=setting,
                 characters=characters_list,
                 learning_focus=learning_focus_value,
+                image_style=image_style,
             )
 
             if verbose:
@@ -238,6 +247,7 @@ def main(
                 setting=setting,
                 characters=characters_list,
                 learning_focus=learning_focus_value,
+                image_style=image_style,
             )
             with Progress(
                 SpinnerColumn(),
@@ -327,6 +337,7 @@ def main(
                             setting=setting,
                             characters=characters_list,
                             learning_focus=learning_focus_value,
+                            image_style=image_style,
                         )
 
                         # Generate image with reference for consistency (if available)

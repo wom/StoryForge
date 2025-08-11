@@ -39,6 +39,8 @@ class Prompt:
         setting (str, optional): Specific story setting
         characters (list[str], optional): Character names/descriptions to include
         learning_focus (str, optional): Educational element to emphasize
+        image_style (str): Visual art style for illustrations - "chibi", "realistic",
+            "cartoon", "watercolor", "sketch"
 
     Usage:
         prompt = Prompt("A brave little mouse goes on an adventure")
@@ -57,6 +59,7 @@ class Prompt:
     setting: str | None = None
     characters: list[str] | None = None
     learning_focus: str | None = None
+    image_style: str = "chibi"
 
     def __post_init__(self) -> None:
         """Resolve random parameters and validate after initialization."""
@@ -119,6 +122,13 @@ class Prompt:
             "emotions",
             "nature",
         ]
+        valid_image_styles = [
+            "chibi",
+            "realistic",
+            "cartoon",
+            "watercolor",
+            "sketch",
+        ]
 
         if self.length not in valid_lengths:
             raise ValueError(f"Invalid length '{self.length}'. Must be one of: {valid_lengths}")
@@ -137,6 +147,9 @@ class Prompt:
 
         if self.learning_focus and self.learning_focus not in valid_learning:
             raise ValueError(f"Invalid learning_focus '{self.learning_focus}'. Must be one of: {valid_learning}")
+
+        if self.image_style not in valid_image_styles:
+            raise ValueError(f"Invalid image_style '{self.image_style}'. Must be one of: {valid_image_styles}")
 
     def _get_length_description(self) -> str:
         """Get description text for the story length."""
@@ -293,6 +306,16 @@ class Prompt:
             }
             image_parts.append(f" Style: {age_art_guidance.get(self.age_range, '')}")
 
+            # Add image style guidance
+            image_style_guidance = {
+                "chibi": "in cute chibi/kawaii style with oversized heads and adorable features",
+                "realistic": "in realistic, detailed artistic style with natural proportions",
+                "cartoon": "in bright cartoon style with bold lines and expressive characters",
+                "watercolor": "in soft watercolor painting style with gentle, flowing colors",
+                "sketch": "in pencil sketch style with artistic shading and fine details",
+            }
+            image_parts.append(f" Art style: {image_style_guidance.get(self.image_style, '')}")
+
             # Safety guidelines
             image_parts.append(" Ensure the image is completely safe, positive, and appropriate for children.")
 
@@ -343,4 +366,5 @@ class Prompt:
                 "family",
             ],
             "learning_focus": ["counting", "colors", "letters", "emotions", "nature"],
+            "image_style": ["chibi", "realistic", "cartoon", "watercolor", "sketch"],
         }
