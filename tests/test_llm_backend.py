@@ -17,6 +17,9 @@ class DummyBackend(LLMBackend):
     def generate_image_name(self, prompt: Prompt, story: str) -> str:
         raise NotImplementedError("Test implementation")
 
+    def generate_image_prompt(self, prompt: Prompt) -> str:
+        raise NotImplementedError("Test implementation")
+
 
 # Original abstract base class tests
 def test_generate_story_not_implemented():
@@ -56,9 +59,7 @@ class TestGetBackend:
         mock_gemini.assert_called_once()
         assert backend == mock_instance
 
-    @patch.dict(
-        os.environ, {"LLM_BACKEND": "gemini", "GEMINI_API_KEY": "test_key"}, clear=True
-    )
+    @patch.dict(os.environ, {"LLM_BACKEND": "gemini", "GEMINI_API_KEY": "test_key"}, clear=True)
     @patch("storyforge.gemini_backend.GeminiBackend")
     def test_get_backend_explicit_gemini(self, mock_gemini):
         """Test explicit Gemini backend selection."""

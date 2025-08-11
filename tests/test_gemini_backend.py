@@ -8,9 +8,7 @@ from storyforge.prompt import Prompt
 def test_generate_story_success(mock_client):
     backend = GeminiBackend()
     mock_response = MagicMock()
-    mock_response.candidates = [
-        MagicMock(content=MagicMock(parts=[MagicMock(text="A story")]))
-    ]
+    mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="A story")]))]
     backend.client.models.generate_content.return_value = mock_response
     prompt = Prompt(prompt="test prompt")
     result = backend.generate_story(prompt)
