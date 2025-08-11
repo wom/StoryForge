@@ -45,7 +45,9 @@ class LLMBackend(ABC):
         raise NotImplementedError("Subclass must implement generate_story method")
 
     @abstractmethod
-    def generate_image(self, prompt: "Prompt", reference_image_bytes: bytes | None = None) -> tuple[object | None, bytes | None]:
+    def generate_image(
+        self, prompt: "Prompt", reference_image_bytes: bytes | None = None
+    ) -> tuple[object | None, bytes | None]:
         """
         Generate an image based on the given Prompt object.
 

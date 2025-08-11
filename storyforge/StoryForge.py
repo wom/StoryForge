@@ -136,7 +136,7 @@ def main(
     ),
 ):
     if debug:
-        verbose = True # Ensure verbose is enabled in debug mode
+        verbose = True  # Ensure verbose is enabled in debug mode
 
     if prompt is None or not str(prompt).strip():
         console.print("[red]Error:[/red] Please provide a non-empty story prompt.", style="bold")
@@ -257,7 +257,7 @@ def main(
             ) as progress:
                 progress.add_task("story", total=None)
                 if debug:
-                    story = load_story_from_file('storyforge/test_story.txt')
+                    story = load_story_from_file("storyforge/test_story.txt")
                     console.print("[cyan][DEBUG] load_story_from_file was called and returned.[/cyan]")
                 else:
                     story = backend.generate_story(story_prompt)
@@ -311,23 +311,49 @@ def main(
             num_images = typer.prompt("How many images would you like to generate?", type=int, default=1)
 
             if num_images > 0:
-                console.print(f"[bold blue]Generating {num_images} image{'s' if num_images > 1 else ''}...[/bold blue]")
+                msg = f"Generating {num_images} image{'s' if num_images > 1 else ''}..."
+                console.print(f"[bold blue]{msg}[/bold blue]")
 
                 reference_image_bytes = None
                 for i in range(num_images):
-                    console.print(f"[dim]Generating image {i+1} of {num_images}...[/dim]")
+                    console.print(f"[dim]Generating image {i + 1} of {num_images}...[/dim]")
 
                     with Progress(
                         SpinnerColumn(),
-                        TextColumn(f"[bold blue]Creating illustration {i+1}..."),
+                        TextColumn(f"[bold blue]Creating illustration {i + 1}..."),
                         console=console,
                         transient=True,
                     ) as progress:
                         progress.add_task("image", total=None)
 
                         # Use story as prompt for image generation
+                        # Add qualifier when generating multiple images
+                        story_prompt_for_image = story
+                        if num_images > 1:
+                            # Generate qualifier based on image position
+                            ordinals = ["first", "second", "third", "fourth", "fifth"]
+                            fractions = {
+                                2: ["first half", "second half"],
+                                3: ["first third", "second third", "third third"],
+                                4: ["first quarter", "second quarter", "third quarter", "fourth quarter"],
+                                5: ["first fifth", "second fifth", "third fifth", "fourth fifth", "fifth fifth"],
+                            }
+
+                            if num_images in fractions and i < len(fractions[num_images]):
+                                fraction = fractions[num_images][i]
+                                qualifier = f"This image should illustrate the {fraction} of the story. "
+                            else:
+                                # Fallback for unsupported numbers or edge cases
+                                ordinal = ordinals[i] if i < len(ordinals) else f"{i + 1}th"
+                                qualifier = (
+                                    f"This image should illustrate the {ordinal} part of the story "
+                                    f"(part {i + 1} of {num_images}). "
+                                )
+
+                            story_prompt_for_image = qualifier + story
+
                         image_prompt = Prompt(
-                            prompt=story,
+                            prompt=story_prompt_for_image,
                             context=context,
                             length=length,
                             age_range=age_range,
@@ -346,19 +372,19 @@ def main(
                     if image and image_bytes:
                         # Generate filename
                         image_name = backend.generate_image_name(image_prompt, story)
-                        image_filename = f"{image_name}_{i+1:02d}.png" if num_images > 1 else f"{image_name}.png"
+                        image_filename = f"{image_name}_{i + 1:02d}.png" if num_images > 1 else f"{image_name}.png"
                         image_path = os.path.join(output_dir, image_filename)
 
                         # Save image
-                        with open(image_path, "wb") as f:
-                            f.write(image_bytes)
-                        console.print(f"[bold green]✅ Image {i+1} saved as:[/bold green] {image_path}")
+                        with open(image_path, "wb") as f:  # type: ignore[assignment]
+                            f.write(image_bytes)  # type: ignore[arg-type]
+                        console.print(f"[bold green]✅ Image {i + 1} saved as:[/bold green] {image_path}")
 
                         # Use first image as reference for subsequent ones
                         if i == 0:
                             reference_image_bytes = image_bytes
                     else:
-                        console.print(f"[red]❌ Failed to generate image {i+1}[/red]")
+                        console.print(f"[red]❌ Failed to generate image {i + 1}[/red]")
             else:
                 console.print("[yellow]No images will be generated.[/yellow]")
         else:

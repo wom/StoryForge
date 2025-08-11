@@ -309,7 +309,7 @@ class Prompt:
             # Add image style guidance
             image_style_guidance = {
                 "chibi": "in cute chibi/kawaii style with oversized heads and adorable features",
-                "realistic": "in realistic, detailed artistic style with natural proportions",
+                "realistic": "in realistic, ultra detailed artistic style with natural proportions",
                 "cartoon": "in bright cartoon style with bold lines and expressive characters",
                 "watercolor": "in soft watercolor painting style with gentle, flowing colors",
                 "sketch": "in pencil sketch style with artistic shading and fine details",
