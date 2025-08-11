@@ -66,8 +66,8 @@ class GeminiBackend(LLMBackend):
             contents = prompt.story
 
             response = self.client.models.generate_content(
-                # model="gemini-2.5-flash",
-                model="gemini-2.5-pro",
+                model="gemini-2.5-flash",
+                # model="gemini-2.5-pro",
                 contents=contents,
             )
             # Extract the story text from the response with proper null checking

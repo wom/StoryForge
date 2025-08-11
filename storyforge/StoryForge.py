@@ -57,13 +57,13 @@ def show_prompt_summary_and_confirm(
     return Confirm.ask(f"[bold green]Proceed with {generation_type} generation?[/bold green]")
 
 
-def load_story_from_file() -> str | None:
+def load_story_from_file(rel_path: str) -> str | None:
     """
     Load story content from the default story file.
     Returns:
         str | None: The story content, or None if the file doesn't exist.
     """
-    story_file = Path("storyforge/test_story.txt")
+    story_file = Path(rel_path)
     if not story_file.exists():
         print(f"[yellow]Warning:[/yellow] Story file {story_file} does not exist.")
         return None
@@ -130,6 +130,7 @@ def main(
 ):
     if debug:
         verbose = True # Ensure verbose is enabled in debug mode
+
     if prompt is None or not str(prompt).strip():
         console.print("[red]Error:[/red] Please provide a non-empty story prompt.", style="bold")
         raise typer.Exit(1)
@@ -221,46 +222,66 @@ def main(
             console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
             raise typer.Exit(1) from e
 
-        # Generate story
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[bold blue]Generating story..."),
-            console=console,
-            transient=True,
-        ) as progress:
-            progress.add_task("story", total=None)
-            if debug:
-                try:
-                    story = load_story_from_file()
-                    story_filename = "story.txt"
-                    story_path = os.path.join(output_dir, story_filename)
-                    os.makedirs(output_dir, exist_ok=True)
-                    with open(story_path, "w", encoding="utf-8") as f:
-                        f.write(f"Story: {prompt}\n\n")
-                        f.write(story if story is not None else "")
-                    console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
-                    raise typer.Exit(0)
-                except Exception as e:
-                    print(f"DEBUG ERROR: {e}")
-                    raise typer.Exit(1) from e
-            else:
-                story = backend.generate_story(story_prompt)
-                if verbose:
-                    console.print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
-
-        if story is None or story == "[Error generating story]":
-            console.print(
-                "[red]Error:[/red] Failed to generate story. Please check your API key and try again.",
-                style="bold",
+        # Refinement loop
+        refinements = None
+        accepted = False
+        while not accepted:
+            # Update prompt with refinements if any
+            story_prompt = Prompt(
+                prompt=prompt,
+                context=context,
+                length=length,
+                age_range=age_range,
+                style=style,
+                tone=tone,
+                theme=theme_value,
+                setting=setting,
+                characters=characters_list,
+                learning_focus=learning_focus_value,
             )
-            raise typer.Exit(1)
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]Generating story..."),
+                console=console,
+                transient=True,
+            ) as progress:
+                progress.add_task("story", total=None)
+                if debug:
+                    story = load_story_from_file('storyforge/test_story.txt')
+                    console.print("[cyan][DEBUG] load_story_from_file was called and returned.[/cyan]")
+                else:
+                    story = backend.generate_story(story_prompt)
+                    if verbose:
+                        console.print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
 
-        # Display the generated story
-        console.print("\n[bold green]Generated Story:[/bold green]")
-        console.print(f"[dim]Prompt:[/dim] {prompt}")
-        console.print()
-        console.print(story)
-        console.print()
+            if story is None or story == "[Error generating story]":
+                console.print(
+                    "[red]Error:[/red] Failed to generate story. Please check your API key and try again.",
+                    style="bold",
+                )
+                raise typer.Exit(1)
+
+            # Display the generated story
+            console.print("\n[bold green]Generated Story:[/bold green]")
+            console.print(f"[dim]Prompt:[/dim] {prompt}")
+            if refinements:
+                console.print(f"[dim]Refinements:[/dim] {refinements}")
+            console.print()
+            console.print(story)
+            console.print()
+
+            # Ask if user wants to refine
+            # Custom refinement confirmation: treat empty <cr> or 'n' as "no"
+            if Confirm.ask(
+                "[bold yellow]Would you like to refine the story?[/bold yellow]",
+                default=False,
+                show_default=True,
+            ):
+                ref_base = "Keep the story as similar as possible, but apply the following refinements: {} \n\n {}"
+                refinements = typer.prompt("Refinements:")
+                prompt = ref_base.format(refinements, story)
+            else:
+                accepted = True
 
         # Always save the story and print the message before image generation
         story_filename = "story.txt"
@@ -274,7 +295,7 @@ def main(
         # Present image generation options using Confirm.ask for test compatibility
         if Confirm.ask("Would you like to generate illustrations for the story?"):
             num_paragrpahs = len([p.strip() for p in (story or "").split("\n") if p.strip()])
-            print(num_paragrpahs)
+            console.print(f'Paragraphs: {num_paragrpahs}')
             raise typer.Exit(0)
         else:
             console.print("[yellow]Image generation skipped by user.[/yellow]")
