@@ -19,7 +19,7 @@ test: install
 
 # Run the app
 run: install
-	$(VENV_ACTIVATE) storyforge
+	$(VENV_ACTIVATE) storyforge --help
 
 # [venv] Run attaching to debug console
 debug:
