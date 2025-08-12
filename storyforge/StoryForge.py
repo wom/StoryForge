@@ -18,6 +18,9 @@ from .prompt import Prompt
 
 console = Console()
 
+# Create Typer app instance for entrypoint
+app = typer.Typer(help="StoryForge: Generate illustrated stories using Gemini LLM backend")
+
 
 def generate_default_output_dir() -> str:
     """Generate a timestamped output directory name."""
@@ -74,6 +77,7 @@ def load_story_from_file(rel_path: str) -> str | None:
     return story
 
 
+@app.command()
 def main(
     prompt: str = typer.Argument(..., help="The story prompt to generate from (positional, required)"),
     length: str = typer.Option("bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"),
@@ -455,4 +459,4 @@ def main(
 
 
 if __name__ == "__main__":
-    typer.run(main)
+    app()
