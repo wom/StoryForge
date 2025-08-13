@@ -63,8 +63,8 @@ export GEMINI_API_KEY=your_api_key_here
 export ANTHROPIC_API_KEY=your_api_key_here
 ```
 
-## Option 3: OpenAI (Text Only)
-**Supports:** Story generation only (excellent quality)
+#### Option 3: OpenAI (Full Features)
+**Supports:** Story generation + Image generation (DALL-E)
 
 1. Visit [OpenAI Platform](https://platform.openai.com/) to get your OpenAI API key
 2. Set the environment variable:
@@ -72,11 +72,12 @@ export ANTHROPIC_API_KEY=your_api_key_here
 export OPENAI_API_KEY=your_api_key_here
 ```
 
-#### Option 4: Hybrid Setup (Best of Both)
-Set up both backends for maximum flexibility:
+#### Option 4: Hybrid Setup (Best of All)
+Set up multiple backends for maximum flexibility:
 ```bash
 export GEMINI_API_KEY=your_gemini_key_here
 export ANTHROPIC_API_KEY=your_anthropic_key_here
+export OPENAI_API_KEY=your_openai_key_here
 ```
 
 Add these to your shell profile (`.bashrc`, `.zshrc`, etc.) to make them permanent.
@@ -85,33 +86,7 @@ Add these to your shell profile (`.bashrc`, `.zshrc`, etc.) to make them permane
 - StoryForge automatically detects available backends
 - Prefers Gemini for full features, falls back to others
 - Use `LLM_BACKEND=anthropic` to force Claude for text generation
-
-## Usage
-
-### Basic Story Generation
-
-```bash
-storyforge "Tell me a story about a robot learning to make friends"
-```
-
-### Generate Just an Image
-
-```bash
-storyforge image "A friendly robot in a colorful playground"
-```
-
-=======
-### 1. Get a Gemini API Key
-
-Visit [Google AI Studio](https://aistudio.google.com/) to get your free Gemini API key.
-
-### 2. Set Environment Variable
-
-```bash
-export GEMINI_API_KEY=your_api_key_here
-```
-
-Add this to your shell profile (`.bashrc`, `.zshrc`, etc.) to make it permanent.
+- Use `LLM_BACKEND=openai` to force OpenAI for text and image generation
 
 ## Usage
 

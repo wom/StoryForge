@@ -21,12 +21,93 @@ class OpenAIBackend(LLMBackend):
 
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
         """
-        Return a list of image prompts by splitting the story into num_prompts chunks.
-        This is a stub implementation to satisfy the abstract base class.
+        Break the given story into detailed image prompts using OpenAI's understanding.
+        Each prompt will be incredibly detailed for use with DALL-E image generation.
+
+        Args:
+            story (str): The generated story to break into image prompts.
+            context (str): Additional context for the story.
+            num_prompts (int): The number of image prompts to return.
+
+        Returns:
+            list[str]: A list of detailed image prompts describing scenes from the story.
+        """
+        try:
+            # Create a comprehensive prompt for GPT to generate image descriptions
+            image_prompt_request = (
+                f"Please break this story into {num_prompts} detailed, progressive image prompts "
+                f"that would be perfect for generating illustrations with DALL-E. Each prompt should be "
+                f"incredibly detailed, focusing on visual elements like character appearance, "
+                f"setting details, colors, lighting, and mood.\n\n"
+                f"Story: {story}\n\n"
+            )
+
+            if context:
+                image_prompt_request += f"Context: {context}\n\n"
+
+            image_prompt_request += (
+                f"Return exactly {num_prompts} image prompts, each on a new line, numbered 1-{num_prompts}. "
+                f"Each should be child-friendly, detailed, and suitable for AI image generation."
+            )
+
+            response = self.client.chat.completions.create(
+                model="gpt-5-nano",
+                messages=[{"role": "user", "content": image_prompt_request}],
+                max_tokens=2000,
+                temperature=0.5,
+            )
+
+            # Extract and parse the prompts
+            if response.choices and response.choices[0].message and response.choices[0].message.content:
+                text = response.choices[0].message.content.strip()
+                # Parse numbered prompts from GPT's response
+                lines = text.split("\n")
+                prompts: list[str] = []
+
+                for line in lines:
+                    line = line.strip()
+                    # Look for numbered lines like "1. " or "1) "
+                    if line and (line[0].isdigit() or line.startswith(str(len(prompts) + 1))):
+                        # Remove the number and clean up
+                        cleaned = line
+                        for prefix in [
+                            f"{len(prompts) + 1}. ",
+                            f"{len(prompts) + 1}) ",
+                            f"{len(prompts) + 1}: ",
+                        ]:
+                            if cleaned.startswith(prefix):
+                                cleaned = cleaned[len(prefix) :]
+                                break
+                        if cleaned:
+                            prompts.append(cleaned)
+
+                # If we got the right number of prompts, return them
+                if len(prompts) == num_prompts:
+                    return prompts
+
+            # Fallback: Simple story-based prompts
+            return self._generate_fallback_image_prompts(story, context, num_prompts)
+
+        except Exception:
+            # Fallback to simple story-based prompts
+            return self._generate_fallback_image_prompts(story, context, num_prompts)
+
+    def _generate_fallback_image_prompts(self, story: str, context: str, num_prompts: int) -> list[str]:
+        """
+        Generate fallback image prompts when OpenAI API fails.
+
+        Args:
+            story (str): The story text.
+            context (str): Additional context.
+            num_prompts (int): Number of prompts needed.
+
+        Returns:
+            list[str]: Simple fallback image prompts.
         """
         # Simple fallback: split story into paragraphs, or repeat the story if not enough
         paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
         prompts = []
+
         for i in range(num_prompts):
             if i < len(paragraphs):
                 base = paragraphs[i]
@@ -36,6 +117,7 @@ class OpenAIBackend(LLMBackend):
             if context:
                 prompt += f"\nContext: {context}"
             prompts.append(prompt)
+
         return prompts
 
     def __init__(self) -> None:
@@ -65,7 +147,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.story
 
             response = self.client.chat.completions.create(
-                model="gpt-4", messages=[{"role": "user", "content": contents}], max_tokens=2000, temperature=0.7
+                model="gpt-5-nano", messages=[{"role": "user", "content": contents}], max_tokens=2000, temperature=0.7
             )
 
             # Extract the story text from the response with proper null checking
@@ -73,9 +155,9 @@ class OpenAIBackend(LLMBackend):
                 return response.choices[0].message.content.strip()
             else:
                 return "[Error: No valid response from OpenAI]"
-        except Exception:
+        except Exception as e:
             # Return a generic error message if generation fails
-            return "[Error generating story]"
+            return f"[Error generating story: {str(e)}]"
 
     def generate_image(
         self, prompt: Prompt, reference_image_bytes: bytes | None = None
@@ -145,7 +227,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.image_name(story)
 
             response = self.client.chat.completions.create(
-                model="gpt-4", messages=[{"role": "user", "content": contents}], max_tokens=50, temperature=0.5
+                model="gpt-5-nano", messages=[{"role": "user", "content": contents}], max_tokens=50, temperature=0.5
             )
 
             # Extract name with proper null checking
@@ -153,7 +235,9 @@ class OpenAIBackend(LLMBackend):
                 name = response.choices[0].message.content.strip()
                 # Remove file extension if present
                 name = name.split(".")[0]
-                return name
+                # Clean up any unwanted characters to match Anthropic pattern
+                name = "".join(c for c in name if c.isalnum() or c == "_")
+                return name if name else "story_image"
             else:
                 return "story_image"
         except Exception:
