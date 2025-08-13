@@ -21,6 +21,8 @@ class AnthropicBackend(LLMBackend):
     methods will return None since Claude cannot generate images.
     """
 
+    name = "anthropic"
+
     def __init__(self) -> None:
         """
         Initialize the Anthropic client using the API key from environment variables.

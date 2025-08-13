@@ -42,6 +42,7 @@ def show_prompt_summary_and_confirm(
     learning_focus: str | None,
     image_style: str = "chibi",
     generation_type: str = "story",
+    backend_name: str | None = None,
 ) -> bool:
     """Display a summary of the prompt and ask for user confirmation."""
     console.print(f"\n[bold cyan]📋 {generation_type.title()} Generation Summary:[/bold cyan]")
@@ -59,6 +60,8 @@ def show_prompt_summary_and_confirm(
     if characters:
         console.print(f"[bold]Characters:[/bold] {', '.join(characters)}")
     console.print(f"[bold]Image Style:[/bold] {image_style}")
+    if backend_name:
+        console.print(f"[bold]Backend:[/bold] {backend_name}")
     console.print()
     return Confirm.ask(f"[bold green]Proceed with {generation_type} generation?[/bold green]")
 
@@ -152,34 +155,35 @@ def main(
         output_dir = generate_default_output_dir()
         console.print(f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}")
 
-    # Show prompt summary and get confirmation
-    if not show_prompt_summary_and_confirm(
-        prompt=prompt,
-        age_range=age_range,
-        style=style,
-        tone=tone,
-        theme=theme,
-        length=length,
-        setting=setting,
-        characters=characters,
-        learning_focus=learning_focus,
-        image_style=image_style,
-        generation_type="story",
-    ):
-        console.print("[yellow]Story generation cancelled.[/yellow]")
-        raise typer.Exit(0)
-
     try:
         # Initialize backend
         if verbose:
             console.print("[dim]Initializing AI backend...[/dim]")
 
         backend = get_backend()
+        backend_name = backend.name
 
         if verbose:
             # Show which backend was selected
-            backend_name = type(backend).__name__.replace("Backend", "")
             console.print(f"[dim]Using {backend_name} backend[/dim]")
+
+        # Show prompt summary and get confirmation
+        if not show_prompt_summary_and_confirm(
+            prompt=prompt,
+            age_range=age_range,
+            style=style,
+            tone=tone,
+            theme=theme,
+            length=length,
+            setting=setting,
+            characters=characters,
+            learning_focus=learning_focus,
+            image_style=image_style,
+            generation_type="story",
+            backend_name=backend_name,
+        ):
+            console.print("[yellow]Story generation cancelled.[/yellow]")
+            raise typer.Exit(0)
 
         # Load context files if --use-context is enabled (default).
         try:

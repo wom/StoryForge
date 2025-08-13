@@ -19,6 +19,8 @@ class OpenAIBackend(LLMBackend):
     Requires OPENAI_API_KEY environment variable to be set.
     """
 
+    name = "openai"
+
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
         """
         Break the given story into detailed image prompts using OpenAI's understanding.
@@ -51,10 +53,8 @@ class OpenAIBackend(LLMBackend):
             )
 
             response = self.client.chat.completions.create(
-                model="gpt-5-nano",
+                model="gpt-5",
                 messages=[{"role": "user", "content": image_prompt_request}],
-                max_tokens=2000,
-                temperature=0.5,
             )
 
             # Extract and parse the prompts
@@ -147,7 +147,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.story
 
             response = self.client.chat.completions.create(
-                model="gpt-5-nano", messages=[{"role": "user", "content": contents}], max_tokens=2000, temperature=0.7
+                model="gpt-5", messages=[{"role": "user", "content": contents}]
             )
 
             # Extract the story text from the response with proper null checking
@@ -227,7 +227,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.image_name(story)
 
             response = self.client.chat.completions.create(
-                model="gpt-5-nano", messages=[{"role": "user", "content": contents}], max_tokens=50, temperature=0.5
+                model="gpt-5", messages=[{"role": "user", "content": contents}]
             )
 
             # Extract name with proper null checking
