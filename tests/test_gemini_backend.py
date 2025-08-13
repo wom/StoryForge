@@ -1,9 +1,11 @@
+import os
 from unittest.mock import MagicMock, patch
 
 from storyforge.gemini_backend import GeminiBackend
 from storyforge.prompt import Prompt
 
 
+@patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
 @patch("storyforge.gemini_backend.genai.Client")
 def test_generate_story_success(mock_client):
     backend = GeminiBackend()
@@ -15,6 +17,7 @@ def test_generate_story_success(mock_client):
     assert result == "A story"
 
 
+@patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
 @patch("storyforge.gemini_backend.genai.Client")
 def test_generate_story_error(mock_client):
     backend = GeminiBackend()
@@ -24,6 +27,7 @@ def test_generate_story_error(mock_client):
     assert result == "[Error generating story]"
 
 
+@patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
 @patch("storyforge.gemini_backend.genai.Client")
 def test_generate_image_success(mock_client):
     backend = GeminiBackend()
@@ -39,6 +43,7 @@ def test_generate_image_success(mock_client):
         assert image_bytes == b"bytes"
 
 
+@patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
 @patch("storyforge.gemini_backend.genai.Client")
 def test_generate_image_none(mock_client):
     backend = GeminiBackend()
@@ -53,6 +58,7 @@ def test_generate_image_none(mock_client):
     assert image_bytes is None
 
 
+@patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
 @patch("storyforge.gemini_backend.genai.Client")
 def test_generate_image_name_success(mock_client):
     backend = GeminiBackend()
@@ -66,6 +72,7 @@ def test_generate_image_name_success(mock_client):
     assert name == "filename"
 
 
+@patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
 @patch("storyforge.gemini_backend.genai.Client")
 def test_generate_image_name_error(mock_client):
     backend = GeminiBackend()
