@@ -165,10 +165,9 @@ def get_backend(backend_name: str | None = None) -> LLMBackend:
             )
 
         elif backend_name == "anthropic":
-            # Future implementation
-            raise RuntimeError(
-                "Anthropic backend not yet implemented. Please use Gemini backend by setting GEMINI_API_KEY."
-            )
+            from .anthropic_backend import AnthropicBackend
+
+            return AnthropicBackend()
 
         else:
             raise RuntimeError(f"Unknown backend '{backend_name}'. Supported backends: gemini (more coming soon)")
@@ -203,9 +202,22 @@ def list_available_backends() -> dict:
             "reason": "google-genai package not installed",
         }
 
+    # Check Anthropic
+    try:
+        import anthropic  # noqa: F401
+
+        has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        backends["anthropic"] = {
+            "available": has_key,
+            "reason": "Ready" if has_key else "ANTHROPIC_API_KEY not set",
+        }
+    except ImportError:
+        backends["anthropic"] = {
+            "available": False,
+            "reason": "anthropic package not installed",
+        }
+
     # Future backends would be checked here
     backends["openai"] = {"available": False, "reason": "Not yet implemented"}
-
-    backends["anthropic"] = {"available": False, "reason": "Not yet implemented"}
 
     return backends

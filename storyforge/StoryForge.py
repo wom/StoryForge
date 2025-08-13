@@ -1,5 +1,6 @@
 """
-StoryForge: Simplified CLI for generating illustrated stories using Gemini LLM backend.
+StoryForge: Simplified CLI for generating illustrated stories using multiple LLM backends.
+Supports Google Gemini and Anthropic Claude backends.
 """
 
 import os
@@ -19,7 +20,7 @@ from .prompt import Prompt
 console = Console()
 
 # Create Typer app instance for entrypoint
-app = typer.Typer(help="StoryForge: Generate illustrated stories using Gemini LLM backend")
+app = typer.Typer(help="StoryForge: Generate illustrated stories using AI language models (Gemini/Claude)")
 
 
 def generate_default_output_dir() -> str:
@@ -171,9 +172,14 @@ def main(
     try:
         # Initialize backend
         if verbose:
-            console.print("[dim]Initializing Gemini backend...[/dim]")
+            console.print("[dim]Initializing AI backend...[/dim]")
 
         backend = get_backend()
+
+        if verbose:
+            # Show which backend was selected
+            backend_name = type(backend).__name__.replace("Backend", "")
+            console.print(f"[dim]Using {backend_name} backend[/dim]")
 
         # Load context files if --use-context is enabled (default).
         try:
@@ -443,6 +449,12 @@ def main(
                 style="bold",
             )
             console.print("[dim]Please set your Gemini API key: export GEMINI_API_KEY=your_key_here[/dim]")
+        elif "ANTHROPIC_API_KEY" in str(e):
+            console.print(
+                "[red]Error:[/red] ANTHROPIC_API_KEY environment variable not set.",
+                style="bold",
+            )
+            console.print("[dim]Please set your Anthropic API key: export ANTHROPIC_API_KEY=your_key_here[/dim]")
         else:
             console.print(f"[red]Error:[/red] {e}", style="bold")
         raise typer.Exit(1) from e
