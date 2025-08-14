@@ -1,5 +1,6 @@
 """
-StoryForge: Simplified CLI for generating illustrated stories using Gemini LLM backend.
+StoryForge: Simplified CLI for generating illustrated stories using multiple LLM backends.
+Supports Google Gemini and Anthropic Claude backends.
 """
 
 import os
@@ -19,7 +20,7 @@ from .prompt import Prompt
 console = Console()
 
 # Create Typer app instance for entrypoint
-app = typer.Typer(help="StoryForge: Generate illustrated stories using Gemini LLM backend")
+app = typer.Typer(help="StoryForge: Generate illustrated stories using AI language models (Gemini/Claude)")
 
 
 def generate_default_output_dir() -> str:
@@ -41,6 +42,7 @@ def show_prompt_summary_and_confirm(
     learning_focus: str | None,
     image_style: str = "chibi",
     generation_type: str = "story",
+    backend_name: str | None = None,
 ) -> bool:
     """Display a summary of the prompt and ask for user confirmation."""
     console.print(f"\n[bold cyan]📋 {generation_type.title()} Generation Summary:[/bold cyan]")
@@ -58,6 +60,8 @@ def show_prompt_summary_and_confirm(
     if characters:
         console.print(f"[bold]Characters:[/bold] {', '.join(characters)}")
     console.print(f"[bold]Image Style:[/bold] {image_style}")
+    if backend_name:
+        console.print(f"[bold]Backend:[/bold] {backend_name}")
     console.print()
     return Confirm.ask(f"[bold green]Proceed with {generation_type} generation?[/bold green]")
 
@@ -151,29 +155,35 @@ def main(
         output_dir = generate_default_output_dir()
         console.print(f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}")
 
-    # Show prompt summary and get confirmation
-    if not show_prompt_summary_and_confirm(
-        prompt=prompt,
-        age_range=age_range,
-        style=style,
-        tone=tone,
-        theme=theme,
-        length=length,
-        setting=setting,
-        characters=characters,
-        learning_focus=learning_focus,
-        image_style=image_style,
-        generation_type="story",
-    ):
-        console.print("[yellow]Story generation cancelled.[/yellow]")
-        raise typer.Exit(0)
-
     try:
         # Initialize backend
         if verbose:
-            console.print("[dim]Initializing Gemini backend...[/dim]")
+            console.print("[dim]Initializing AI backend...[/dim]")
 
         backend = get_backend()
+        backend_name = backend.name
+
+        if verbose:
+            # Show which backend was selected
+            console.print(f"[dim]Using {backend_name} backend[/dim]")
+
+        # Show prompt summary and get confirmation
+        if not show_prompt_summary_and_confirm(
+            prompt=prompt,
+            age_range=age_range,
+            style=style,
+            tone=tone,
+            theme=theme,
+            length=length,
+            setting=setting,
+            characters=characters,
+            learning_focus=learning_focus,
+            image_style=image_style,
+            generation_type="story",
+            backend_name=backend_name,
+        ):
+            console.print("[yellow]Story generation cancelled.[/yellow]")
+            raise typer.Exit(0)
 
         # Load context files if --use-context is enabled (default).
         try:
@@ -291,7 +301,9 @@ def main(
                 default=False,
                 show_default=True,
             ):
-                ref_base = "Keep the story as similar as possible, but apply the following refinements: {} \n\n {}"
+                ref_base = "Keep the story as similar as possible, but apply the following refinements."
+                ref_base += " After incorporating these changes, please generate a new version of the "
+                ref_base += "story while making sure to honor all concepts of good storytelling: \n\n{}"
                 refinements = typer.prompt("Refinements:")
                 prompt = ref_base.format(refinements, story)
             else:
@@ -443,6 +455,12 @@ def main(
                 style="bold",
             )
             console.print("[dim]Please set your Gemini API key: export GEMINI_API_KEY=your_key_here[/dim]")
+        elif "ANTHROPIC_API_KEY" in str(e):
+            console.print(
+                "[red]Error:[/red] ANTHROPIC_API_KEY environment variable not set.",
+                style="bold",
+            )
+            console.print("[dim]Please set your Anthropic API key: export ANTHROPIC_API_KEY=your_key_here[/dim]")
         else:
             console.print(f"[red]Error:[/red] {e}", style="bold")
         raise typer.Exit(1) from e

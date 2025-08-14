@@ -27,6 +27,8 @@ class LLMBackend(ABC):
     to provide story generation, image generation, and image naming capabilities.
     """
 
+    name: str
+
     @abstractmethod
     def generate_story(self, prompt: "Prompt") -> str:
         """
@@ -125,7 +127,7 @@ def get_backend(backend_name: str | None = None) -> LLMBackend:
     Environment Variables:
         LLM_BACKEND: Override automatic detection (e.g., "gemini", "openai")
         GEMINI_API_KEY: Required for Gemini backend
-        OPENAI_API_KEY: Required for OpenAI backend (future)
+        OPENAI_API_KEY: Required for OpenAI backend
         ANTHROPIC_API_KEY: Required for Anthropic backend (future)
     """
 
@@ -146,7 +148,7 @@ def get_backend(backend_name: str | None = None) -> LLMBackend:
                 "No LLM backend available. Please set one of the following "
                 "environment variables:\n"
                 "- GEMINI_API_KEY (for Google Gemini)\n"
-                "- OPENAI_API_KEY (for OpenAI - future)\n"
+                "- OPENAI_API_KEY (for OpenAI)\n"
                 "- ANTHROPIC_API_KEY (for Anthropic - future)\n"
                 "Or set LLM_BACKEND to specify which backend to use."
             )
@@ -159,19 +161,19 @@ def get_backend(backend_name: str | None = None) -> LLMBackend:
             return GeminiBackend()
 
         elif backend_name == "openai":
-            # Future implementation
-            raise RuntimeError(
-                "OpenAI backend not yet implemented. Please use Gemini backend by setting GEMINI_API_KEY."
-            )
+            from .openai_backend import OpenAIBackend
+
+            return OpenAIBackend()
 
         elif backend_name == "anthropic":
-            # Future implementation
-            raise RuntimeError(
-                "Anthropic backend not yet implemented. Please use Gemini backend by setting GEMINI_API_KEY."
-            )
+            from .anthropic_backend import AnthropicBackend
+
+            return AnthropicBackend()
 
         else:
-            raise RuntimeError(f"Unknown backend '{backend_name}'. Supported backends: gemini (more coming soon)")
+            raise RuntimeError(
+                f"Unknown backend '{backend_name}'. Supported backends: gemini, openai (more coming soon)"
+            )
 
     except ImportError as e:
         raise ImportError(
@@ -203,9 +205,34 @@ def list_available_backends() -> dict:
             "reason": "google-genai package not installed",
         }
 
-    # Future backends would be checked here
-    backends["openai"] = {"available": False, "reason": "Not yet implemented"}
+    # Check Anthropic
+    try:
+        import anthropic  # noqa: F401
 
-    backends["anthropic"] = {"available": False, "reason": "Not yet implemented"}
+        has_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        backends["anthropic"] = {
+            "available": has_key,
+            "reason": "Ready" if has_key else "ANTHROPIC_API_KEY not set",
+        }
+    except ImportError:
+        backends["anthropic"] = {
+            "available": False,
+            "reason": "anthropic package not installed",
+        }
+
+    # Check OpenAI
+    try:
+        import openai  # noqa: F401
+
+        has_key = bool(os.environ.get("OPENAI_API_KEY"))
+        backends["openai"] = {
+            "available": has_key,
+            "reason": "Ready" if has_key else "OPENAI_API_KEY not set",
+        }
+    except ImportError:
+        backends["openai"] = {
+            "available": False,
+            "reason": "openai package not installed",
+        }
 
     return backends

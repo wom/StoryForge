@@ -67,9 +67,11 @@ storyforge "Any prompt here" --debug
 storyforge/
 ├── __init__.py
 ├── StoryForge.py      # Main CLI application
+├── anthropic_backend.py # Anthropic Claude API integration
 ├── context.py         # Context management
 ├── gemini_backend.py  # Gemini API integration
 ├── llm_backend.py     # LLM backend interface
+├── openai_backend.py  # OpenAI API integration (GPT + DALL-E)
 ├── prompt.py          # Prompt handling and validation
 └── test_story.txt     # Test story for debug mode
 
@@ -84,7 +86,10 @@ pyproject.toml        # Project configuration
 ### Backend System
 
 - All backends implement the `LLMBackend` interface in [`llm_backend.py`](storyforge/llm_backend.py)
-- Current implementation: Gemini API in [`gemini_backend.py`](storyforge/gemini_backend.py)
+- Current backends:
+  - **Gemini** ([`gemini_backend.py`](storyforge/gemini_backend.py)) - Full features (text + image generation)
+  - **Anthropic** ([`anthropic_backend.py`](storyforge/anthropic_backend.py)) - Text generation only (Claude)
+  - **OpenAI** ([`openai_backend.py`](storyforge/openai_backend.py)) - Full features (GPT + DALL-E)
 - To add a new backend: implement `LLMBackend` interface in a new module
 
 ### Package Organization
@@ -110,7 +115,14 @@ pyproject.toml        # Project configuration
 ## Environment Variables
 
 ### Required for Runtime
+Choose one or more backends by setting the corresponding API keys:
 - `GEMINI_API_KEY` - Your Gemini API key (see README.md for setup)
+- `ANTHROPIC_API_KEY` - Your Anthropic Claude API key
+- `OPENAI_API_KEY` - Your OpenAI API key
+
+### Backend Selection
+- Set `LLM_BACKEND=gemini|anthropic|openai` to force a specific backend
+- Default: Auto-detects available backends (prefers Gemini)
 
 ## Manual Setup (Alternative)
 
@@ -132,7 +144,7 @@ uv venv .venv && source .venv/bin/activate && uv pip install .[dev]
 
 - **"uv not found"**: Install uv first, then run `make install`
 - **Import errors**: Run `make clean` then `make install`
-- **Test failures**: Ensure `GEMINI_API_KEY` is set (see README.md)
+- **Test failures**: Ensure at least one API key is set (see README.md)
 - **Pre-commit issues**: Run `make lint` to fix formatting
 
 ### Development Tips

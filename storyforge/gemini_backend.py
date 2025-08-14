@@ -20,6 +20,8 @@ class GeminiBackend(LLMBackend):
     Requires GEMINI_API_KEY environment variable to be set.
     """
 
+    name = "gemini"
+
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
         """
         Return a list of image prompts by splitting the story into num_prompts chunks.

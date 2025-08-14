@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
     "google-genai>=1.23.0",
+    "anthropic>=0.28.0",
+    "openai>=1.12.0",
+    "requests>=2.31.0",
     "pillow>=11.2.1",
     "textual[syntax]>=0.54.1",
     "textual-dev>=0.00.1",
@@ -88,6 +91,8 @@ show_error_codes = true
 [[tool.mypy.overrides]]
 module = [
     "google.*",
+    "openai.*",
+    "requests.*",
     "textual.*",
     "PIL.*",
 ]
