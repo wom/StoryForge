@@ -1,6 +1,6 @@
 [project]
 name = "StoryForge"
-version = "0.0.2"
+version = "0.0.3"
 description = "A TUI app that generates short stories and AI images from prompts using a language model."
 authors = [
     { name = "wom" }
@@ -8,6 +8,26 @@ authors = [
 license = "MIT"
 readme = "README.md"
 requires-python = ">=3.8"
+keywords = ["ai", "stories", "children", "cli", "gemini", "image-generation", "text-generation", "tui", "storytelling", "terminal"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: End Users",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Text Processing :: General",
+    "Topic :: Multimedia :: Graphics",
+    "Topic :: Games/Entertainment",
+    "Topic :: Artistic Software",
+    "Topic :: Education",
+    "Typing :: Typed",
+]
 dependencies = [
     "google-genai>=1.23.0",
     "anthropic>=0.28.0",
@@ -20,6 +40,12 @@ dependencies = [
     "rich>=13.0.0",
     "platformdirs>=4.2.0"
 ]
+
+[project.urls]
+"Homepage" = "https://github.com/wom/StoryForge"
+"Repository" = "https://github.com/wom/StoryForge"
+"Bug Tracker" = "https://github.com/wom/StoryForge/issues"
+"Documentation" = "https://github.com/wom/StoryForge#readme"
 
 [project.optional-dependencies]
 dev = [
