@@ -27,6 +27,8 @@ class LLMBackend(ABC):
     to provide story generation, image generation, and image naming capabilities.
     """
 
+    name: str
+
     @abstractmethod
     def generate_story(self, prompt: "Prompt") -> str:
         """

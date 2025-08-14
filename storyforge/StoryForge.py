@@ -301,7 +301,9 @@ def main(
                 default=False,
                 show_default=True,
             ):
-                ref_base = "Keep the story as similar as possible, but apply the following refinements: {} \n\n {}"
+                ref_base = "Keep the story as similar as possible, but apply the following refinements."
+                ref_base += " After incorporating these changes, please generate a new version of the "
+                ref_base += "story while making sure to honor all concepts of good storytelling: \n\n{}"
                 refinements = typer.prompt("Refinements:")
                 prompt = ref_base.format(refinements, story)
             else:

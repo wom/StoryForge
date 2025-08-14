@@ -91,7 +91,7 @@ def test_generate_story_non_text_content(mock_anthropic):
     assert result == "[Error: No valid response from Claude]"
 
 
-@patch.dict("os.environ", {"anthROPIC_API_KEY": "test_key"})
+@patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"})
 @patch("storyforge.anthropic_backend.anthropic.Anthropic")
 def test_generate_story_api_error(mock_anthropic):
     """Test story generation when API call fails."""

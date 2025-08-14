@@ -48,10 +48,9 @@ class TestOpenAIBackend:
 
         assert result == "A wonderful test story about friendship."
         mock_client_instance.chat.completions.create.assert_called_once_with(
-            model="gpt-5-nano",
+            model="gpt-5",
             messages=[{"role": "user", "content": "Tell me a story about friendship"}],
-            max_tokens=2000,
-            temperature=0.7,
+            temperature=1,
         )
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
@@ -126,11 +125,10 @@ class TestOpenAIBackend:
             assert image == mock_image
             assert image_bytes == b"fake image data"
             mock_client_instance.images.generate.assert_called_once_with(
-                model="dall-e-3",
                 prompt="A beautiful test image prompt",
+                model="dall-e-3",
                 size="1024x1024",
                 quality="standard",
-                response_format="url",
                 n=1,
             )
 
@@ -233,10 +231,9 @@ class TestOpenAIBackend:
 
         assert result == "friendship_adventure"
         mock_client_instance.chat.completions.create.assert_called_once_with(
-            model="gpt-5-nano",
+            model="gpt-5",
             messages=[{"role": "user", "content": "Generate a name for this image"}],
-            max_tokens=50,
-            temperature=0.5,
+            temperature=1,
         )
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)

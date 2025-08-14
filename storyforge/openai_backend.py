@@ -147,7 +147,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.story
 
             response = self.client.chat.completions.create(
-                model="gpt-5", messages=[{"role": "user", "content": contents}]
+                model="gpt-5", messages=[{"role": "user", "content": contents}], temperature=1
             )
 
             # Extract the story text from the response with proper null checking
@@ -189,15 +189,41 @@ class OpenAIBackend(LLMBackend):
                     f"{text_prompt}"
                 )
 
+            # DALL-E 3 has a 4000 character limit for prompts
+            # If the prompt is too long, use OpenAI to create a concise version
+            if len(text_prompt) > 4000:
+                compression_prompt = (
+                    "Please create a concise, detailed image generation prompt (maximum 3500 characters) "
+                    "from this longer description. Keep all the important visual details, characters, "
+                    "setting, mood, and style information:\n\n"
+                    f"{text_prompt}"
+                )
+
+                compression_response = self.client.chat.completions.create(
+                    model="gpt-5",
+                    messages=[{"role": "user", "content": compression_prompt}],
+                )
+
+                if (
+                    compression_response.choices
+                    and compression_response.choices[0].message
+                    and compression_response.choices[0].message.content
+                ):
+                    text_prompt = compression_response.choices[0].message.content.strip()
+                else:
+                    # Fallback to simple truncation if compression fails
+                    text_prompt = text_prompt[:3900] + "..."
+
+            # Generate image using DALL-E 3
             response = self.client.images.generate(
-                model="dall-e-3", prompt=text_prompt, size="1024x1024", quality="standard", response_format="url", n=1
+                prompt=text_prompt, model="dall-e-3", size="1024x1024", quality="standard", n=1
             )
 
-            if response.data and response.data[0].url:
+            if response.data and len(response.data) > 0 and response.data[0].url:
                 # Download the image from the URL
                 import requests
 
-                img_response = requests.get(response.data[0].url)
+                img_response = requests.get(response.data[0].url, timeout=30)
                 if img_response.status_code == 200:
                     image_bytes = img_response.content
                     image = Image.open(BytesIO(image_bytes))
@@ -205,7 +231,9 @@ class OpenAIBackend(LLMBackend):
 
             return None, None
 
-        except Exception:
+        except Exception as e:
+            # Print error for debugging
+            print(f"Error generating image: {e}")
             # Return (None, None) if image generation fails
             return None, None
 
@@ -227,7 +255,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.image_name(story)
 
             response = self.client.chat.completions.create(
-                model="gpt-5", messages=[{"role": "user", "content": contents}]
+                model="gpt-5", messages=[{"role": "user", "content": contents}], temperature=1
             )
 
             # Extract name with proper null checking
