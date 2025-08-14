@@ -1,6 +1,12 @@
 # StoryForge
 
-StoryForge is a command-line tool that generates illustrated children's stories using AI language models. Simply provide a story prompt, and StoryForge will create both a short story and accompanying AI-generated images. Supports OpenAI, Google's Gemini AI and Anthropic's Claude AI backends.
+StoryForge is a command-line tool that generates illustrated children's stories using AI language models. Simply provide a story prompt, and StoryForge will create both a short story and accompanying AI-generated images.
+
+## Supported AI Backends
+
+- **Google Gemini** - Fully supported for story and image generation
+- **OpenAI** - Fully supported for story and image generation
+- **Anthropic** - Experimental (coming soon)
 
 ## Features
 
@@ -40,53 +46,58 @@ If you don't have pipx:
 ```
 
 ## Setup
-    
-### Choose Your AI Backend
 
-StoryForge supports multiple AI backends. Choose one or set up both:
+Choose one of the supported AI backends and configure the corresponding API key:
 
-#### Option 1: Google Gemini (Full Features)
-**Supports:** Story generation + Image generation
+### Google Gemini
 
 1. Visit [Google AI Studio](https://aistudio.google.com/) to get your free Gemini API key
 2. Set the environment variable:
+
 ```bash
 export GEMINI_API_KEY=your_api_key_here
 ```
 
-#### Option 2: Anthropic Claude (Text Only)
-**Supports:** Story generation only (excellent quality)
+### OpenAI
 
-1. Visit [Anthropic Console](https://console.anthropic.com/) to get your Claude API key
+1. Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
 2. Set the environment variable:
-```bash
-export ANTHROPIC_API_KEY=your_api_key_here
-```
 
-#### Option 3: OpenAI (Full Features)
-**Supports:** Story generation + Image generation (DALL-E)
-
-1. Visit [OpenAI Platform](https://platform.openai.com/) to get your OpenAI API key
-2. Set the environment variable:
 ```bash
 export OPENAI_API_KEY=your_api_key_here
 ```
 
-#### Option 4: Hybrid Setup (Best of All)
-Set up multiple backends for maximum flexibility:
+### Anthropic (Experimental)
+
+1. Get your API key from [Anthropic Console](https://console.anthropic.com/)
+2. Set the environment variable:
+
 ```bash
-export GEMINI_API_KEY=your_gemini_key_here
-export ANTHROPIC_API_KEY=your_anthropic_key_here
-export OPENAI_API_KEY=your_openai_key_here
+export ANTHROPIC_API_KEY=your_api_key_here
 ```
 
-Add these to your shell profile (`.bashrc`, `.zshrc`, etc.) to make them permanent.
+### Environment Variables
 
-**Backend Selection:**
-- StoryForge automatically detects available backends
-- Prefers Gemini for full features, falls back to others
-- Use `LLM_BACKEND=anthropic` to force Claude for text generation
-- Use `LLM_BACKEND=openai` to force OpenAI for text and image generation
+| Variable | Backend | Status | Description |
+|----------|---------|---------|-------------|
+| `GEMINI_API_KEY` | Google Gemini | ✅ Fully Supported | Required for Gemini backend |
+| `OPENAI_API_KEY` | OpenAI | ✅ Fully Supported | Required for OpenAI backend |
+| `ANTHROPIC_API_KEY` | Anthropic | 🧪 Experimental | Required for Anthropic backend (coming soon) |
+| `LLM_BACKEND` | All | Optional | Force specific backend (`gemini`, `openai`, `anthropic`) |
+
+**Note**: StoryForge will automatically detect which backend to use based on available API keys. If multiple keys are set, you can specify which backend to use with the `LLM_BACKEND` environment variable.
+
+Add environment variables to your shell profile (`.bashrc`, `.zshrc`, etc.) to make them permanent:
+
+```bash
+# Example for Gemini
+echo 'export GEMINI_API_KEY=your_api_key_here' >> ~/.bashrc
+source ~/.bashrc
+
+# Example for OpenAI
+echo 'export OPENAI_API_KEY=your_api_key_here' >> ~/.bashrc
+source ~/.bashrc
+```
 
 ## Usage
 
@@ -127,13 +138,6 @@ storyforge "A brave mouse goes on an adventure" \
 - **Tone**: `gentle`, `exciting`, `silly`, `heartwarming`, `magical`
 - **Theme**: `courage`, `kindness`, `teamwork`, `problem_solving`, `creativity`
 - **Image Style**: `chibi`, `realistic`, `cartoon`, `watercolor`, `sketch`
-
-### Backend-Specific Notes
-
-- **Gemini**: Supports both story and image generation in one tool
-- **Claude**: Excellent story quality, but requires Gemini for images
-- **OpenAI**
-- **Hybrid**: Use `LLM_BACKEND=anthropic` for Claude stories + Gemini for images
 
 ## Tab Completion
 
