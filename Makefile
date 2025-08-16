@@ -20,7 +20,7 @@ test: install
 
 # Run tests with coverage
 coverage: install
-	$(VENV_ACTIVATE) PYTHONPATH=. pytest --cov=storyforge --cov-report=xml
+	$(VENV_ACTIVATE) PYTHONPATH=. pytest --cov=storyforge --cov-report=xml --cov-report=html --cov-report=term
 
 # Run the app
 run: install
