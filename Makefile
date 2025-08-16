@@ -13,9 +13,14 @@ venv:
 install: venv
 	uv pip install -e .[dev]
 
+
 # Run tests
 test: install
 	$(VENV_ACTIVATE) PYTHONPATH=. pytest
+
+# Run tests with coverage
+coverage: install
+	$(VENV_ACTIVATE) PYTHONPATH=. pytest --cov=storyforge --cov-report=xml
 
 # Run the app
 run: install

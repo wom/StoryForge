@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install project dependencies
+        run: make install
+
+      - name: Run lint
+        run: make lint
+
+      - name: Run tests with coverage
+        run: make coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+      - name: Install pre-commit
+        run: pip install pre-commit
+    
+      - name: Run pre-commit checks
+        run: pre-commit run --all-files
