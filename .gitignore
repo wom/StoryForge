@@ -1,5 +1,9 @@
+# Coverage files
+.coverage
+coverage.xml
 __pycache__/
 *.py[cod]
+*.egg-info/
 context/
 junk
 .github
