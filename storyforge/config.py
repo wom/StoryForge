@@ -27,17 +27,18 @@ from .schema.validation import SchemaValidator
 
 console = Console()
 
+
 def _generate_config_template_from_schema() -> str:
     """Generate configuration template directly from schema."""
     lines = [
         "# StoryForge Configuration File",
         "# This file contains default values for story generation parameters",
         "# Command line arguments will override these settings",
-        ""
+        "",
     ]
 
     # Iterate through each section in the schema
-    for section_name in ['story', 'images', 'output', 'system']:
+    for section_name in ["story", "images", "output", "system"]:
         section = getattr(STORYFORGE_SCHEMA, section_name)
         lines.append(f"[{section_name}]")
 
@@ -64,9 +65,9 @@ def _generate_config_template_from_schema() -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-
 class ConfigError(Exception):
     """Configuration related errors."""
+
     pass
 
 
@@ -114,7 +115,7 @@ class Config:
     def load_config(self, verbose: bool = False) -> bool:
         """
         Load configuration from file.
-        
+
         Returns:
             bool: True if config file was found and loaded, False otherwise.
         """
@@ -136,7 +137,7 @@ class Config:
     def validate_config(self) -> list[str]:
         """
         Validate configuration values using schema.
-        
+
         Returns:
             List[str]: List of validation errors, empty if valid.
         """
@@ -154,10 +155,10 @@ class Config:
     def create_default_config(self, path: Path | None = None) -> Path:
         """
         Create a default configuration file.
-        
+
         Args:
             path: Path to create config file. If None, uses default location.
-            
+
         Returns:
             Path: The path where the config file was created.
         """
@@ -169,7 +170,7 @@ class Config:
 
         # Write default configuration from schema
         template = _generate_config_template_from_schema()
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             f.write(template)
 
         return path
@@ -180,25 +181,25 @@ class Config:
             # Get the field definition from schema
             section = getattr(STORYFORGE_SCHEMA, section_name)
             field = section.fields.get(field_name)
-            
+
             if not field:
                 raise ValueError(f"Unknown field: {section_name}.{field_name}")
-            
+
             # Get raw value from config
             raw_value = self.config.get(section_name, field_name, fallback=str(field.default))
-            
+
             # Convert based on field type
             if field.field_type.value == "boolean":
-                return raw_value.lower() in ('true', '1', 'yes', 'on')
+                return raw_value.lower() in ("true", "1", "yes", "on")
             elif field.field_type.value == "integer":
                 return int(raw_value) if raw_value else field.default
             elif field.field_type.value == "list":
                 if not raw_value:
                     return field.default or []
-                return [item.strip() for item in raw_value.split(',') if item.strip()]
+                return [item.strip() for item in raw_value.split(",") if item.strip()]
             else:
                 return raw_value if raw_value else field.default
-                
+
         except Exception:
             # Return schema default on any error
             section = getattr(STORYFORGE_SCHEMA, section_name)
@@ -212,7 +213,7 @@ class Config:
             result[section_name] = {}
             for key, value in self.config[section_name].items():
                 # Skip comment keys
-                if not key.startswith('#'):
+                if not key.startswith("#"):
                     result[section_name][key] = value
         return result
 
@@ -220,13 +221,13 @@ class Config:
 def load_config(verbose: bool = False) -> Config:
     """
     Load configuration from file system.
-    
+
     Args:
         verbose: Enable verbose output
-        
+
     Returns:
         Config: Loaded configuration object
-        
+
     Raises:
         ConfigError: If configuration file is malformed
     """
@@ -236,9 +237,6 @@ def load_config(verbose: bool = False) -> Config:
     # Validate configuration
     errors = config.validate_config()
     if errors:
-        raise ConfigError(
-            "Configuration validation failed:\n" +
-            "\n".join(f"  - {error}" for error in errors)
-        )
+        raise ConfigError("Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors))
 
     return config

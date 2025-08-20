@@ -11,11 +11,13 @@ from typing import Any
 
 class FieldType(Enum):
     """Supported configuration field types."""
+
     STRING = "string"
     INTEGER = "integer"
     BOOLEAN = "boolean"
     LIST = "list"
     PATH = "path"
+
 
 @dataclass
 class ConfigField:
@@ -28,6 +30,7 @@ class ConfigField:
     - Create configuration file templates
     - Provide user documentation
     """
+
     name: str
     field_type: FieldType
     default: Any
@@ -58,7 +61,7 @@ class ConfigField:
     def __post_init__(self):
         """Generate derived fields after initialization."""
         if self.cli_flag_name is None:
-            self.cli_flag_name = self.name.replace('_', '-')
+            self.cli_flag_name = self.name.replace("_", "-")
 
         if self.cli_long is None:
             self.cli_long = f"--{self.cli_flag_name}"
@@ -71,11 +74,13 @@ class ConfigField:
                 comment_parts.append(f"Options: {', '.join(self.valid_values)}")
             if self.example_values:
                 comment_parts.append(f"Examples: {', '.join(self.example_values)}")
-            self.ini_comment = ' | '.join(comment_parts) if comment_parts else ""
+            self.ini_comment = " | ".join(comment_parts) if comment_parts else ""
+
 
 @dataclass
 class ConfigSection:
     """Base class for configuration sections."""
+
     name: str
     description: str
     fields: dict[str, ConfigField] = field(default_factory=dict)

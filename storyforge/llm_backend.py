@@ -149,6 +149,9 @@ def get_backend(backend_name: str | None = None, config_backend: str | None = No
             backend_name = "openai"
         elif os.environ.get("ANTHROPIC_API_KEY"):
             backend_name = "anthropic"
+        elif os.environ.get("LLM_BACKEND"):
+            # Explicit backend set but not recognized
+            backend_name = os.environ.get("LLM_BACKEND").lower()
         else:
             raise RuntimeError(
                 "No LLM backend available. Please set one of the following:\n"
@@ -175,7 +178,7 @@ def get_backend(backend_name: str | None = None, config_backend: str | None = No
 
         else:
             raise RuntimeError(
-                f"Unknown backend '{backend_name}'. Supported backends: gemini, openai (more coming soon)"
+                f"Unknown backend '{backend_name}'. Supported backends: gemini, openai, anthropic (more coming soon)"
             )
 
     except ImportError as e:

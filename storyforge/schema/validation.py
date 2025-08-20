@@ -18,6 +18,7 @@ class ValidationError(Exception):
         self.section = section
         super().__init__(f"[{section}.{field_name}] {message}")
 
+
 class SchemaValidator:
     """Comprehensive configuration validator using schema definitions."""
 
@@ -30,11 +31,7 @@ class SchemaValidator:
 
         # Required field check
         if field.required and (value is None or value == ""):
-            errors.append(ValidationError(
-                field.name, value,
-                "Required field cannot be empty",
-                field.section
-            ))
+            errors.append(ValidationError(field.name, value, "Required field cannot be empty", field.section))
             return errors
 
         # Skip further validation for empty optional fields
@@ -44,26 +41,25 @@ class SchemaValidator:
         # Type validation
         type_valid, type_error = self._validate_type(field, value)
         if not type_valid:
-            errors.append(ValidationError(
-                field.name, value, type_error, field.section
-            ))
+            errors.append(ValidationError(field.name, value, type_error, field.section))
             return errors  # Don't continue if type is wrong
 
         # Valid values check
         if field.valid_values and str(value) not in field.valid_values:
-            errors.append(ValidationError(
-                field.name, value,
-                f"Invalid value '{value}'. Valid options: {', '.join(field.valid_values)}",
-                field.section
-            ))
+            errors.append(
+                ValidationError(
+                    field.name,
+                    value,
+                    f"Invalid value '{value}'. Valid options: {', '.join(field.valid_values)}",
+                    field.section,
+                )
+            )
 
         # Custom validator
         if field.validator and not field.validator(value):
-            errors.append(ValidationError(
-                field.name, value,
-                f"Custom validation failed for value '{value}'",
-                field.section
-            ))
+            errors.append(
+                ValidationError(field.name, value, f"Custom validation failed for value '{value}'", field.section)
+            )
 
         return errors
 
@@ -80,11 +76,11 @@ class SchemaValidator:
                 return False, f"Expected integer, got '{value}'"
 
         elif field.field_type == FieldType.BOOLEAN:
-            if not isinstance(value, bool) and str(value).lower() not in ['true', 'false', '1', '0', 'yes', 'no']:
+            if not isinstance(value, bool) and str(value).lower() not in ["true", "false", "1", "0", "yes", "no"]:
                 return False, f"Expected boolean, got '{value}'"
 
         elif field.field_type == FieldType.LIST:
-            if not isinstance(value, (list, str)):  # Allow comma-separated strings
+            if not isinstance(value, list | str):  # Allow comma-separated strings
                 return False, f"Expected list or comma-separated string, got {type(value).__name__}"
 
         elif field.field_type == FieldType.PATH:
@@ -111,7 +107,7 @@ class SchemaValidator:
     def validate_cli_argument(self, field_name: str, value: Any) -> list[ValidationError]:
         """Validate a single CLI argument by field name."""
         # Find the field across all sections
-        for section_name in ['story', 'images', 'output', 'system']:
+        for section_name in ["story", "images", "output", "system"]:
             if hasattr(self.schema, section_name):
                 section = getattr(self.schema, section_name)
                 if field_name in section.fields:

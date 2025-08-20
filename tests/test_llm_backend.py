@@ -135,7 +135,9 @@ class TestGetBackend:
         with pytest.raises(RuntimeError) as exc_info:
             get_backend()
 
-        assert "Unknown backend 'unknown'" in str(exc_info.value)
+        error_msg = str(exc_info.value)
+        assert "Unknown backend 'unknown'" in error_msg
+        assert "Supported backends: gemini, openai, anthropic" in error_msg
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"}, clear=True)
     @patch("storyforge.openai_backend.OpenAIBackend")
