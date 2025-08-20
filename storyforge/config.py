@@ -27,8 +27,8 @@ from .schema.validation import SchemaValidator
 
 console = Console()
 
-def _generate_default_config_template() -> str:
-    """Generate default configuration template dynamically from schema."""
+def _generate_config_template_from_schema() -> str:
+    """Generate configuration template directly from schema."""
     lines = [
         "# StoryForge Configuration File",
         "# This file contains default values for story generation parameters",
@@ -64,42 +64,6 @@ def _generate_default_config_template() -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-# Generate default configuration template from schema
-DEFAULT_CONFIG_TEMPLATE = _generate_default_config_template()
-
-def _generate_default_config() -> dict[str, dict[str, Any]]:
-    """Generate DEFAULT_CONFIG dictionary dynamically from schema."""
-    config = {}
-
-    for section_name in ['story', 'images', 'output', 'system']:
-        section = getattr(STORYFORGE_SCHEMA, section_name)
-        config[section_name] = {}
-
-        for field_name, field in section.fields.items():
-            config[section_name][field_name] = field.default
-
-    return config
-
-
-def _generate_valid_values_from_schema():
-    """Generate VALID_VALUES dictionary from schema for backward compatibility."""
-    valid_values = {}
-
-    for section_name in ['story', 'images', 'output', 'system']:
-        section = getattr(STORYFORGE_SCHEMA, section_name)
-        for field_name, field in section.fields.items():
-            if field.valid_values:
-                valid_values[field_name] = field.valid_values
-
-    return valid_values
-
-
-# Generate default configuration values from schema
-DEFAULT_CONFIG = _generate_default_config()
-
-# Valid configuration values for validation (generated from schema)
-VALID_VALUES = _generate_valid_values_from_schema()
-
 
 class ConfigError(Exception):
     """Configuration related errors."""
@@ -116,8 +80,9 @@ class Config:
         self._load_defaults()
 
     def _load_defaults(self):
-        """Load default configuration values."""
-        self.config.read_string(DEFAULT_CONFIG_TEMPLATE)
+        """Load default configuration values from schema."""
+        template = _generate_config_template_from_schema()
+        self.config.read_string(template)
 
     def get_config_paths(self) -> list[Path]:
         """Return configuration file paths in priority order."""
@@ -202,41 +167,43 @@ class Config:
         # Create directory if it doesn't exist
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Write default configuration
+        # Write default configuration from schema
+        template = _generate_config_template_from_schema()
         with open(path, 'w', encoding='utf-8') as f:
-            f.write(DEFAULT_CONFIG_TEMPLATE)
+            f.write(template)
 
         return path
 
-    def get_value(self, section: str, key: str, fallback: str = "") -> str:
-        """Get configuration value with fallback."""
+    def get_field_value(self, section_name: str, field_name: str):
+        """Get configuration value using schema-driven approach."""
         try:
-            value = self.config.get(section, key, fallback=fallback)
-            return value.strip() if value else ""
+            # Get the field definition from schema
+            section = getattr(STORYFORGE_SCHEMA, section_name)
+            field = section.fields.get(field_name)
+            
+            if not field:
+                raise ValueError(f"Unknown field: {section_name}.{field_name}")
+            
+            # Get raw value from config
+            raw_value = self.config.get(section_name, field_name, fallback=str(field.default))
+            
+            # Convert based on field type
+            if field.field_type.value == "boolean":
+                return raw_value.lower() in ('true', '1', 'yes', 'on')
+            elif field.field_type.value == "integer":
+                return int(raw_value) if raw_value else field.default
+            elif field.field_type.value == "list":
+                if not raw_value:
+                    return field.default or []
+                return [item.strip() for item in raw_value.split(',') if item.strip()]
+            else:
+                return raw_value if raw_value else field.default
+                
         except Exception:
-            return fallback
-
-    def get_bool(self, section: str, key: str, fallback: bool = False) -> bool:
-        """Get boolean configuration value with fallback."""
-        try:
-            return self.config.getboolean(section, key, fallback=fallback)
-        except Exception:
-            return fallback
-
-    def get_list(self, section: str, key: str, fallback: list[str] | None = None) -> list[str] | None:
-        """Get list configuration value (comma-separated) with fallback."""
-        if fallback is None:
-            fallback = []
-
-        try:
-            value = self.get_value(section, key)
-            if not value:
-                return None if not fallback else fallback
-
-            # Split by comma and strip whitespace
-            return [item.strip() for item in value.split(',') if item.strip()]
-        except Exception:
-            return fallback if fallback else None
+            # Return schema default on any error
+            section = getattr(STORYFORGE_SCHEMA, section_name)
+            field = section.fields.get(field_name)
+            return field.default if field else None
 
     def to_dict(self) -> dict[str, dict[str, Any]]:
         """Convert configuration to dictionary format."""
