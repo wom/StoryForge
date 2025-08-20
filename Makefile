@@ -47,10 +47,11 @@ typecheck: install
 clean:
 	find . -name "__pycache__" -type d -exec rm -rf {} +
 	find . -name "*.pyc" -type f -delete
-	rm -rf .pytest_cache \
+	rm -rf *.egg-info \
 		.mypy_cache \
 		.ruff_cache \
-		*.egg-info \
-		build/ \
 		.venv \
-		uv.lock
+		build/ \
+		dist \
+		uv.lock \
+		.pytest_cache
