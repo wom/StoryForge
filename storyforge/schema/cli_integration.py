@@ -40,7 +40,7 @@ def generate_cli_option(field_name: str):
     return typer.Option(None, *option_args, help=field.cli_help)
 
 
-def generate_boolean_cli_option(field_name: str, flag_format: str = None):
+def generate_boolean_cli_option(field_name: str, flag_format: str | None = None):
     """Generate a boolean CLI option with proper flag format."""
     field = get_field_by_name(field_name)
     if not field:
@@ -64,7 +64,7 @@ def generate_boolean_cli_option(field_name: str, flag_format: str = None):
         return typer.Option(None, *option_args, help=field.cli_help)
 
 
-def generate_multi_option(field_name: str, option_name: str = None):
+def generate_multi_option(field_name: str, option_name: str | None = None):
     """Generate a multi-use CLI option from schema field."""
     field = get_field_by_name(field_name)
     if not field:
@@ -90,7 +90,7 @@ def generate_typer_options() -> dict[str, Any]:
         section = getattr(STORYFORGE_SCHEMA, section_name)
         for _field_name, field in section.fields.items():
             # Determine the Python type for typer
-            python_type = str  # Default to string
+            python_type: type[str] | type[bool] | type[int] | type[list[str]] = str  # Default to string
             if field.field_type.value == "boolean":
                 python_type = bool
             elif field.field_type.value == "integer":
@@ -149,7 +149,7 @@ def get_field_choices(field_name: str) -> list[str] | None:
         section = getattr(STORYFORGE_SCHEMA, section_name)
         if field_name in section.fields:
             field = section.fields[field_name]
-            return field.valid_values
+            return field.valid_values  # type: ignore[no-any-return]
     return None
 
 
@@ -167,7 +167,7 @@ def get_field_help(field_name: str) -> str | None:
         section = getattr(STORYFORGE_SCHEMA, section_name)
         if field_name in section.fields:
             field = section.fields[field_name]
-            return field.cli_help
+            return field.cli_help  # type: ignore[no-any-return]
     return None
 
 

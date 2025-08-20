@@ -151,7 +151,8 @@ def get_backend(backend_name: str | None = None, config_backend: str | None = No
             backend_name = "anthropic"
         elif os.environ.get("LLM_BACKEND"):
             # Explicit backend set but not recognized
-            backend_name = os.environ.get("LLM_BACKEND").lower()
+            llm_backend_env = os.environ.get("LLM_BACKEND")
+            backend_name = llm_backend_env.lower() if llm_backend_env else None
         else:
             raise RuntimeError(
                 "No LLM backend available. Please set one of the following:\n"

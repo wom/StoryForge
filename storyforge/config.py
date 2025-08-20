@@ -208,7 +208,7 @@ class Config:
 
     def to_dict(self) -> dict[str, dict[str, Any]]:
         """Convert configuration to dictionary format."""
-        result = {}
+        result: dict[str, dict[str, Any]] = {}
         for section_name in self.config.sections():
             result[section_name] = {}
             for key, value in self.config[section_name].items():

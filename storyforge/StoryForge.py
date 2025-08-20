@@ -242,8 +242,8 @@ def main(
         if verbose:
             console.print("[dim]Initializing AI backend...[/dim]")
 
-        backend = get_backend(config_backend=config_backend)
-        backend_name = backend.name
+        llm_backend = get_backend(config_backend=config_backend)
+        backend_name = llm_backend.name
 
         if verbose:
             # Show which backend was selected
@@ -343,7 +343,7 @@ def main(
                     story = load_story_from_file("storyforge/test_story.txt")
                     console.print("[cyan][DEBUG] load_story_from_file was called and returned.[/cyan]")
                 else:
-                    story = backend.generate_story(story_prompt)
+                    story = llm_backend.generate_story(story_prompt)
                     if verbose:
                         console.print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
 
@@ -452,17 +452,17 @@ def main(
                         )
 
                         # Generate image with reference for consistency (if available)
-                        image, image_bytes = backend.generate_image(image_prompt, reference_image_bytes)
+                        image, image_bytes = llm_backend.generate_image(image_prompt, reference_image_bytes)
 
                     if image and image_bytes:
                         # Generate filename
-                        image_name = backend.generate_image_name(image_prompt, story)
+                        image_name = llm_backend.generate_image_name(image_prompt, story)
                         image_filename = f"{image_name}_{i + 1:02d}.png" if num_images > 1 else f"{image_name}.png"
                         image_path = os.path.join(output_dir, image_filename)
 
                         # Save image
-                        with open(image_path, "wb") as f:  # type: ignore[assignment]
-                            f.write(image_bytes)  # type: ignore[arg-type]
+                        with open(image_path, "wb") as f:
+                            f.write(image_bytes)
                         console.print(f"[bold green]✅ Image {i + 1} saved as:[/bold green] {image_path}")
 
                         # Use first image as reference for subsequent ones
