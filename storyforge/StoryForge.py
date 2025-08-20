@@ -14,13 +14,18 @@ from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 
+from .config import Config, ConfigError, load_config
 from .llm_backend import get_backend
 from .prompt import Prompt
 
 console = Console()
 
 # Create Typer app instance for entrypoint
-app = typer.Typer(help="StoryForge: Generate illustrated stories using AI language models (Gemini/Claude)")
+app = typer.Typer(
+    help="StoryForge: Generate illustrated stories using AI language models.\n\n"
+         "Configuration: Use --init-config to create a config file with default values.\n"
+         "Environment: Set STORYFORGE_CONFIG to use a custom config file location."
+)
 
 
 def generate_default_output_dir() -> str:
@@ -83,28 +88,28 @@ def load_story_from_file(rel_path: str) -> str | None:
 
 @app.command()
 def main(
-    prompt: str = typer.Argument(..., help="The story prompt to generate from (positional, required)"),
-    length: str = typer.Option("bedtime", "--length", "-l", help="Story length (flash, short, medium, bedtime)"),
-    age_range: str = typer.Option(
-        "early_reader",
+    prompt: str | None = typer.Argument(None, help="The story prompt to generate from (positional, required unless using --init-config)"),
+    length: str | None = typer.Option(None, "--length", "-l", help="Story length (flash, short, medium, bedtime)"),
+    age_range: str | None = typer.Option(
+        None,
         "--age-range",
         "-a",
         help="Target age group (toddler, preschool, early_reader, middle_grade)",
     ),
-    style: str = typer.Option(
-        "random",
+    style: str | None = typer.Option(
+        None,
         "--style",
         "-s",
         help="Story style (adventure, comedy, fantasy, fairy_tale, friendship)",
     ),
-    tone: str = typer.Option(
-        "random",
+    tone: str | None = typer.Option(
+        None,
         "--tone",
         "-t",
         help="Story tone (gentle, exciting, silly, heartwarming, magical)",
     ),
     theme: str | None = typer.Option(
-        "random",
+        None,
         "--theme",
         help="Story theme (courage, kindness, teamwork, problem_solving, creativity)",
     ),
@@ -118,10 +123,10 @@ def main(
         list[str] | None,
         typer.Option("--character", help="Character names/descriptions (multi-use)"),
     ] = None,
-    image_style: str = typer.Option(
-        "chibi",
+    image_style: str | None = typer.Option(
+        None,
         "--image-style",
-        help="Image art style (chibi, realistic, cartoon, watercolor, sketch). Default: chibi",
+        help="Image art style (chibi, realistic, cartoon, watercolor, sketch)",
     ),
     output_dir: str | None = typer.Option(
         None,
@@ -129,8 +134,8 @@ def main(
         "-o",
         help="Directory to save the image (default: auto-generated)",
     ),
-    use_context: bool = typer.Option(
-        True,
+    use_context: bool | None = typer.Option(
+        None,
         "--use-context/--no-use-context",
         help=(
             "By default, all .md files in the context/ directory are used as "
@@ -138,15 +143,97 @@ def main(
             "behavior."
         ),
     ),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose output"),
-    debug: bool = typer.Option(
-        False, "--debug", help="Enable debug mode (use local file instead of backend for story generation)"
+    verbose: bool | None = typer.Option(None, "--verbose", "-v", help="Enable verbose output"),
+    debug: bool | None = typer.Option(
+        None, "--debug", help="Enable debug mode (use local file instead of backend for story generation)"
+    ),
+    init_config: bool = typer.Option(
+        False,
+        "--init-config",
+        help="Generate a default configuration file and exit"
     ),
 ):
+    # Handle --init-config option first
+    if init_config:
+        try:
+            config = Config()
+            config_path = config.get_default_config_path()
+            
+            # Check if file exists
+            if config_path.exists():
+                console.print(f"[yellow]Configuration file already exists:[/yellow] {config_path}")
+                console.print("[dim]Use a different location by setting STORYFORGE_CONFIG environment variable[/dim]")
+                raise typer.Exit(1)
+            
+            # Create the configuration file
+            created_path = config.create_default_config(config_path)
+            console.print(f"[bold green]✅ Configuration file created:[/bold green] {created_path}")
+            console.print()
+            console.print("[bold]Configuration file locations (in priority order):[/bold]")
+            
+            for i, search_path in enumerate(config.get_config_paths(), 1):
+                if search_path == created_path:
+                    console.print(f"  {i}. {search_path} [bold green](created here)[/bold green]")
+                else:
+                    console.print(f"  {i}. {search_path}")
+            
+            console.print()
+            console.print("[bold]Environment variables:[/bold]")
+            console.print("  STORYFORGE_CONFIG - Override config file location")
+            console.print("  GEMINI_API_KEY - Google Gemini API key")
+            console.print("  OPENAI_API_KEY - OpenAI API key")
+            console.print("  ANTHROPIC_API_KEY - Anthropic API key")
+            
+            raise typer.Exit(0)
+            
+        except typer.Exit:
+            raise
+        except Exception as e:
+            console.print(f"[red]Error creating configuration file:[/red] {e}", style="bold")
+            raise typer.Exit(1)
+
+    try:
+        # Load configuration file
+        config = load_config(verbose=bool(verbose))
+        
+        # Merge configuration with CLI arguments (CLI takes precedence)
+        # Only use config values if CLI argument is None (not provided)
+        length = length if length is not None else config.get_value("story", "length", "bedtime")
+        age_range = age_range if age_range is not None else config.get_value("story", "age_range", "early_reader")
+        style = style if style is not None else config.get_value("story", "style", "random")
+        tone = tone if tone is not None else config.get_value("story", "tone", "random")
+        theme = theme if theme is not None else config.get_value("story", "theme", "random")
+        learning_focus = learning_focus if learning_focus is not None else (
+            config.get_value("story", "learning_focus") or None
+        )
+        setting = setting if setting is not None else (config.get_value("story", "setting") or None)
+        
+        # Handle characters - merge config and CLI
+        if characters is None:
+            config_characters = config.get_list("story", "characters")
+            characters = config_characters
+        
+        image_style = image_style if image_style is not None else config.get_value("images", "image_style", "chibi")
+        output_dir = output_dir if output_dir is not None else (config.get_value("output", "output_dir") or None)
+        use_context = use_context if use_context is not None else config.get_bool("output", "use_context", True)
+        verbose = verbose if verbose is not None else config.get_bool("system", "verbose", False)
+        debug = debug if debug is not None else config.get_bool("system", "debug", False)
+        
+        # Get backend from configuration
+        config_backend = config.get_value("system", "backend")
+        
+    except ConfigError as e:
+        console.print(f"[red]Configuration Error:[/red] {e}", style="bold")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error loading configuration:[/red] {e}", style="bold")
+        raise typer.Exit(1)
+
     if debug:
         verbose = True  # Ensure verbose is enabled in debug mode
 
-    if prompt is None or not str(prompt).strip():
+    # Check if prompt is required (not needed for --init-config)
+    if not init_config and (prompt is None or not str(prompt).strip()):
         console.print("[red]Error:[/red] Please provide a non-empty story prompt.", style="bold")
         raise typer.Exit(1)
 
@@ -156,11 +243,11 @@ def main(
         console.print(f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}")
 
     try:
-        # Initialize backend
+        # Initialize backend with configuration support
         if verbose:
             console.print("[dim]Initializing AI backend...[/dim]")
 
-        backend = get_backend()
+        backend = get_backend(config_backend=config_backend)
         backend_name = backend.name
 
         if verbose:

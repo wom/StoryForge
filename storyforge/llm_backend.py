@@ -108,14 +108,14 @@ class LLMBackend(ABC):
         raise NotImplementedError("Subclass must implement generate_image_prompt method")
 
 
-def get_backend(backend_name: str | None = None) -> LLMBackend:
+def get_backend(backend_name: str | None = None, config_backend: str | None = None) -> LLMBackend:
     """
     Factory function to get an appropriate LLM backend instance.
 
     Args:
         backend_name (Optional[str]): Specific backend to use ("gemini",
-                                      "openai", etc.).
-                                    If None, auto-detect based on available API keys.
+                                      "openai", etc.). Highest priority.
+        config_backend (Optional[str]): Backend from configuration file.
 
     Returns:
         LLMBackend: An instance of the selected backend.
@@ -124,19 +124,25 @@ def get_backend(backend_name: str | None = None) -> LLMBackend:
         RuntimeError: If no suitable backend is found or API keys are missing.
         ImportError: If required dependencies for the backend are not installed.
 
+    Backend Selection Priority:
+        1. backend_name parameter (explicit override)
+        2. Configuration file backend setting
+        3. Auto-detection based on available API keys
+
     Environment Variables:
-        LLM_BACKEND: Override automatic detection (e.g., "gemini", "openai")
         GEMINI_API_KEY: Required for Gemini backend
         OPENAI_API_KEY: Required for OpenAI backend
-        ANTHROPIC_API_KEY: Required for Anthropic backend (future)
+        ANTHROPIC_API_KEY: Required for Anthropic backend
     """
 
-    # Override backend selection if explicitly requested
-    if backend_name is None:
-        backend_name = os.environ.get("LLM_BACKEND", "").lower()
-
-    # If still no explicit backend, auto-detect based on available API keys
-    if not backend_name:
+    # Priority 1: Explicit backend name parameter
+    if backend_name:
+        backend_name = backend_name.lower()
+    # Priority 2: Configuration file backend setting
+    elif config_backend:
+        backend_name = config_backend.lower()
+    # Priority 3: Auto-detect based on available API keys
+    else:
         if os.environ.get("GEMINI_API_KEY"):
             backend_name = "gemini"
         elif os.environ.get("OPENAI_API_KEY"):
@@ -145,12 +151,9 @@ def get_backend(backend_name: str | None = None) -> LLMBackend:
             backend_name = "anthropic"
         else:
             raise RuntimeError(
-                "No LLM backend available. Please set one of the following "
-                "environment variables:\n"
-                "- GEMINI_API_KEY (for Google Gemini)\n"
-                "- OPENAI_API_KEY (for OpenAI)\n"
-                "- ANTHROPIC_API_KEY (for Anthropic - future)\n"
-                "Or set LLM_BACKEND to specify which backend to use."
+                "No LLM backend available. Please set one of the following:\n"
+                "- Configuration file: [system] backend = gemini/openai/anthropic\n"
+                "- API keys: GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY"
             )
 
     # Import and instantiate the requested backend
