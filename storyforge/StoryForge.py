@@ -15,6 +15,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 
 from .config import Config, ConfigError, load_config
+from .context import ContextManager
 from .llm_backend import get_backend
 from .prompt import Prompt
 from .schema.cli_integration import (
@@ -271,31 +272,18 @@ def main(
             theme_value = theme if theme else None
             learning_focus_value = learning_focus if learning_focus else None
 
-            if verbose:
-                console.print(f"[cyan][DEBUG] use_context flag is set to: {use_context}[/cyan]")
+            # Load context using ContextManager
+            context_manager = ContextManager()
             if use_context:
-                context_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
-                context: str | None = ""
-                if context_dir.is_dir():
-                    md_files = [f for f in context_dir.iterdir() if f.suffix == ".md"]
-                    contents = []
-                    for fpath in md_files:
-                        try:
-                            with open(fpath, encoding="utf-8") as f:
-                                contents.append(f.read())
-                        except Exception as e:
-                            if verbose:
-                                console.print(f"[yellow]Warning: Could not read {fpath}: {e}[/yellow]")
-                    context = "\n".join(contents) if contents else None
-                else:
-                    context = None
+                context = context_manager.load_context()
+                if verbose and context:
+                    console.print(f"[dim]Loaded context from {len(context.split())} words[/dim]")
+                elif verbose:
+                    console.print("[dim]No context files found[/dim]")
             else:
                 context = None
                 if verbose:
-                    console.print("[cyan][DEBUG] Context loading skipped due to --no-use-context[/cyan]")
-
-            if verbose:
-                console.print(f"[cyan][DEBUG] Context value before Prompt creation: {repr(context)}[/cyan]")
+                    console.print("[dim]Context loading skipped due to --no-use-context[/dim]")
 
             story_prompt = Prompt(
                 prompt=prompt,
@@ -496,7 +484,6 @@ def main(
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             context_filename = f"story_{timestamp}.md"
             context_path = Path(context_dir) / context_filename
-            print("DEBUG EXIT REACHED")
             try:
                 with open(context_path, "w", encoding="utf-8") as f:
                     f.write("# Story Context\n\n")

@@ -143,19 +143,12 @@ class ContextManager:
         Returns:
             str: Relevant context for the prompt, or None if no context available
         """
-        # TODO: Implement smart context extraction
-        # For now, return all context (basic implementation)
+        # Return all available context for now
+        # Smart context extraction could be added in future versions
         full_context = self.load_context()
 
         if not full_context:
             return None
-
-        # Future implementation points:
-        # 1. Parse prompt for character names (Ethan, Isaac, etc.)
-        # 2. Extract character descriptions for mentioned characters
-        # 3. Add related characters (family members, pets)
-        # 4. Include relevant story examples
-        # 5. Apply token budget limits
 
         return full_context
 
