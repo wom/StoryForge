@@ -11,6 +11,8 @@ and image naming across different LLM backends.
 import random
 from dataclasses import dataclass
 
+from .schema import STORYFORGE_SCHEMA, SchemaValidator, ValidationError
+
 
 @dataclass
 class Prompt:
@@ -87,69 +89,29 @@ class Prompt:
             self.learning_focus = random.choice(valid_values["learning_focus"])
 
     def _validate_parameters(self) -> None:
-        """Validate that all parameters have acceptable values."""
-        valid_lengths = ["flash", "short", "medium", "bedtime"]
-        valid_age_ranges = ["toddler", "preschool", "early_reader", "middle_grade"]
-        valid_styles = [
-            "adventure",
-            "comedy",
-            "fantasy",
-            "fairy_tale",
-            "friendship",
-            "random",
+        """Validate that all parameters have acceptable values using schema validation."""
+        validator = SchemaValidator(STORYFORGE_SCHEMA)
+        
+        # Map prompt parameters to their schema field names and sections
+        param_validations = [
+            ('length', 'story', self.length),
+            ('age_range', 'story', self.age_range),
+            ('style', 'story', self.style),
+            ('tone', 'story', self.tone),
+            ('theme', 'story', self.theme),
+            ('learning_focus', 'story', self.learning_focus),
+            ('image_style', 'images', self.image_style),
         ]
-        valid_tones = [
-            "gentle",
-            "exciting",
-            "silly",
-            "heartwarming",
-            "magical",
-            "random",
-        ]
-        valid_themes = [
-            "courage",
-            "kindness",
-            "teamwork",
-            "problem_solving",
-            "creativity",
-            "family",
-            "random",
-        ]
-        valid_learning = [
-            "counting",
-            "colors",
-            "letters",
-            "emotions",
-            "nature",
-        ]
-        valid_image_styles = [
-            "chibi",
-            "realistic",
-            "cartoon",
-            "watercolor",
-            "sketch",
-        ]
-
-        if self.length not in valid_lengths:
-            raise ValueError(f"Invalid length '{self.length}'. Must be one of: {valid_lengths}")
-
-        if self.age_range not in valid_age_ranges:
-            raise ValueError(f"Invalid age_range '{self.age_range}'. Must be one of: {valid_age_ranges}")
-
-        if self.style not in valid_styles:
-            raise ValueError(f"Invalid style '{self.style}'. Must be one of: {valid_styles}")
-
-        if self.tone not in valid_tones:
-            raise ValueError(f"Invalid tone '{self.tone}'. Must be one of: {valid_tones}")
-
-        if self.theme and self.theme not in valid_themes:
-            raise ValueError(f"Invalid theme '{self.theme}'. Must be one of: {valid_themes}")
-
-        if self.learning_focus and self.learning_focus not in valid_learning:
-            raise ValueError(f"Invalid learning_focus '{self.learning_focus}'. Must be one of: {valid_learning}")
-
-        if self.image_style not in valid_image_styles:
-            raise ValueError(f"Invalid image_style '{self.image_style}'. Must be one of: {valid_image_styles}")
+        
+        for field_name, section_name, value in param_validations:
+            if hasattr(STORYFORGE_SCHEMA, section_name):
+                section = getattr(STORYFORGE_SCHEMA, section_name)
+                if field_name in section.fields:
+                    field = section.fields[field_name]
+                    errors = validator.validate_field(field, value)
+                    if errors:
+                        # Raise the first validation error
+                        raise ValueError(errors[0].message)
 
     def _get_length_description(self) -> str:
         """Get description text for the story length."""
@@ -347,24 +309,22 @@ class Prompt:
     @classmethod
     def get_valid_values(cls) -> dict[str, list[str]]:
         """
-        Get all valid values for each parameter (excluding 'random').
+        Get all valid values for each parameter from schema (excluding 'random').
 
         Returns:
             dict: Parameter names mapped to their valid values for random selection
         """
-        return {
-            "length": ["flash", "short", "medium", "bedtime"],
-            "age_range": ["toddler", "preschool", "early_reader", "middle_grade"],
-            "style": ["adventure", "comedy", "fantasy", "fairy_tale", "friendship"],
-            "tone": ["gentle", "exciting", "silly", "heartwarming", "magical"],
-            "theme": [
-                "courage",
-                "kindness",
-                "teamwork",
-                "problem_solving",
-                "creativity",
-                "family",
-            ],
-            "learning_focus": ["counting", "colors", "letters", "emotions", "nature"],
-            "image_style": ["chibi", "realistic", "cartoon", "watercolor", "sketch"],
-        }
+        valid_values = {}
+        
+        # Extract valid values from schema sections
+        for section_name in ['story', 'images']:
+            if hasattr(STORYFORGE_SCHEMA, section_name):
+                section = getattr(STORYFORGE_SCHEMA, section_name)
+                for field_name, field in section.fields.items():
+                    if field.valid_values:
+                        # Filter out empty strings and 'random' for random selection
+                        values = [v for v in field.valid_values if v and v != 'random']
+                        if values:
+                            valid_values[field_name] = values
+        
+        return valid_values

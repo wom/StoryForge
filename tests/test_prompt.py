@@ -7,6 +7,7 @@ from typing import cast
 import pytest
 
 from storyforge.prompt import Prompt
+from storyforge.schema import STORYFORGE_SCHEMA, SchemaValidator
 
 
 class TestPromptBasic:
@@ -73,32 +74,32 @@ class TestPromptValidation:
 
     def test_invalid_length_rejected(self):
         """Test that invalid length values are rejected."""
-        with pytest.raises(ValueError, match="Invalid length"):
+        with pytest.raises(ValueError, match="Invalid value.*invalid_length"):
             Prompt(prompt="Test", length=cast(str, "invalid_length"))
 
     def test_invalid_age_range_rejected(self):
         """Test that invalid age_range values are rejected."""
-        with pytest.raises(ValueError, match="Invalid age_range"):
+        with pytest.raises(ValueError, match="Invalid value.*invalid_age"):
             Prompt(prompt="Test", age_range=cast(str, "invalid_age"))
 
     def test_invalid_style_rejected(self):
         """Test that invalid style values are rejected."""
-        with pytest.raises(ValueError, match="Invalid style"):
+        with pytest.raises(ValueError, match="Invalid value.*invalid_style"):
             Prompt(prompt="Test", style=cast(str, "invalid_style"))
 
     def test_invalid_tone_rejected(self):
         """Test that invalid tone values are rejected."""
-        with pytest.raises(ValueError, match="Invalid tone"):
+        with pytest.raises(ValueError, match="Invalid value.*invalid_tone"):
             Prompt(prompt="Test", tone=cast(str, "invalid_tone"))
 
     def test_invalid_theme_rejected(self):
         """Test that invalid theme values are rejected."""
-        with pytest.raises(ValueError, match="Invalid theme"):
+        with pytest.raises(ValueError, match="Invalid value.*invalid_theme"):
             Prompt(prompt="Test", theme=cast(str, "invalid_theme"))
 
     def test_invalid_learning_focus_rejected(self):
         """Test that invalid learning_focus values are rejected."""
-        with pytest.raises(ValueError, match="Invalid learning_focus"):
+        with pytest.raises(ValueError, match="Invalid value.*invalid_focus"):
             Prompt(prompt="Test", learning_focus=cast(str, "invalid_focus"))
 
 
@@ -407,10 +408,10 @@ class TestRandomParameterFunctionality:
         assert isinstance(prompt.tone, str)
 
         # Invalid non-random parameters should still be rejected
-        with pytest.raises(ValueError, match="Invalid style"):
+        with pytest.raises(ValueError, match="Invalid value.*invalid_style"):
             Prompt(prompt="Test", style="invalid_style")
 
-        with pytest.raises(ValueError, match="Invalid tone"):
+        with pytest.raises(ValueError, match="Invalid value.*invalid_tone"):
             Prompt(prompt="Test", tone="invalid_tone")
 
     def test_randomness_varies_between_instances(self):
@@ -425,3 +426,169 @@ class TestRandomParameterFunctionality:
         # With 10 instances and multiple valid options, we should see some variation
         # (This is probabilistic, but very likely to pass)
         assert len(set(styles)) > 1 or len(set(tones)) > 1, "Expected some variation in random values"
+
+
+class TestSchemaBasedValidation:
+    """Test that the refactored schema-based validation works correctly."""
+
+    def test_validation_uses_schema(self):
+        """Test that validation now uses the configuration schema."""
+        # This should work with valid schema values
+        prompt = Prompt(
+            prompt="Test story",
+            style="adventure",
+            tone="heartwarming",
+            image_style="chibi"
+        )
+        
+        assert prompt.style == "adventure"
+        assert prompt.tone == "heartwarming"
+        assert prompt.image_style == "chibi"
+
+    def test_schema_validator_integration(self):
+        """Test that schema validator is properly integrated."""
+        validator = SchemaValidator(STORYFORGE_SCHEMA)
+        
+        # Test valid value
+        story_section = STORYFORGE_SCHEMA.story
+        style_field = story_section.fields['style']
+        errors = validator.validate_field(style_field, 'adventure')
+        assert len(errors) == 0
+
+        # Test invalid value
+        errors = validator.validate_field(style_field, 'invalid_style')
+        assert len(errors) == 1
+        assert 'Invalid value' in errors[0].message
+
+    def test_get_valid_values_from_schema(self):
+        """Test that get_valid_values now extracts from schema."""
+        valid_values = Prompt.get_valid_values()
+        
+        # Verify it matches schema definitions
+        story_section = STORYFORGE_SCHEMA.story
+        images_section = STORYFORGE_SCHEMA.images
+        
+        # Check that values come from schema
+        schema_style_values = [v for v in story_section.fields['style'].valid_values if v and v != 'random']
+        schema_image_values = [v for v in images_section.fields['image_style'].valid_values if v and v != 'random']
+        
+        assert valid_values['style'] == schema_style_values
+        assert valid_values['image_style'] == schema_image_values
+
+    def test_validation_error_messages_from_schema(self):
+        """Test that validation error messages come from schema validation."""
+        with pytest.raises(ValueError) as exc_info:
+            Prompt(prompt="Test", style="invalid_style")
+        
+        error_message = str(exc_info.value)
+        # Should contain schema validation error format
+        assert "Invalid value" in error_message
+        assert "Valid options:" in error_message
+        assert "adventure, comedy, fantasy, fairy_tale, friendship, random" in error_message
+
+    def test_image_style_validation_from_schema(self):
+        """Test that image_style validation also uses schema."""
+        # Valid image style should work
+        prompt = Prompt(prompt="Test", image_style="watercolor")
+        assert prompt.image_style == "watercolor"
+        
+        # Invalid image style should be rejected
+        with pytest.raises(ValueError) as exc_info:
+            Prompt(prompt="Test", image_style="invalid_image_style")
+        
+        error_message = str(exc_info.value)
+        assert "Invalid value" in error_message
+        assert "chibi, realistic, cartoon, watercolor, sketch" in error_message
+
+
+class TestContextManagerIntegration:
+    """Test that context loading improvements work correctly."""
+
+    def test_context_manager_import(self):
+        """Test that ContextManager can be imported and used."""
+        from storyforge.context import ContextManager
+        
+        context_manager = ContextManager()
+        assert context_manager is not None
+        
+        # Should be able to call load_context without error
+        context = context_manager.load_context()
+        assert context is None or isinstance(context, str)
+
+    def test_context_manager_caching(self):
+        """Test that ContextManager caching works."""
+        from storyforge.context import ContextManager
+        
+        context_manager = ContextManager()
+        
+        # First call
+        context1 = context_manager.load_context()
+        
+        # Second call should return same result (cached)
+        context2 = context_manager.load_context()
+        
+        assert context1 == context2
+        
+        # Clear cache and try again
+        context_manager.clear_cache()
+        context3 = context_manager.load_context()
+        
+        # Should still be same content, but freshly loaded
+        assert context1 == context3
+
+
+class TestTechnicalDebtCleanup:
+    """Test that technical debt cleanup was successful."""
+
+    def test_no_hardcoded_validation_arrays(self):
+        """Test that hardcoded validation arrays were removed from prompt.py."""
+        import inspect
+        from storyforge import prompt
+        
+        # Get the source code of the prompt module
+        source_lines = inspect.getsourcelines(prompt)[0]
+        source_text = ''.join(source_lines)
+        
+        # Should not contain hardcoded arrays like this anymore
+        hardcoded_patterns = [
+            'valid_lengths = [',
+            'valid_age_ranges = [',
+            'valid_styles = [',
+            'valid_tones = [',
+            'valid_themes = [',
+            'valid_learning = [',
+            'valid_image_styles = ['
+        ]
+        
+        for pattern in hardcoded_patterns:
+            assert pattern not in source_text, f"Found hardcoded validation array: {pattern}"
+
+    def test_schema_imports_present(self):
+        """Test that schema imports were added to prompt.py."""
+        import inspect
+        from storyforge import prompt
+        
+        source_lines = inspect.getsourcelines(prompt)[0]
+        source_text = ''.join(source_lines)
+        
+        # Should contain schema imports
+        assert 'from .schema import' in source_text
+        assert 'STORYFORGE_SCHEMA' in source_text
+        assert 'SchemaValidator' in source_text
+
+    def test_validation_method_uses_schema(self):
+        """Test that _validate_parameters method uses schema validation."""
+        import inspect
+        from storyforge.prompt import Prompt
+        
+        # Get source of validation method
+        source_lines = inspect.getsourcelines(Prompt._validate_parameters)[0]
+        source_text = ''.join(source_lines)
+        
+        # Should use SchemaValidator
+        assert 'SchemaValidator' in source_text
+        assert 'STORYFORGE_SCHEMA' in source_text
+        
+        # Should not contain hardcoded validation
+        assert 'valid_lengths' not in source_text
+        assert 'valid_age_ranges' not in source_text
