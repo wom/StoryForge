@@ -11,7 +11,7 @@ and image naming across different LLM backends.
 import random
 from dataclasses import dataclass
 
-from .schema import STORYFORGE_SCHEMA, SchemaValidator, ValidationError
+from .schema import STORYFORGE_SCHEMA, SchemaValidator
 
 
 @dataclass
@@ -91,18 +91,18 @@ class Prompt:
     def _validate_parameters(self) -> None:
         """Validate that all parameters have acceptable values using schema validation."""
         validator = SchemaValidator(STORYFORGE_SCHEMA)
-        
+
         # Map prompt parameters to their schema field names and sections
         param_validations = [
-            ('length', 'story', self.length),
-            ('age_range', 'story', self.age_range),
-            ('style', 'story', self.style),
-            ('tone', 'story', self.tone),
-            ('theme', 'story', self.theme),
-            ('learning_focus', 'story', self.learning_focus),
-            ('image_style', 'images', self.image_style),
+            ("length", "story", self.length),
+            ("age_range", "story", self.age_range),
+            ("style", "story", self.style),
+            ("tone", "story", self.tone),
+            ("theme", "story", self.theme),
+            ("learning_focus", "story", self.learning_focus),
+            ("image_style", "images", self.image_style),
         ]
-        
+
         for field_name, section_name, value in param_validations:
             if hasattr(STORYFORGE_SCHEMA, section_name):
                 section = getattr(STORYFORGE_SCHEMA, section_name)
@@ -315,16 +315,16 @@ class Prompt:
             dict: Parameter names mapped to their valid values for random selection
         """
         valid_values = {}
-        
+
         # Extract valid values from schema sections
-        for section_name in ['story', 'images']:
+        for section_name in ["story", "images"]:
             if hasattr(STORYFORGE_SCHEMA, section_name):
                 section = getattr(STORYFORGE_SCHEMA, section_name)
                 for field_name, field in section.fields.items():
                     if field.valid_values:
                         # Filter out empty strings and 'random' for random selection
-                        values = [v for v in field.valid_values if v and v != 'random']
+                        values = [v for v in field.valid_values if v and v != "random"]
                         if values:
                             valid_values[field_name] = values
-        
+
         return valid_values

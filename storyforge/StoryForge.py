@@ -30,8 +30,8 @@ console = Console()
 # Create Typer app instance for entrypoint
 app = typer.Typer(
     help="StoryForge: Generate illustrated stories using AI language models.\n\n"
-         "Configuration: Use --init-config to create a config file with default values.\n"
-         "Environment: Set STORYFORGE_CONFIG to use a custom config file location."
+    "Configuration: Use --init-config to create a config file with default values.\n"
+    "Environment: Set STORYFORGE_CONFIG to use a custom config file location."
 )
 
 
@@ -95,7 +95,10 @@ def load_story_from_file(rel_path: str) -> str | None:
 
 @app.command()
 def main(
-    prompt: str | None = typer.Argument(None, help="The story prompt to generate from (positional, required unless using --init-config)"),
+    prompt: str | None = typer.Argument(
+        None,
+        help=("The story prompt to generate from (positional, required unless using --init-config)"),
+    ),
     length: str | None = generate_cli_option("length"),
     age_range: str | None = generate_cli_option("age_range"),
     style: str | None = generate_cli_option("style"),
@@ -113,28 +116,24 @@ def main(
     verbose: bool | None = generate_cli_option("verbose"),
     debug: bool | None = generate_cli_option("debug"),
     backend: str | None = generate_cli_option("backend"),
-    init_config: bool = typer.Option(
-        False,
-        "--init-config",
-        help="Generate a default configuration file and exit"
-    ),
+    init_config: bool = typer.Option(False, "--init-config", help="Generate a default configuration file and exit"),
 ):
     # Validate CLI arguments using schema before processing
     cli_args = {
-        'length': length,
-        'age_range': age_range,
-        'style': style,
-        'tone': tone,
-        'theme': theme,
-        'learning_focus': learning_focus,
-        'setting': setting,
-        'characters': characters,
-        'image_style': image_style,
-        'output_dir': output_dir,
-        'use_context': use_context,
-        'verbose': verbose,
-        'debug': debug,
-        'backend': backend,
+        "length": length,
+        "age_range": age_range,
+        "style": style,
+        "tone": tone,
+        "theme": theme,
+        "learning_focus": learning_focus,
+        "setting": setting,
+        "characters": characters,
+        "image_style": image_style,
+        "output_dir": output_dir,
+        "use_context": use_context,
+        "verbose": verbose,
+        "debug": debug,
+        "backend": backend,
     }
 
     # Only validate provided CLI arguments (not None values)
@@ -184,7 +183,7 @@ def main(
             raise
         except Exception as e:
             console.print(f"[red]Error creating configuration file:[/red] {e}", style="bold")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     try:
         # Load configuration file
@@ -197,8 +196,10 @@ def main(
         style = style if style is not None else config.get_field_value("story", "style")
         tone = tone if tone is not None else config.get_field_value("story", "tone")
         theme = theme if theme is not None else config.get_field_value("story", "theme")
-        learning_focus = learning_focus if learning_focus is not None else (
-            config.get_field_value("story", "learning_focus") or None
+        learning_focus = (
+            learning_focus
+            if learning_focus is not None
+            else (config.get_field_value("story", "learning_focus") or None)
         )
         setting = setting if setting is not None else (config.get_field_value("story", "setting") or None)
 
@@ -218,10 +219,10 @@ def main(
 
     except ConfigError as e:
         console.print(f"[red]Configuration Error:[/red] {e}", style="bold")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
     except Exception as e:
         console.print(f"[red]Error loading configuration:[/red] {e}", style="bold")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from None
 
     if debug:
         verbose = True  # Ensure verbose is enabled in debug mode
