@@ -191,29 +191,29 @@ def main(
 
         # Merge configuration with CLI arguments (CLI takes precedence)
         # Only use config values if CLI argument is None (not provided)
-        length = length if length is not None else config.get_value("story", "length", "bedtime")
-        age_range = age_range if age_range is not None else config.get_value("story", "age_range", "early_reader")
-        style = style if style is not None else config.get_value("story", "style", "random")
-        tone = tone if tone is not None else config.get_value("story", "tone", "random")
-        theme = theme if theme is not None else config.get_value("story", "theme", "random")
+        length = length if length is not None else config.get_field_value("story", "length")
+        age_range = age_range if age_range is not None else config.get_field_value("story", "age_range")
+        style = style if style is not None else config.get_field_value("story", "style")
+        tone = tone if tone is not None else config.get_field_value("story", "tone")
+        theme = theme if theme is not None else config.get_field_value("story", "theme")
         learning_focus = learning_focus if learning_focus is not None else (
-            config.get_value("story", "learning_focus") or None
+            config.get_field_value("story", "learning_focus") or None
         )
-        setting = setting if setting is not None else (config.get_value("story", "setting") or None)
+        setting = setting if setting is not None else (config.get_field_value("story", "setting") or None)
 
         # Handle characters - merge config and CLI
         if characters is None:
-            config_characters = config.get_list("story", "characters")
+            config_characters = config.get_field_value("story", "characters")
             characters = config_characters
 
-        image_style = image_style if image_style is not None else config.get_value("images", "image_style", "chibi")
-        output_dir = output_dir if output_dir is not None else (config.get_value("output", "output_dir") or None)
-        use_context = use_context if use_context is not None else config.get_bool("output", "use_context", True)
-        verbose = verbose if verbose is not None else config.get_bool("system", "verbose", False)
-        debug = debug if debug is not None else config.get_bool("system", "debug", False)
+        image_style = image_style if image_style is not None else config.get_field_value("images", "image_style")
+        output_dir = output_dir if output_dir is not None else (config.get_field_value("output", "output_dir") or None)
+        use_context = use_context if use_context is not None else config.get_field_value("output", "use_context")
+        verbose = verbose if verbose is not None else config.get_field_value("system", "verbose")
+        debug = debug if debug is not None else config.get_field_value("system", "debug")
 
         # Get backend from CLI or configuration (CLI takes precedence)
-        config_backend = backend if backend is not None else config.get_value("system", "backend")
+        config_backend = backend if backend is not None else config.get_field_value("system", "backend")
 
     except ConfigError as e:
         console.print(f"[red]Configuration Error:[/red] {e}", style="bold")
