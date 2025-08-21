@@ -37,7 +37,8 @@ dependencies = [
     "textual-dev>=0.00.1",
     "typer>=0.9.0",
     "rich>=13.0.0",
-    "platformdirs>=4.2.0"
+    "platformdirs>=4.2.0",
+    "pyyaml>=6.0.0"
 ]
 
 [project.urls]
@@ -52,7 +53,8 @@ dev = [
     "ruff>=0.12.1",
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
-    "pip>=25.1.1"
+    "pip>=25.1.1",
+    "types-PyYAML>=6.0.12"
 ]
 
 [project.scripts]
