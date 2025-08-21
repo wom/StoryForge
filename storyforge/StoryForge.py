@@ -3,21 +3,17 @@ StoryForge: Simplified CLI for generating illustrated stories using multiple LLM
 Supports Google Gemini and Anthropic Claude backends.
 """
 
-import os
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 
 import typer
-from platformdirs import user_data_dir
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 
+from .checkpoint import CheckpointManager
 from .config import Config, ConfigError, load_config
-from .context import ContextManager
-from .llm_backend import get_backend
-from .prompt import Prompt
+from .phase_executor import PhaseExecutor
 from .schema.cli_integration import (
     generate_boolean_cli_option,
     generate_cli_option,
@@ -31,7 +27,10 @@ console = Console()
 app = typer.Typer(
     help="StoryForge: Generate illustrated stories using AI language models.\n\n"
     "Configuration: Use --init-config to create a config file with default values.\n"
-    "Environment: Set STORYFORGE_CONFIG to use a custom config file location."
+    "Environment: Set STORYFORGE_CONFIG to use a custom config file location.\n\n"
+    "Checkpoint System: StoryForge automatically saves progress during execution.\n"
+    "Use --continue to resume from previous sessions or retry from any completed phase.\n"
+    "Checkpoint files are stored in ~/.local/share/StoryForge/checkpoints/"
 )
 
 
@@ -97,7 +96,7 @@ def load_story_from_file(rel_path: str) -> str | None:
 def main(
     prompt: str | None = typer.Argument(
         None,
-        help=("The story prompt to generate from (positional, required unless using --init-config)"),
+        help="The story prompt to generate from (positional, required unless using --init-config or --continue)",
     ),
     length: str | None = generate_cli_option("length"),
     age_range: str | None = generate_cli_option("age_range"),
@@ -117,6 +116,14 @@ def main(
     debug: bool | None = generate_cli_option("debug"),
     backend: str | None = generate_cli_option("backend"),
     init_config: bool = typer.Option(False, "--init-config", help="Generate a default configuration file and exit"),
+    continue_session: bool = typer.Option(
+        False,
+        "--continue",
+        help="Resume execution from a previous StoryForge session. "
+        "Displays the last 5 sessions and allows you to choose which phase to resume from. "
+        "For completed sessions, you can generate new images, modify the story, "
+        "save as context, or restart completely with the same parameters.",
+    ),
 ):
     # Validate CLI arguments using schema before processing
     cli_args = {
@@ -185,6 +192,34 @@ def main(
             console.print(f"[red]Error creating configuration file:[/red] {e}", style="bold")
             raise typer.Exit(1) from None
 
+    # Handle --continue option
+    if continue_session:
+        try:
+            checkpoint_manager = CheckpointManager()
+            checkpoint_data = checkpoint_manager.prompt_checkpoint_selection()
+
+            if checkpoint_data is None:
+                console.print("[yellow]No checkpoint selected. Exiting.[/yellow]")
+                raise typer.Exit(0)
+
+            # Get the phase to resume from
+            resume_phase = checkpoint_manager.prompt_phase_selection(checkpoint_data)
+            if resume_phase is None:
+                console.print("[yellow]No phase selected. Exiting.[/yellow]")
+                raise typer.Exit(0)
+
+            # Execute using phase executor
+            phase_executor = PhaseExecutor(checkpoint_manager)
+            phase_executor.execute_from_checkpoint(checkpoint_data, resume_phase)
+            raise typer.Exit(0)
+
+        except typer.Exit:
+            # Let typer.Exit propagate normally
+            raise
+        except Exception as e:
+            console.print(f"[red]Error handling checkpoint continuation:[/red] {e}", style="bold")
+            raise typer.Exit(1) from e
+
     try:
         # Load configuration file
         config = load_config(verbose=bool(verbose))
@@ -227,8 +262,8 @@ def main(
     if debug:
         verbose = True  # Ensure verbose is enabled in debug mode
 
-    # Check if prompt is required (not needed for --init-config)
-    if not init_config and (prompt is None or not str(prompt).strip()):
+    # Check if prompt is required (not needed for --init-config or --continue)
+    if not init_config and not continue_session and (prompt is None or not str(prompt).strip()):
         console.print("[red]Error:[/red] Please provide a non-empty story prompt.", style="bold")
         raise typer.Exit(1)
 
@@ -237,301 +272,45 @@ def main(
         output_dir = generate_default_output_dir()
         console.print(f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}")
 
+    # Use phase executor for both new sessions and checkpoint resumption
     try:
-        # Initialize backend with configuration support
-        if verbose:
-            console.print("[dim]Initializing AI backend...[/dim]")
+        # Prepare CLI arguments for checkpoint
+        cli_arguments = {
+            "length": length,
+            "age_range": age_range,
+            "style": style,
+            "tone": tone,
+            "theme": theme,
+            "learning_focus": learning_focus,
+            "setting": setting,
+            "characters": characters,
+            "image_style": image_style,
+            "output_dir": output_dir,
+            "use_context": use_context,
+            "verbose": verbose,
+            "debug": debug,
+            "backend": config_backend,
+        }
 
-        llm_backend = get_backend(config_backend=config_backend)
-        backend_name = llm_backend.name
+        # Prepare resolved configuration
+        resolved_config = {
+            "backend": config_backend,
+            "output_directory": output_dir,
+            "use_context": use_context,
+            "verbose": verbose,
+            "debug": debug,
+            "length": length,
+            "age_range": age_range,
+            "style": style,
+            "tone": tone,
+            "theme": theme,
+            "image_style": image_style,
+        }
 
-        if verbose:
-            # Show which backend was selected
-            console.print(f"[dim]Using {backend_name} backend[/dim]")
-
-        # Show prompt summary and get confirmation
-        if not show_prompt_summary_and_confirm(
-            prompt=prompt,
-            age_range=age_range,
-            style=style,
-            tone=tone,
-            theme=theme,
-            length=length,
-            setting=setting,
-            characters=characters,
-            learning_focus=learning_focus,
-            image_style=image_style,
-            generation_type="story",
-            backend_name=backend_name,
-        ):
-            console.print("[yellow]Story generation cancelled.[/yellow]")
-            raise typer.Exit(0)
-
-        # Load context files if --use-context is enabled (default).
-        try:
-            characters_list = characters if characters else None
-            theme_value = theme if theme else None
-            learning_focus_value = learning_focus if learning_focus else None
-
-            # Load context using ContextManager
-            context_manager = ContextManager()
-            if use_context:
-                context = context_manager.load_context()
-                if verbose and context:
-                    console.print(f"[dim]Loaded context from {len(context.split())} words[/dim]")
-                elif verbose:
-                    console.print("[dim]No context files found[/dim]")
-            else:
-                context = None
-                if verbose:
-                    console.print("[dim]Context loading skipped due to --no-use-context[/dim]")
-
-            story_prompt = Prompt(
-                prompt=prompt,
-                context=context,
-                length=length,
-                age_range=age_range,
-                style=style,
-                tone=tone,
-                theme=theme_value,
-                setting=setting,
-                characters=characters_list,
-                learning_focus=learning_focus_value,
-                image_style=image_style,
-            )
-
-            if verbose:
-                console.print("[dim]Created prompt with parameters:[/dim]")
-                console.print(f"[dim]  Length: {story_prompt.length}[/dim]")
-                console.print(f"[dim]  Age Range: {story_prompt.age_range}[/dim]")
-                console.print(f"[dim]  Style: {story_prompt.style}[/dim]")
-                console.print(f"[dim]  Tone: {story_prompt.tone}[/dim]")
-                console.print(f"[dim]  Theme: {story_prompt.theme}[/dim]")
-                console.print(f"[dim]  Learning Focus: {story_prompt.learning_focus}[/dim]")
-                console.print(f"[cyan][DEBUG] About to call generate_story (debug={debug})[/cyan]")
-
-        except ValueError as e:
-            console.print(f"[red]Error:[/red] Invalid parameter value: {e}", style="bold")
-            raise typer.Exit(1) from e
-
-        # Refinement loop
-        refinements = None
-        accepted = False
-        while not accepted:
-            # Update prompt with refinements if any
-            story_prompt = Prompt(
-                prompt=prompt,
-                context=context,
-                length=length,
-                age_range=age_range,
-                style=style,
-                tone=tone,
-                theme=theme_value,
-                setting=setting,
-                characters=characters_list,
-                learning_focus=learning_focus_value,
-                image_style=image_style,
-            )
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]Generating story..."),
-                console=console,
-                transient=True,
-            ) as progress:
-                progress.add_task("story", total=None)
-                if debug:
-                    story = load_story_from_file("storyforge/test_story.txt")
-                    console.print("[cyan][DEBUG] load_story_from_file was called and returned.[/cyan]")
-                else:
-                    story = llm_backend.generate_story(story_prompt)
-                    if verbose:
-                        console.print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
-
-            if story is None or story == "[Error generating story]":
-                console.print(
-                    "[red]Error:[/red] Failed to generate story. Please check your API key and try again.",
-                    style="bold",
-                )
-                raise typer.Exit(1)
-
-            # Display the generated story
-            console.print("\n[bold green]Generated Story:[/bold green]")
-            console.print(f"[dim]Prompt:[/dim] {prompt}")
-            if refinements:
-                console.print(f"[dim]Refinements:[/dim] {refinements}")
-            console.print()
-            console.print(story)
-            console.print()
-
-            # Ask if user wants to refine
-            # Custom refinement confirmation: treat empty <cr> or 'n' as "no"
-            if Confirm.ask(
-                "[bold yellow]Would you like to refine the story?[/bold yellow]",
-                default=False,
-                show_default=True,
-            ):
-                ref_base = "Keep the story as similar as possible, but apply the following refinements."
-                ref_base += " After incorporating these changes, please generate a new version of the "
-                ref_base += "story while making sure to honor all concepts of good storytelling: \n\n{}"
-                refinements = typer.prompt("Refinements:")
-                prompt = ref_base.format(refinements, story)
-            else:
-                accepted = True
-
-        # Always save the story and print the message before image generation
-        story_filename = "story.txt"
-        story_path = os.path.join(output_dir, story_filename)
-        os.makedirs(output_dir, exist_ok=True)
-        with open(story_path, "w", encoding="utf-8") as f:
-            f.write(f"Story: {prompt}\n\n")
-            f.write(story if story is not None else "")
-        console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
-
-        # At this point, story is guaranteed to be a string (not None)
-        assert isinstance(story, str), "Story must be a string at this point"
-
-        # Present image generation options using Confirm.ask for test compatibility
-        if Confirm.ask("Would you like to generate illustrations for the story?"):
-            # Ask how many images to generate
-            num_images = typer.prompt("How many images would you like to generate?", type=int, default=1)
-
-            if num_images > 0:
-                msg = f"Generating {num_images} image{'s' if num_images > 1 else ''}..."
-                console.print(f"[bold blue]{msg}[/bold blue]")
-
-                reference_image_bytes = None
-                for i in range(num_images):
-                    console.print(f"[dim]Generating image {i + 1} of {num_images}...[/dim]")
-
-                    with Progress(
-                        SpinnerColumn(),
-                        TextColumn(f"[bold blue]Creating illustration {i + 1}..."),
-                        console=console,
-                        transient=True,
-                    ) as progress:
-                        progress.add_task("image", total=None)
-
-                        # Use story as prompt for image generation
-                        # Add qualifier when generating multiple images
-                        story_prompt_for_image = story
-                        if num_images > 1:
-                            # Generate qualifier based on image position
-                            ordinals = ["first", "second", "third", "fourth", "fifth"]
-                            fractions = {
-                                2: ["first half", "second half"],
-                                3: ["first third", "second third", "third third"],
-                                4: ["first quarter", "second quarter", "third quarter", "fourth quarter"],
-                                5: ["first fifth", "second fifth", "third fifth", "fourth fifth", "fifth fifth"],
-                            }
-
-                            if num_images in fractions and i < len(fractions[num_images]):
-                                fraction = fractions[num_images][i]
-                                qualifier = f"This image should illustrate the {fraction} of the story. "
-                            else:
-                                # Fallback for unsupported numbers or edge cases
-                                ordinal = ordinals[i] if i < len(ordinals) else f"{i + 1}th"
-                                qualifier = (
-                                    f"This image should illustrate the {ordinal} part of the story "
-                                    f"(part {i + 1} of {num_images}). "
-                                )
-
-                            story_prompt_for_image = qualifier + story
-
-                        image_prompt = Prompt(
-                            prompt=story_prompt_for_image,
-                            context=context,
-                            length=length,
-                            age_range=age_range,
-                            style=style,
-                            tone=tone,
-                            theme=theme_value,
-                            setting=setting,
-                            characters=characters_list,
-                            learning_focus=learning_focus_value,
-                            image_style=image_style,
-                        )
-
-                        # Generate image with reference for consistency (if available)
-                        image, image_bytes = llm_backend.generate_image(image_prompt, reference_image_bytes)
-
-                    if image and image_bytes:
-                        # Generate filename
-                        image_name = llm_backend.generate_image_name(image_prompt, story)
-                        image_filename = f"{image_name}_{i + 1:02d}.png" if num_images > 1 else f"{image_name}.png"
-                        image_path = os.path.join(output_dir, image_filename)
-
-                        # Save image
-                        with open(image_path, "wb") as f:
-                            f.write(image_bytes)
-                        console.print(f"[bold green]✅ Image {i + 1} saved as:[/bold green] {image_path}")
-
-                        # Use first image as reference for subsequent ones
-                        if i == 0:
-                            reference_image_bytes = image_bytes
-                    else:
-                        console.print(f"[red]❌ Failed to generate image {i + 1}[/red]")
-            else:
-                console.print("[yellow]No images will be generated.[/yellow]")
-        else:
-            console.print("[yellow]Image generation skipped by user.[/yellow]")
-
-        # Always ask if user wants to save as future context after story generation
-        save_as_context = Confirm.ask(
-            "[bold blue]Save this story as future context for character development?[/bold blue]"
-        )
-        if save_as_context:
-            context_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
-            context_dir.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            context_filename = f"story_{timestamp}.md"
-            context_path = Path(context_dir) / context_filename
-            try:
-                with open(context_path, "w", encoding="utf-8") as f:
-                    f.write("# Story Context\n\n")
-                    timestamp_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    f.write(f"**Generated:** {timestamp_str}\n\n")
-                    f.write("## Story Parameters\n\n")
-                    f.write(f"- **Prompt:** {prompt}\n")
-                    f.write(f"- **Age Range:** {age_range}\n")
-                    f.write(f"- **Length:** {length}\n")
-                    f.write(f"- **Style:** {style}\n")
-                    f.write(f"- **Tone:** {tone}\n")
-                    if theme and theme != "random":
-                        f.write(f"- **Theme:** {theme}\n")
-                    if learning_focus:
-                        f.write(f"- **Learning Focus:** {learning_focus}\n")
-                    if setting:
-                        f.write(f"- **Setting:** {setting}\n")
-                    if characters:
-                        f.write(f"- **Characters:** {', '.join(characters)}\n")
-                    f.write("\n## Generated Story\n\n")
-                    f.write(story if story is not None else "")
-                    f.write("\n\n## Usage Notes\n\n")
-                    f.write("This story can be referenced for:\n")
-                    f.write("- Character consistency in future stories\n")
-                    f.write("- Setting and world-building continuity\n")
-                    f.write("- Tone and style reference\n")
-                    f.write("- Educational content alignment\n")
-                console.print(f"[bold green]✅ Context saved as:[/bold green] {context_path}")
-            except Exception as e:
-                console.print(f"[red]Error saving context file:[/red] {e}", style="bold")
-
-    except RuntimeError as e:
-        if "GEMINI_API_KEY" in str(e):
-            console.print(
-                "[red]Error:[/red] GEMINI_API_KEY environment variable not set.",
-                style="bold",
-            )
-            console.print("[dim]Please set your Gemini API key: export GEMINI_API_KEY=your_key_here[/dim]")
-        elif "ANTHROPIC_API_KEY" in str(e):
-            console.print(
-                "[red]Error:[/red] ANTHROPIC_API_KEY environment variable not set.",
-                style="bold",
-            )
-            console.print("[dim]Please set your Anthropic API key: export ANTHROPIC_API_KEY=your_key_here[/dim]")
-        else:
-            console.print(f"[red]Error:[/red] {e}", style="bold")
-        raise typer.Exit(1) from e
+        # Execute new session with checkpointing
+        checkpoint_manager = CheckpointManager()
+        phase_executor = PhaseExecutor(checkpoint_manager)
+        phase_executor.execute_new_session(prompt, cli_arguments, resolved_config)
 
     except Exception as e:
         if verbose:

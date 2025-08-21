@@ -16,6 +16,44 @@ StoryForge is a command-line tool that generates illustrated children's stories 
 - 💾 Save stories and images with organized output directories
 - 🖥️ Interactive terminal interface or direct CLI usage
 - 📚 Context system for character consistency across stories
+- ⏯️ **Checkpoint system** for resuming interrupted sessions
+
+## Checkpoint System
+
+StoryForge automatically saves your progress during story generation, allowing you to resume from any point if the process is interrupted or if you want to retry different options.
+
+### Resume from Previous Sessions
+
+```bash
+storyforge --continue
+```
+
+This will show you the last 5 sessions and let you choose:
+
+- **For interrupted sessions**: Resume from where you left off
+- **For completed sessions**: Choose to:
+  - Generate new images with the same story
+  - Modify and regenerate the story
+  - Save the story as context for future use
+  - Start completely over with the same parameters
+
+### Checkpoint Storage
+
+Checkpoint files are automatically stored in:
+- **Linux/macOS**: `~/.local/share/StoryForge/checkpoints/`
+- **Windows**: `%APPDATA%\StoryForge\StoryForge\checkpoints\`
+
+The system automatically cleans up old checkpoints, keeping the 15 most recent sessions.
+
+### Example Workflow
+
+```bash
+# Start a story generation
+storyforge "A dragon learning to dance"
+# If interrupted, resume later with:
+storyforge --continue
+# Select your session and choose where to resume
+```
 
 ## Installation
 
