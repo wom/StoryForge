@@ -93,7 +93,7 @@ def load_story_from_file(rel_path: str) -> str | None:
     return story
 
 
-@app.command()
+@app.command(context_settings={"help_option_names": ["-h", "--help"]})
 def main(
     prompt: str | None = typer.Argument(
         None,
