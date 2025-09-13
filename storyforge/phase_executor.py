@@ -671,15 +671,20 @@ class PhaseExecutor:
                 ) as progress:
                     progress.add_task("image", total=None)
 
-                    # Generate image
-                    image_bytes, image_format = self.llm_backend.generate_image(
+                    # Generate image - backends return (image_object, image_bytes)
+                    image_object, image_bytes = self.llm_backend.generate_image(
                         self.story_prompt, reference_image_bytes=None
                     )
 
                     if image_bytes:
+                        # Determine image format from the image object or default to png
+                        image_format = "png"  # Default format
+                        if image_object and hasattr(image_object, 'format') and image_object.format:
+                            image_format = image_object.format.lower()
+                        
                         # Generate filename
                         image_name = self.llm_backend.generate_image_name(self.story_prompt, self.story)
-                        image_filename = f"{image_name}_{i:02d}.{image_format or 'png'}"
+                        image_filename = f"{image_name}_{i:02d}.{image_format}"
                         image_path = Path(output_dir) / image_filename
 
                         # Ensure output directory exists
@@ -699,18 +704,24 @@ class PhaseExecutor:
                             {
                                 "prompt": image_prompt,
                                 "filename": str(image_path),
-                                "format": image_format or "png",
+                                "format": image_format,
                             }
                         )
                     else:
                         console.print(f"[red]Failed to generate image {i}[/red]")
 
         except Exception as e:
-            console.print(f"[red]Error during image generation:[/red] {e}")
+            # Sanitize the error message to prevent binary data corruption
+            error_msg = str(e)
+            sanitized_error = ''.join(c if c.isprintable() or c.isspace() else '?' for c in error_msg)
+            console.print(f"[red]Error during image generation:[/red] {sanitized_error}")
             if self.checkpoint_data.resolved_config.get("verbose", False):
                 import traceback
 
-                console.print(traceback.format_exc())
+                # Also sanitize traceback
+                tb = traceback.format_exc()
+                sanitized_tb = ''.join(c if c.isprintable() or c.isspace() else '?' for c in tb)
+                console.print(f"[dim]Traceback:[/dim] {sanitized_tb}")
 
     def _phase_context_save(self) -> None:
         """Context saving phase."""
