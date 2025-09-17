@@ -330,7 +330,7 @@ def main(
             # Sanitize the error message to prevent binary data corruption
             error_msg = str(e)
             # Replace any non-printable characters with a placeholder
-            sanitized_error = ''.join(c if c.isprintable() or c.isspace() else '?' for c in error_msg)
+            sanitized_error = "".join(c if c.isprintable() or c.isspace() else "?" for c in error_msg)
             console.print(f"[red]Unexpected error:[/red] {sanitized_error}", style="bold")
         else:
             console.print(

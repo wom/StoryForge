@@ -130,17 +130,26 @@ class PhaseExecutor:
             raise ValueError("Checkpoint missing resolved configuration")
 
         # Validate phase is known
+        # Only validate ExecutionPhase values - ignore old incompatible checkpoints
         try:
             ExecutionPhase(checkpoint_data.current_phase)
         except ValueError as e:
-            raise ValueError(f"Invalid current phase in checkpoint: {checkpoint_data.current_phase}") from e
+            raise ValueError(
+                f"Incompatible checkpoint format - please start a new session: {checkpoint_data.current_phase}"
+            ) from e
 
-        # Validate completed phases
+        # Validate completed phases - skip invalid ones from old checkpoints
+        valid_completed_phases = []
         for phase_name in checkpoint_data.completed_phases:
             try:
                 ExecutionPhase(phase_name)
-            except ValueError as e:
-                raise ValueError(f"Invalid completed phase in checkpoint: {phase_name}") from e
+                valid_completed_phases.append(phase_name)
+            except ValueError:
+                # Skip invalid phases from old checkpoint format
+                continue
+
+        # Update checkpoint with only valid phases
+        checkpoint_data.completed_phases = valid_completed_phases
 
     def _get_completed_phases_before(self, resume_phase: ExecutionPhase) -> list[str]:
         """Get list of phases that should be marked as completed before the resume phase."""
@@ -679,9 +688,9 @@ class PhaseExecutor:
                     if image_bytes:
                         # Determine image format from the image object or default to png
                         image_format = "png"  # Default format
-                        if image_object and hasattr(image_object, 'format') and image_object.format:
+                        if image_object and hasattr(image_object, "format") and image_object.format:
                             image_format = image_object.format.lower()
-                        
+
                         # Generate filename
                         image_name = self.llm_backend.generate_image_name(self.story_prompt, self.story)
                         image_filename = f"{image_name}_{i:02d}.{image_format}"
@@ -713,14 +722,14 @@ class PhaseExecutor:
         except Exception as e:
             # Sanitize the error message to prevent binary data corruption
             error_msg = str(e)
-            sanitized_error = ''.join(c if c.isprintable() or c.isspace() else '?' for c in error_msg)
+            sanitized_error = "".join(c if c.isprintable() or c.isspace() else "?" for c in error_msg)
             console.print(f"[red]Error during image generation:[/red] {sanitized_error}")
             if self.checkpoint_data.resolved_config.get("verbose", False):
                 import traceback
 
                 # Also sanitize traceback
                 tb = traceback.format_exc()
-                sanitized_tb = ''.join(c if c.isprintable() or c.isspace() else '?' for c in tb)
+                sanitized_tb = "".join(c if c.isprintable() or c.isspace() else "?" for c in tb)
                 console.print(f"[dim]Traceback:[/dim] {sanitized_tb}")
 
     def _phase_context_save(self) -> None:

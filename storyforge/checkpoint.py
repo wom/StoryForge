@@ -364,7 +364,11 @@ class CheckpointManager:
         """Prompt user to select which phase to resume from for completed sessions."""
         if checkpoint_data.status != SessionStatus.COMPLETED.value:
             # For active/failed sessions, resume from current phase
-            return ExecutionPhase(checkpoint_data.current_phase)
+            try:
+                return ExecutionPhase(checkpoint_data.current_phase)
+            except ValueError:
+                # If phase is not recognized, it's an old incompatible checkpoint
+                raise ValueError("Incompatible checkpoint format - please start a new session") from None
 
         console.print(f'\n[bold]Selected completed session:[/bold] "{checkpoint_data.get_prompt_preview()}"')
         console.print("\n[bold cyan]Choose phase to resume from:[/bold cyan]")
