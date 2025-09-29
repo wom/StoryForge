@@ -6,7 +6,7 @@ StoryForge is a command-line tool that generates illustrated children's stories 
 
 - **Google Gemini** - Fully supported for story and image generation
 - **OpenAI** - Fully supported for story and image generation
-- **Anthropic** - Experimental (coming soon)
+- **Anthropic** - Supported for story (text) generation only; image generation is not currently supported by this backend
 
 ## Features
 
@@ -145,17 +145,9 @@ source ~/.bashrc
 storyforge "Tell me a story about a robot learning to make friends"
 ```
 
-### Generate Just an Image
+### Interactive prompts
 
-```bash
-storyforge image "A friendly robot in a colorful playground"
-```
-
-### Interactive Mode
-
-```bash
-storyforge tui
-```
+The CLI is interactive and will ask for confirmation and decisions during the run (for images, story refinements, etc.). There is not a separate `tui` subcommand in this version of the code.
 
 ### Advanced Options
 
@@ -172,9 +164,9 @@ storyforge "A brave mouse goes on an adventure" \
 
 - **Age Range**: `toddler`, `preschool`, `early_reader`, `middle_grade`
 - **Length**: `flash`, `short`, `medium`, `bedtime`
-- **Style**: `adventure`, `comedy`, `fantasy`, `fairy_tale`, `friendship`
-- **Tone**: `gentle`, `exciting`, `silly`, `heartwarming`, `magical`
-- **Theme**: `courage`, `kindness`, `teamwork`, `problem_solving`, `creativity`
+- **Style**: `adventure`, `comedy`, `fantasy`, `fairy_tale`, `friendship`, `random`
+- **Tone**: `gentle`, `exciting`, `silly`, `heartwarming`, `magical`, `random`
+- **Theme**: `courage`, `kindness`, `teamwork`, `problem_solving`, `creativity`, `random`
 - **Image Style**: `chibi`, `realistic`, `cartoon`, `watercolor`, `sketch`
 
 ## Tab Completion
