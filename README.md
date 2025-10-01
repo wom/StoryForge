@@ -18,6 +18,14 @@ StoryForge is a command-line tool that generates illustrated children's stories 
 - 📚 Context system for character consistency across stories
 - ⏯️ **Checkpoint system** for resuming interrupted sessions
 
+## Configuration
+
+For detailed configuration options, defaults, and examples see the full configuration reference:
+
+- docs/CONFIGURATION.md — field-by-field reference and example config file
+
+You can generate a default config file programmatically with the `Config.create_default_config()` helper or use the `STORYFORGE_CONFIG` environment variable to point to a specific config file.
+
 ## Checkpoint System
 
 StoryForge automatically saves your progress during story generation, allowing you to resume from any point if the process is interrupted or if you want to retry different options.
