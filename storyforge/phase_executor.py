@@ -519,28 +519,34 @@ class PhaseExecutor:
 
         # Check if we're resuming and already have a story
         existing_story = self.checkpoint_data.generated_content.get("story")
-        if existing_story:
+
+        # If we're regenerating from checkpoint (story exists but we're back at this phase)
+        # then we need to apply refinements
+        if existing_story and ExecutionPhase.STORY_GENERATE.value in self.checkpoint_data.completed_phases:
             self.story = str(existing_story)
             console.print("[cyan]Using existing story from checkpoint[/cyan]")
-        else:
-            # Generate new story
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]Generating story..."),
-                console=console,
-                transient=True,
-            ) as progress:
-                progress.add_task("story", total=None)
+            # Don't generate, just move to refinement
+            self._handle_story_refinement()
+            return
 
-                if debug:
-                    from .StoryForge import load_story_from_file
+        # Generate new story (first time)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]Generating story..."),
+            console=console,
+            transient=True,
+        ) as progress:
+            progress.add_task("story", total=None)
 
-                    self.story = load_story_from_file("storyforge/test_story.txt")
-                    console.print("[cyan][DEBUG] load_story_from_file was called and returned.[/cyan]")
-                else:
-                    self.story = self.llm_backend.generate_story(self.story_prompt)
-                    if verbose:
-                        console.print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
+            if debug:
+                from .StoryForge import load_story_from_file
+
+                self.story = load_story_from_file("storyforge/test_story.txt")
+                console.print("[cyan][DEBUG] load_story_from_file was called and returned.[/cyan]")
+            else:
+                self.story = self.llm_backend.generate_story(self.story_prompt)
+                if verbose:
+                    console.print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
 
         if self.story is None or self.story == "[Error generating story]":
             raise RuntimeError("Failed to generate story. Please check your API key and try again.")
@@ -554,6 +560,9 @@ class PhaseExecutor:
     def _handle_story_refinement(self) -> None:
         """Handle story refinement loop."""
         assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        debug = self.checkpoint_data.resolved_config.get("debug", False)
+        verbose = self.checkpoint_data.resolved_config.get("verbose", False)
+
         # Display the generated story
         console.print("\n[bold green]Generated Story:[/bold green]")
         prompt_preview = self.checkpoint_data.original_inputs.get("prompt", "")
@@ -570,22 +579,72 @@ class PhaseExecutor:
             default=False,
             show_default=True,
         ):
-            ref_base = "Keep the story as similar as possible, but apply the following refinements."
-            ref_base += " After incorporating these changes, please generate a new version of the "
-            ref_base += "story while making sure to honor all concepts of good storytelling: \n\n{}"
             self.refinements = typer.prompt("Refinements:")
 
-            # Update prompt with refinements
-            refined_prompt = ref_base.format(self.refinements)
-            if self.story_prompt:
-                self.story_prompt.prompt = refined_prompt
+            # Build refinement prompt that includes the existing story
+            refinement_instruction = (
+                "I have an existing story that needs refinement. "
+                "Please keep the story as similar as possible to the original, "
+                "but apply the following specific changes. "
+                "Maintain all the good storytelling elements, structure, and flow of the original story.\n\n"
+                f"ORIGINAL STORY:\n{self.story}\n\n"
+                f"REQUESTED CHANGES:\n{self.refinements}\n\n"
+                "Please generate the refined version of this story, incorporating the requested changes "
+                "while preserving everything else about the original story."
+            )
 
             # Store refinements in checkpoint
             if self.checkpoint_data:
                 self.checkpoint_data.generated_content["refinements"] = self.refinements
+                self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
 
-            # Regenerate story (this will recursively call this method)
-            self._phase_story_generate()
+            # Create a new prompt with the refinement instructions
+            # Save the original prompt first
+            original_prompt_text = self.story_prompt.prompt if self.story_prompt else ""
+
+            # Temporarily update the prompt for refinement
+            if self.story_prompt:
+                self.story_prompt.prompt = refinement_instruction
+
+            # Regenerate story with refinement
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[bold blue]Refining story..."),
+                console=console,
+                transient=True,
+            ) as progress:
+                progress.add_task("refining", total=None)
+
+                if debug:
+                    # In debug mode, show what would be sent but use test story
+                    console.print("[cyan][DEBUG] Refinement prompt would be sent to LLM[/cyan]")
+                    console.print(f"[dim]{refinement_instruction[:200]}...[/dim]")
+                    from .StoryForge import load_story_from_file
+
+                    self.story = load_story_from_file("storyforge/test_story.txt")
+                else:
+                    self.story = self.llm_backend.generate_story(self.story_prompt)
+                    if verbose:
+                        console.print("[cyan][DEBUG] Refinement story generated.[/cyan]")
+
+            # Restore original prompt
+            if self.story_prompt:
+                self.story_prompt.prompt = original_prompt_text
+
+            if self.story is None or self.story == "[Error generating story]":
+                raise RuntimeError("Failed to refine story. Please check your API key and try again.")
+
+            # Update story in checkpoint
+            self.checkpoint_data.generated_content["story"] = self.story
+
+            # Clear this phase from completed so we can run refinement again
+            if ExecutionPhase.STORY_GENERATE.value in self.checkpoint_data.completed_phases:
+                self.checkpoint_data.completed_phases.remove(ExecutionPhase.STORY_GENERATE.value)
+
+            self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
+
+            # Recursively ask for more refinements
+            self._handle_story_refinement()
         else:
             # Story accepted
             if self.checkpoint_data:
