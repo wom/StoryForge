@@ -175,7 +175,8 @@ class CheckpointManager:
 
     def __init__(self, auto_cleanup: bool = True) -> None:
         """Initialize checkpoint manager with default storage location."""
-        self.checkpoint_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "checkpoints"
+        # Use lowercase 'storyforge' for normalized cross-platform paths
+        self.checkpoint_dir = Path(user_data_dir("storyforge", "storyforge")) / "checkpoints"
         self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
         # Perform automatic cleanup on initialization
