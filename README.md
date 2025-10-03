@@ -20,11 +20,19 @@ StoryForge is a command-line tool that generates illustrated children's stories 
 
 ## Configuration
 
-For detailed configuration options, defaults, and examples see the full configuration reference:
+For detailed configuration options, defaults, and examples see the full configuration reference: [Configuration Documentation](docs/CONFIGURATION.md)
 
-- docs/CONFIGURATION.md — field-by-field reference and example config file
+### Generate a default config file
 
-You can generate a default config file programmatically with the `Config.create_default_config()` helper or use the `STORYFORGE_CONFIG` environment variable to point to a specific config file.
+```bash
+# Create config file (won't overwrite an existing file)
+storyforge init-config
+
+# Force overwrite an existing config file
+storyforge init-config --force
+```
+
+The config file will be created at `~/.config/storyforge/storyforge.ini` by default. You can override the location using the `STORYFORGE_CONFIG` environment variable.
 
 ## Checkpoint System
 
@@ -48,8 +56,8 @@ This will show you the last 5 sessions and let you choose:
 ### Checkpoint Storage
 
 Checkpoint files are automatically stored in:
-- **Linux/macOS**: `~/.local/share/StoryForge/checkpoints/`
-- **Windows**: `%APPDATA%\StoryForge\StoryForge\checkpoints\`
+- **Linux/macOS**: `~/.local/share/storyforge/checkpoints/`
+- **Windows**: `%APPDATA%\storyforge\storyforge\checkpoints\`
 
 The system automatically cleans up old checkpoints, keeping the 15 most recent sessions.
 

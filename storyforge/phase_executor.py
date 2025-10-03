@@ -805,8 +805,8 @@ class PhaseExecutor:
 
         if save_as_context:
             try:
-                # Get context directory
-                context_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
+                # Get context directory (normalized to lowercase 'storyforge')
+                context_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
                 context_dir.mkdir(parents=True, exist_ok=True)
 
                 # Generate context filename based on story prompt

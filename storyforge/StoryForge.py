@@ -26,12 +26,14 @@ console = Console()
 # Create Typer app instance for entrypoint
 app = typer.Typer(
     help="StoryForge: Generate illustrated stories using AI language models.\n\n"
-    "Configuration: Use --init-config to create a config file with default values.\n"
+    "Configuration: Use 'storyforge config init' to create a config file with default values.\n"
     "Environment: Set STORYFORGE_CONFIG to use a custom config file location.\n\n"
     "Checkpoint System: StoryForge automatically saves progress during execution.\n"
     "Use --continue to resume from previous sessions or retry from any completed phase.\n"
     "Checkpoint files are stored in ~/.local/share/StoryForge/checkpoints/"
 )
+config_app = typer.Typer(help="Configuration management commands")
+app.add_typer(config_app, name="config")
 
 
 def generate_default_output_dir() -> str:
@@ -92,7 +94,49 @@ def load_story_from_file(rel_path: str) -> str | None:
     return story
 
 
-@app.command(context_settings={"help_option_names": ["-h", "--help"]})
+@config_app.command(name="init", help="Create a default configuration file in the XDG config directory.")
+def init_config(
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing config file"),
+    config_path: str | None = typer.Option(None, "--path", "-p", help="Custom config file path"),
+) -> None:
+    """Create a default configuration file."""
+    try:
+        config = Config()
+        # Use provided config path or default
+        target_path = config.get_default_config_path() if config_path is None else Path(config_path)
+
+        if target_path.exists() and not force:
+            console.print(f"[yellow]Configuration file already exists:[/yellow] {target_path}")
+            console.print("[dim]Use --force to overwrite the existing configuration file[/dim]")
+            raise typer.Exit(0)
+
+        # Create parent directory if needed
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        created_path = config.create_default_config(target_path)
+        console.print(f"[bold green]✅ Configuration file created:[/bold green] {created_path}")
+        console.print()
+        console.print(
+            "[bold]You can override the configuration location with the STORYFORGE_CONFIG environment variable.[/bold]"
+        )
+        console.print()
+        console.print("[bold]Configuration file locations (in priority order):[/bold]")
+        for i, search_path in enumerate(config.get_config_paths(), 1):
+            if search_path == created_path:
+                console.print(f"  {i}. {search_path} [bold green](created here)[/bold green]")
+            else:
+                console.print(f"  {i}. {search_path}")
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[red]Error creating configuration file:[/red] {e}", style="bold")
+        raise typer.Exit(1) from None
+
+
+@app.command(
+    "main",  # Keep it named "main" but we'll make it default via entry point
+    context_settings={"help_option_names": ["-h", "--help"]},
+    help="Generate an illustrated story from a prompt",
+)
 def main(
     ctx: typer.Context,
     prompt: str | None = typer.Argument(
@@ -116,7 +160,6 @@ def main(
     verbose: bool | None = generate_cli_option("verbose"),
     debug: bool | None = generate_cli_option("debug"),
     backend: str | None = generate_cli_option("backend"),
-    init_config: bool = typer.Option(False, "--init-config", help="Generate a default configuration file and exit"),
     continue_session: bool = typer.Option(
         False,
         "--continue",
@@ -153,45 +196,6 @@ def main(
         for error in validation_errors:
             console.print(f"  - {error}", style="red")
         raise typer.Exit(1)
-
-    # Handle --init-config option first
-    if init_config:
-        try:
-            config = Config()
-            config_path = config.get_default_config_path()
-
-            # Check if file exists
-            if config_path.exists():
-                console.print(f"[yellow]Configuration file already exists:[/yellow] {config_path}")
-                console.print("[dim]Use a different location by setting STORYFORGE_CONFIG environment variable[/dim]")
-                raise typer.Exit(1)
-
-            # Create the configuration file
-            created_path = config.create_default_config(config_path)
-            console.print(f"[bold green]✅ Configuration file created:[/bold green] {created_path}")
-            console.print()
-            console.print("[bold]Configuration file locations (in priority order):[/bold]")
-
-            for i, search_path in enumerate(config.get_config_paths(), 1):
-                if search_path == created_path:
-                    console.print(f"  {i}. {search_path} [bold green](created here)[/bold green]")
-                else:
-                    console.print(f"  {i}. {search_path}")
-
-            console.print()
-            console.print("[bold]Environment variables:[/bold]")
-            console.print("  STORYFORGE_CONFIG - Override config file location")
-            console.print("  GEMINI_API_KEY - Google Gemini API key")
-            console.print("  OPENAI_API_KEY - OpenAI API key")
-            console.print("  ANTHROPIC_API_KEY - Anthropic API key")
-
-            raise typer.Exit(0)
-
-        except typer.Exit:
-            raise
-        except Exception as e:
-            console.print(f"[red]Error creating configuration file:[/red] {e}", style="bold")
-            raise typer.Exit(1) from None
 
     # Handle --continue option
     if continue_session:
@@ -263,8 +267,8 @@ def main(
     if debug:
         verbose = True  # Ensure verbose is enabled in debug mode
 
-    # Check if prompt is required (not needed for --init-config or --continue)
-    if not init_config and not continue_session and (prompt is None or not str(prompt).strip()):
+    # Check if prompt is required (not needed for --continue)
+    if not continue_session and (prompt is None or not str(prompt).strip()):
         # Check if user provided no arguments at all - if so, show help instead of error
         import sys
 
@@ -341,4 +345,19 @@ def main(
 
 
 if __name__ == "__main__":
+    import sys
+
+    # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config"]:
+        sys.argv.insert(1, "main")
+    app()
+
+
+def cli_entry() -> None:
+    """Entry point for the CLI that handles default command routing."""
+    import sys
+
+    # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config"]:
+        sys.argv.insert(1, "main")
     app()
