@@ -94,8 +94,9 @@ class Config:
         if env_config:
             paths.append(Path(env_config))
 
-        # 2. XDG config directory
-        paths.append(Path(user_config_dir("storyforge", "StoryForge")) / "storyforge.ini")
+        # 2. XDG config directory (normalized to lowercase 'storyforge')
+        # Use lowercase appname/appauthor for consistent cross-platform paths
+        paths.append(Path(user_config_dir("storyforge", "storyforge")) / "storyforge.ini")
 
         # 3. Home directory fallback
         paths.append(Path.home() / ".storyforge.ini")
@@ -150,7 +151,7 @@ class Config:
 
     def get_default_config_path(self) -> Path:
         """Get the default configuration file path (XDG config directory)."""
-        return Path(user_config_dir("storyforge", "StoryForge")) / "storyforge.ini"
+        return Path(user_config_dir("storyforge", "storyforge")) / "storyforge.ini"
 
     def create_default_config(self, path: Path | None = None) -> Path:
         """

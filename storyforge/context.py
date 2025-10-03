@@ -78,7 +78,8 @@ class ContextManager:
                 if local_context_dir.exists() and local_context_dir.is_dir():
                     context_files = sorted(local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
                 else:
-                    user_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
+                    # Use lowercase 'storyforge' for normalized cross-platform paths
+                    user_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
                     if user_dir.exists() and user_dir.is_dir():
                         context_files = sorted(user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
                     else:
@@ -118,7 +119,8 @@ class ContextManager:
             return Path(self.context_file_path)
 
         # Use cross-platform user data directory for context files
-        context_dir = Path(user_data_dir("StoryForge", "StoryForge")) / "context"
+        # Normalized to lowercase 'storyforge' for consistent paths
+        context_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
         context_dir.mkdir(parents=True, exist_ok=True)
         default_path = context_dir / "family.md"
         if default_path.exists():
