@@ -30,7 +30,18 @@ app = typer.Typer(
     "Environment: Set STORYFORGE_CONFIG to use a custom config file location.\n\n"
     "Checkpoint System: StoryForge automatically saves progress during execution.\n"
     "Use --continue to resume from previous sessions or retry from any completed phase.\n"
-    "Checkpoint files are stored in ~/.local/share/StoryForge/checkpoints/"
+    "Checkpoint files are stored in ~/.local/share/StoryForge/checkpoints/",
+    epilog="Examples:\n\n"
+    "  # Generate a story with a simple prompt\n"
+    "  sf 'Moe and Curly play a joke'\n\n"
+    "  # Generate a longer story with specific parameters\n"
+    "  sf 'Moe and Curly play a joke' --length long --age-range '8-10' --tone humorous\n\n"
+    "  # Resume from a previous session\n"
+    "  sf continue\n\n"
+    "  # Initialize configuration file\n"
+    "  sf config init\n\n"
+    "  # Generate with custom image style\n"
+    "  sf 'A dragon learns to fly' --image-style anime --theme adventure",
 )
 config_app = typer.Typer(help="Configuration management commands")
 app.add_typer(config_app, name="config")
@@ -392,7 +403,10 @@ def cli_entry() -> None:
     """Entry point for the CLI that handles default command routing."""
     import sys
 
+    # Show help if no arguments provided
+    if len(sys.argv) == 1:
+        sys.argv.append("--help")
     # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config", "continue"]:
+    elif not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config", "continue"]:
         sys.argv.insert(1, "main")
     app()
