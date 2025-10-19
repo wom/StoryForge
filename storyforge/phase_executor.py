@@ -345,6 +345,12 @@ class PhaseExecutor:
         if not self.checkpoint_data:
             return False
 
+        # Never skip critical initialization phases - they're needed for execution environment
+        # These phases are idempotent and essential for proper system state
+        critical_phases = [ExecutionPhase.CONFIG_LOAD, ExecutionPhase.BACKEND_INIT]
+        if phase in critical_phases:
+            return False
+
         # Skip phases that have already been completed
         if phase.value in self.checkpoint_data.completed_phases:
             console.print(f"[dim]Skipping completed phase:[/dim] {phase.value}")
