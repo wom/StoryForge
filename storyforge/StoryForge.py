@@ -344,11 +344,46 @@ def main(
         raise typer.Exit(1) from e
 
 
+@app.command(
+    "continue",
+    help="Resume execution from a previous StoryForge session. "
+    "Displays the last 5 sessions and allows you to choose which phase to resume from. "
+    "Same as 'storyforge main --continue'.",
+)
+def continue_session():
+    """Resume execution from a previous checkpoint session."""
+    try:
+        checkpoint_manager = CheckpointManager()
+        checkpoint_data = checkpoint_manager.prompt_checkpoint_selection()
+
+        if checkpoint_data is None:
+            console.print("[yellow]No checkpoint selected. Exiting.[/yellow]")
+            raise typer.Exit(0)
+
+        # Get the phase to resume from
+        resume_phase = checkpoint_manager.prompt_phase_selection(checkpoint_data)
+        if resume_phase is None:
+            console.print("[yellow]No phase selected. Exiting.[/yellow]")
+            raise typer.Exit(0)
+
+        # Execute using phase executor
+        phase_executor = PhaseExecutor(checkpoint_manager)
+        phase_executor.execute_from_checkpoint(checkpoint_data, resume_phase)
+        raise typer.Exit(0)
+
+    except typer.Exit:
+        # Let typer.Exit propagate normally
+        raise
+    except Exception as e:
+        console.print(f"[red]Error handling checkpoint continuation:[/red] {e}", style="bold")
+        raise typer.Exit(1) from e
+
+
 if __name__ == "__main__":
     import sys
 
     # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config"]:
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config", "continue"]:
         sys.argv.insert(1, "main")
     app()
 
@@ -358,6 +393,6 @@ def cli_entry() -> None:
     import sys
 
     # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config"]:
+    if len(sys.argv) > 1 and not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config", "continue"]:
         sys.argv.insert(1, "main")
     app()
