@@ -383,6 +383,41 @@ class TestPhaseExecutor:
 
         assert all(decision is None for decision in decisions_for_early_phase.values())
 
+    def test_should_skip_phase_critical_phases_never_skipped(self):
+        """Test that critical initialization phases are never skipped."""
+        # Create a checkpoint with all phases marked as completed
+        checkpoint_data = CheckpointData.create_new("test", {}, {})
+        checkpoint_data.completed_phases = [
+            ExecutionPhase.INIT.value,
+            ExecutionPhase.CONFIG_LOAD.value,
+            ExecutionPhase.BACKEND_INIT.value,
+            ExecutionPhase.PROMPT_CONFIRM.value,
+            ExecutionPhase.CONTEXT_LOAD.value,
+            ExecutionPhase.PROMPT_BUILD.value,
+            ExecutionPhase.STORY_GENERATE.value,
+            ExecutionPhase.STORY_SAVE.value,
+        ]
+        self.phase_executor.checkpoint_data = checkpoint_data
+
+        # Test that critical initialization phases are never skipped
+        # even when marked as completed
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.CONFIG_LOAD) is False
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.BACKEND_INIT) is False
+
+        # Test that non-critical phases ARE skipped when completed
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.STORY_GENERATE) is True
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.STORY_SAVE) is True
+
+    def test_should_skip_phase_without_checkpoint(self):
+        """Test that no phases are skipped when there's no checkpoint data."""
+        self.phase_executor.checkpoint_data = None
+
+        # All phases should execute when there's no checkpoint
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.INIT) is False
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.CONFIG_LOAD) is False
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.BACKEND_INIT) is False
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.STORY_GENERATE) is False
+
     @patch("storyforge.phase_executor.console")
     def test_execute_from_checkpoint_creates_new_session(self, mock_console):
         """Test that execute_from_checkpoint creates a new resumed session."""
