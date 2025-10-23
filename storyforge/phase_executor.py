@@ -222,14 +222,28 @@ class PhaseExecutor:
         prompt: str,
         cli_arguments: dict[str, Any],
         resolved_config: dict[str, Any],
+        prompt_obj: Prompt | None = None,
     ) -> None:
-        """Execute a new StoryForge session with checkpointing."""
+        """
+        Execute a new StoryForge session with checkpointing.
+
+        Args:
+            prompt: The story prompt string
+            cli_arguments: CLI arguments dictionary
+            resolved_config: Resolved configuration dictionary
+            prompt_obj: Optional pre-built Prompt object (for extend command)
+        """
         # Validate inputs
         if not prompt or not prompt.strip():
-            raise ValueError("Story prompt cannot be empty")
+            if not prompt_obj or not prompt_obj.continuation_mode:
+                raise ValueError("Story prompt cannot be empty")
 
         # Create new checkpoint data
         self.checkpoint_data = CheckpointData.create_new(prompt, cli_arguments, resolved_config)
+
+        # Store the pre-built prompt object if provided
+        if prompt_obj:
+            self.story_prompt = prompt_obj
 
         console.print(f"[bold cyan]Starting new StoryForge session:[/bold cyan] {self.checkpoint_data.session_id}")
 
@@ -377,7 +391,7 @@ class PhaseExecutor:
             elif phase == ExecutionPhase.CONTEXT_LOAD:
                 self._phase_context_load()
             elif phase == ExecutionPhase.PROMPT_BUILD:
-                self._phase_prompt_build()
+                self._phase_build_prompt()
             elif phase == ExecutionPhase.STORY_GENERATE:
                 self._phase_story_generate()
             elif phase == ExecutionPhase.STORY_SAVE:
@@ -493,15 +507,25 @@ class PhaseExecutor:
             if verbose:
                 console.print("[dim]Context loading skipped due to --no-use-context[/dim]")
 
-    def _phase_prompt_build(self) -> None:
-        """Build story prompt phase."""
+    def _phase_build_prompt(self) -> None:
+        """Build the story prompt from inputs."""
         assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
-        # Extract parameters from checkpoint
+
+        # If prompt is already built (e.g., from extend command), skip this phase
+        if self.story_prompt is not None:
+            if self.checkpoint_data.resolved_config.get("verbose"):
+                console.print("[dim]Using pre-built prompt object[/dim]")
+            return
+
         original_inputs = self.checkpoint_data.original_inputs
         resolved_config = self.checkpoint_data.resolved_config
         cli_args = original_inputs.get("cli_arguments", {})
 
         prompt = str(original_inputs.get("prompt", ""))
+
+        # Get continuation mode parameters if present
+        continuation_mode = cli_args.get("continuation_mode", False)
+        ending_type = cli_args.get("ending_type", "wrap_up")
 
         self.story_prompt = Prompt(
             prompt=prompt,
@@ -515,6 +539,8 @@ class PhaseExecutor:
             characters=cli_args.get("characters"),
             learning_focus=cli_args.get("learning_focus"),
             image_style=str(cli_args.get("image_style") or resolved_config.get("image_style") or ""),
+            continuation_mode=continuation_mode,
+            ending_type=ending_type,
         )
 
     def _phase_story_generate(self) -> None:
@@ -663,7 +689,9 @@ class PhaseExecutor:
         if not output_dir:
             from .StoryForge import generate_default_output_dir
 
-            output_dir = generate_default_output_dir()
+            # Check if this is an extended story
+            continuation_mode = self.checkpoint_data.resolved_config.get("continuation_mode", False)
+            output_dir = generate_default_output_dir(extended=continuation_mode)
             self.checkpoint_data.resolved_config["output_directory"] = output_dir
 
         story_filename = "story.txt"

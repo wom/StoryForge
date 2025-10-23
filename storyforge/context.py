@@ -8,8 +8,10 @@ Implements extractive summarize-and-merge strategy to compact context while
 preserving semantic content and respecting token budgets.
 """
 
+import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from platformdirs import user_data_dir
 
@@ -440,6 +442,151 @@ class ContextManager:
         """Clear all cached context data (raw and summarized)."""
         self._cached_context = None
         self._summary_cache.clear()
+
+    def get_context_directory(self) -> Path:
+        """
+        Get the context directory path.
+
+        Returns:
+            Path: The context directory (user data directory).
+        """
+        return Path(user_data_dir("storyforge", "storyforge")) / "context"
+
+    def list_available_contexts(self) -> list[dict[str, Any]]:
+        """
+        List all saved context files with metadata.
+
+        Returns:
+            List of dicts containing:
+            - filepath: Path to context file
+            - filename: Base name
+            - timestamp: Generation timestamp
+            - characters: List of character names
+            - theme: Story theme
+            - age_group: Target age
+            - preview: First 200 chars of story
+        """
+        context_files: list[dict[str, Any]] = []
+        context_dir = self.get_context_directory()
+
+        if not context_dir.exists():
+            return context_files
+
+        for md_file in sorted(context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                metadata = self.parse_context_metadata(md_file)
+                context_files.append(metadata)
+            except Exception:
+                # Skip files that can't be parsed
+                continue
+
+        return context_files
+
+    def parse_context_metadata(self, filepath: Path) -> dict[str, Any]:
+        """
+        Extract metadata from context file frontmatter.
+
+        Context files are markdown with bold headers:
+        # Story Context: [title]
+        **Generated:** 2025-10-22 19:55:22
+        **Characters:** Moe, Curly
+        ...
+
+        Args:
+            filepath: Path to .md context file
+
+        Returns:
+            Dict with extracted metadata
+        """
+        metadata: dict[str, Any] = {
+            "filepath": filepath,
+            "filename": filepath.stem,
+            "timestamp": "Unknown",
+        }
+
+        try:
+            with open(filepath, encoding="utf-8") as f:
+                content = f.read()
+
+            # Extract timestamp from **Generated on:** or **Generated:** field
+            generated_match = re.search(r"\*\*Generated(?: on)?:\*\*\s*(.+)", content)
+            if generated_match:
+                metadata["timestamp"] = generated_match.group(1).strip()
+
+            # Extract characters from **Characters:** field
+            characters_match = re.search(r"\*\*Characters:\*\*\s*(.+)", content)
+            if characters_match:
+                metadata["characters"] = characters_match.group(1).strip()
+
+            # Extract theme from **Theme:** field
+            theme_match = re.search(r"\*\*Theme:\*\*\s*(.+)", content)
+            if theme_match:
+                metadata["theme"] = theme_match.group(1).strip()
+
+            # Extract age group from **Age Group:** field
+            age_match = re.search(r"\*\*Age Group:\*\*\s*(.+)", content)
+            if age_match:
+                metadata["age_group"] = age_match.group(1).strip()
+
+            # Extract tone from **Tone:** field
+            tone_match = re.search(r"\*\*Tone:\*\*\s*(.+)", content)
+            if tone_match:
+                metadata["tone"] = tone_match.group(1).strip()
+
+            # Extract art style from **Art Style:** field
+            art_style_match = re.search(r"\*\*Art Style:\*\*\s*(.+)", content)
+            if art_style_match:
+                metadata["art_style"] = art_style_match.group(1).strip()
+
+            # Extract story preview - find the story section after metadata
+            # Look for "## Story" or just get text after multiple newlines
+            story_match = re.search(r"##\s*Story\s*\n+(.+)", content, re.DOTALL)
+            if story_match:
+                story_text = story_match.group(1).strip()
+                # Get first 200 characters
+                metadata["preview"] = story_text[:200].replace("\n", " ")
+            else:
+                # Fallback: get first 200 chars after metadata section
+                lines = content.split("\n")
+                story_lines = []
+                in_story = False
+                for line in lines:
+                    if in_story:
+                        story_lines.append(line)
+                    elif line and not line.startswith("#") and not line.startswith("**"):
+                        in_story = True
+                        story_lines.append(line)
+
+                if story_lines:
+                    preview_text = " ".join(story_lines)
+                    metadata["preview"] = preview_text[:200]
+
+        except OSError as e:
+            # Return basic metadata if file can't be read
+            metadata["error"] = str(e)
+
+        return metadata
+
+    def load_context_for_extension(self, filepath: Path) -> tuple[str, dict[str, Any]]:
+        """
+        Load context file for story extension.
+
+        Args:
+            filepath: Path to context file
+
+        Returns:
+            Tuple of (story_content, original_parameters)
+        """
+        metadata = self.parse_context_metadata(filepath)
+
+        # Load full story content
+        try:
+            with open(filepath, encoding="utf-8") as f:
+                full_content = f.read()
+        except OSError:
+            full_content = ""
+
+        return full_content, metadata
 
 
 def get_default_context_manager() -> ContextManager:
