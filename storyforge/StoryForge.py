@@ -5,7 +5,7 @@ Supports Google Gemini and Anthropic Claude backends.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal, cast
 
 import typer
 from rich.console import Console
@@ -13,7 +13,9 @@ from rich.prompt import Confirm
 
 from .checkpoint import CheckpointManager
 from .config import Config, ConfigError, load_config
+from .context import ContextManager
 from .phase_executor import PhaseExecutor
+from .prompt import Prompt
 from .schema.cli_integration import (
     generate_boolean_cli_option,
     generate_cli_option,
@@ -47,10 +49,11 @@ config_app = typer.Typer(help="Configuration management commands")
 app.add_typer(config_app, name="config")
 
 
-def generate_default_output_dir() -> str:
+def generate_default_output_dir(extended: bool = False) -> str:
     """Generate a timestamped output directory name."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = f"storyforge_output_{timestamp}"
+    suffix = "_extended" if extended else ""
+    output_dir = f"storyforge_output_{timestamp}{suffix}"
     return output_dir
 
 
@@ -390,11 +393,177 @@ def continue_session():
         raise typer.Exit(1) from e
 
 
+@app.command("extend", help="Extend an existing story with a continuation")
+def extend_story(
+    backend: Annotated[str | None, typer.Option(help="LLM backend to use")] = None,
+    verbose: Annotated[bool, typer.Option(help="Enable verbose output")] = False,
+    debug: Annotated[bool, typer.Option(help="Enable debug mode")] = False,
+):
+    """Extend an existing story from saved context files."""
+    try:
+        # Initialize context manager
+        context_mgr = ContextManager()
+
+        # List available stories
+        available_contexts = context_mgr.list_available_contexts()
+
+        if not available_contexts:
+            console.print("[yellow]No saved stories found to extend.[/yellow]")
+            console.print("Generate a story first with: [bold]sf generate --use-context[/bold]")
+            console.print("Or save an existing story as context.")
+            raise typer.Exit(1)
+
+        # Display stories
+        console.print("\n[bold cyan]📚 Available Stories to Extend:[/bold cyan]\n")
+        for idx, ctx in enumerate(available_contexts, 1):
+            console.print(f"[bold]{idx}.[/bold] {ctx['filename']}")
+            console.print(f"   [dim]Generated: {ctx.get('timestamp', 'Unknown')}[/dim]")
+            if "characters" in ctx:
+                console.print(f"   Characters: {ctx['characters']}")
+            if "theme" in ctx:
+                console.print(f"   Theme: {ctx['theme']}")
+            if "preview" in ctx:
+                preview = ctx["preview"][:100]
+                console.print(f"   [dim]Preview: {preview}...[/dim]")
+            console.print()
+
+        # Get user selection
+        selection = typer.prompt(f"Select story (1-{len(available_contexts)})", type=int)
+
+        if selection < 1 or selection > len(available_contexts):
+            console.print("[red]Invalid selection[/red]")
+            raise typer.Exit(1)
+
+        selected_context = available_contexts[selection - 1]
+
+        # Show preview
+        story_content, metadata = context_mgr.load_context_for_extension(selected_context["filepath"])
+
+        console.print("\n[bold cyan]📖 Original Story Preview:[/bold cyan]")
+        # Extract just the story part, skip metadata
+        story_text = story_content
+        if "## Story" in story_content:
+            story_text = story_content.split("## Story", 1)[1]
+        preview_words = " ".join(story_text.split()[:50])
+        console.print(f"[dim]{preview_words}...[/dim]\n")
+
+        # Ask continuation preference
+        console.print("[bold cyan]🎬 How should this story continue?[/bold cyan]")
+        console.print("1. Wrap up the story (resolution, complete ending)")
+        console.print("2. Leave a cliffhanger (setup for next adventure)")
+
+        ending_choice = typer.prompt("\nChoice (1-2)", type=int)
+
+        if ending_choice not in [1, 2]:
+            console.print("[red]Invalid choice[/red]")
+            raise typer.Exit(1)
+
+        ending_type_str = "wrap_up" if ending_choice == 1 else "cliffhanger"
+        ending_type = cast(Literal["wrap_up", "cliffhanger"], ending_type_str)
+
+        # Parse characters from metadata (handle both list and string formats)
+        characters_value = metadata.get("characters", [])
+        if isinstance(characters_value, str):
+            # Split by comma if it's a string
+            characters = [c.strip() for c in characters_value.split(",") if c.strip()]
+        else:
+            characters = characters_value if characters_value else []
+
+        # Load configuration first to use as defaults
+        config = load_config(verbose=verbose)
+
+        # Create modified prompt for continuation
+        # Priority: metadata from original story > user's config file > Prompt defaults
+        prompt = Prompt(
+            prompt="",  # Not needed for continuation
+            characters=characters if characters else None,
+            theme=metadata.get("theme"),  # None is valid - will use default
+            age_range=metadata.get("age_group") or config.get_field_value("story", "age_range") or "preschool",
+            tone=metadata.get("tone") or config.get_field_value("story", "tone") or "heartwarming",
+            length=config.get_field_value("story", "length") or "short",
+            style=config.get_field_value("story", "style") or "adventure",
+            image_style=metadata.get("art_style") or config.get_field_value("story", "image_style") or "chibi",
+            context=story_content,
+            continuation_mode=True,
+            ending_type=ending_type,
+        )
+
+        console.print(
+            f"\n[bold green]✨ Generating continuation with {ending_type.replace('_', ' ')} ending...[/bold green]\n"
+        )
+
+        # Generate output directory with _extended suffix
+        output_dir = generate_default_output_dir(extended=True)
+
+        # Prepare CLI arguments for checkpoint (include prompt fields for summary display)
+        cli_arguments = {
+            "backend": backend,
+            "verbose": verbose,
+            "debug": debug,
+            "continuation_mode": True,
+            "ending_type": ending_type,
+            "output_dir": output_dir,
+            "age_range": prompt.age_range,
+            "length": prompt.length,
+            "style": prompt.style,
+            "tone": prompt.tone,
+            "image_style": prompt.image_style,
+            "theme": prompt.theme,
+            "characters": prompt.characters,
+        }
+
+        # Prepare resolved configuration
+        resolved_config = {
+            "backend": backend or config.get_field_value("system", "backend"),
+            "output_directory": output_dir,
+            "verbose": verbose,
+            "debug": debug,
+            "continuation_mode": True,
+            "ending_type": ending_type,
+            "age_range": prompt.age_range,
+            "length": prompt.length,
+            "style": prompt.style,
+            "tone": prompt.tone,
+            "image_style": prompt.image_style,
+        }
+
+        # Execute via PhaseExecutor with checkpoint support
+        checkpoint_manager = CheckpointManager()
+        phase_executor = PhaseExecutor(checkpoint_manager)
+
+        # Create a pseudo-prompt string for the checkpoint
+        extension_prompt = f"[EXTENSION] {selected_context['filename']}"
+
+        phase_executor.execute_new_session(extension_prompt, cli_arguments, resolved_config, prompt_obj=prompt)
+
+        console.print("\n[bold green]✅ Story extended successfully![/bold green]")
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        if verbose:
+            import traceback
+
+            traceback.print_exc()
+        raise typer.Exit(1) from e
+
+
 if __name__ == "__main__":
     import sys
 
     # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
-    if len(sys.argv) > 1 and not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config", "continue"]:
+    if (
+        len(sys.argv) > 1
+        and not sys.argv[1].startswith("-")
+        and sys.argv[1]
+        not in [
+            "main",
+            "config",
+            "continue",
+            "extend",
+        ]
+    ):
         sys.argv.insert(1, "main")
     app()
 
@@ -407,6 +576,6 @@ def cli_entry() -> None:
     if len(sys.argv) == 1:
         sys.argv.append("--help")
     # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
-    elif not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config", "continue"]:
+    elif not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config", "continue", "extend"]:
         sys.argv.insert(1, "main")
     app()
