@@ -159,6 +159,20 @@ def _create_images_section() -> ConfigSection:
         )
     )
 
+    section.add_field(
+        ConfigField(
+            name="image_count",
+            field_type=FieldType.INTEGER,
+            default=3,
+            section="images",
+            description="Number of images to generate for the story",
+            cli_help="Number of images to generate (1-5)",
+            cli_short="-n",
+            example_values=["3", "5"],
+            ini_comment="Number of images to generate (default: 3, range: 1-5)",
+        )
+    )
+
     return section
 
 
