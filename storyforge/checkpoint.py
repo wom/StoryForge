@@ -92,7 +92,7 @@ class CheckpointData:
 
     @classmethod
     def create_new(
-        self,
+        cls,
         original_prompt: str,
         cli_arguments: dict[str, Any],
         resolved_config: dict[str, Any],
@@ -339,7 +339,23 @@ class CheckpointManager:
 
         if len(checkpoint_infos) == 1:
             if Confirm.ask("Continue from this session?"):
-                return self.load_checkpoint(checkpoint_infos[0]["path"])
+                try:
+                    return self.load_checkpoint(checkpoint_infos[0]["path"])
+                except yaml.YAMLError as e:
+                    console.print(f"[red]Invalid YAML in checkpoint file {checkpoint_infos[0]['path']}:[/red] {e}")
+                    if Confirm.ask("This checkpoint appears corrupted. Move it to a .corrupt file and continue?"):
+                        path = checkpoint_infos[0]["path"]
+                        corrupt_path = path.with_suffix(path.suffix + ".corrupt")
+                        try:
+                            path.rename(corrupt_path)
+                            console.print(f"[dim]Moved corrupted checkpoint to {corrupt_path}[/dim]")
+                        except Exception as ex:
+                            console.print(f"[yellow]Could not move corrupted file: {ex}[/yellow]")
+                    return None
+                except Exception:
+                    # For any other error, do not abort the whole flow
+                    console.print("[yellow]Could not load selected checkpoint. Skipping.[/yellow]")
+                    return None
             return None
 
         try:
@@ -355,7 +371,22 @@ class CheckpointManager:
             # IntPrompt.ask returns int, so we need to handle the conversion
             selection_int = int(selection)
             selected_info = checkpoint_infos[selection_int - 1]
-            return self.load_checkpoint(selected_info["path"])
+            try:
+                return self.load_checkpoint(selected_info["path"])
+            except yaml.YAMLError as e:
+                console.print(f"[red]Invalid YAML in checkpoint file {selected_info['path']}:[/red] {e}")
+                if Confirm.ask("This checkpoint appears corrupted. Move it to a .corrupt file and continue?"):
+                    path = selected_info["path"]
+                    corrupt_path = path.with_suffix(path.suffix + ".corrupt")
+                    try:
+                        path.rename(corrupt_path)
+                        console.print(f"[dim]Moved corrupted checkpoint to {corrupt_path}[/dim]")
+                    except Exception as ex:
+                        console.print(f"[yellow]Could not move corrupted file: {ex}[/yellow]")
+                return None
+            except Exception:
+                console.print("[yellow]Could not load selected checkpoint. Skipping.[/yellow]")
+                return None
 
         except (ValueError, KeyboardInterrupt):
             console.print("[yellow]Selection cancelled.[/yellow]")
