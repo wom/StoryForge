@@ -38,6 +38,7 @@ class PhaseExecutor:
         self.story_prompt: Any = None  # Prompt type not available in this scope
         self.story: str | None = None
         self.refinements: str | None = None
+        self._initialized_phases: set[ExecutionPhase] = set()  # Track which phases have been initialized
 
     def execute_from_checkpoint(self, checkpoint_data: CheckpointData, resume_phase: ExecutionPhase) -> None:
         """Execute StoryForge starting from a checkpoint and specific phase."""
@@ -81,7 +82,18 @@ class PhaseExecutor:
                 self.checkpoint_data.mark_failed(error_msg)
                 try:
                     self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-                    console.print(f"[dim]Failed session saved as:[/dim] {self.checkpoint_data.session_id}")
+                    resumed_from = (
+                        self.checkpoint_data.progress.get("resumed_from_session")
+                        if self.checkpoint_data.progress
+                        else None
+                    )
+                    if resumed_from:
+                        console.print(
+                            f"[dim]Failed resumed session saved as:[/dim] {self.checkpoint_data.session_id} "
+                            f"[dim](resumed from {resumed_from})[/dim]"
+                        )
+                    else:
+                        console.print(f"[dim]Failed session saved as:[/dim] {self.checkpoint_data.session_id}")
                 except Exception as save_error:
                     console.print(f"[red]Could not save failed session:[/red] {save_error}")
             raise
@@ -93,14 +105,15 @@ class PhaseExecutor:
         now = datetime.now().isoformat() + "Z"
         new_session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_sf_resumed"
 
-        # Create new checkpoint with fresh user decisions for phases at and after resume_phase
+        # Don't pre-mark phases as completed - start fresh to avoid skip logic issues
+        # Only preserve generated content and decisions up to resume point
         new_checkpoint = CheckpointData(
             session_id=new_session_id,
             created_at=now,
             updated_at=now,
             status="active",
             current_phase=resume_phase.value,
-            completed_phases=self._get_completed_phases_before(resume_phase),
+            completed_phases=[],  # Start fresh - phases will be marked as we execute them
             original_inputs=original_checkpoint.original_inputs.copy(),
             resolved_config=original_checkpoint.resolved_config.copy(),
             generated_content=self._get_content_up_to_phase(original_checkpoint, resume_phase),
@@ -108,8 +121,10 @@ class PhaseExecutor:
             context_data=original_checkpoint.context_data.copy() if original_checkpoint.context_data else None,
             progress={
                 "total_phases": len(ExecutionPhase) - 1,  # Exclude COMPLETED
-                "completed_count": len(self._get_completed_phases_before(resume_phase)),
+                "completed_count": 0,
                 "completion_percentage": 0,
+                "resumed_from_session": original_checkpoint.session_id,  # Track parent session
+                "resumed_at_phase": resume_phase.value,  # Track resume point
             },
         )
 
@@ -338,10 +353,32 @@ class PhaseExecutor:
             ExecutionPhase.CONTEXT_SAVE,
         ]
 
-        # Find the starting index
+        # Always execute critical initialization phases BEFORE the start phase
+        # These are idempotent and required for execution environment
+        critical_init_phases = [
+            ExecutionPhase.CONFIG_LOAD,
+            ExecutionPhase.BACKEND_INIT,
+            ExecutionPhase.CONTEXT_LOAD,
+            ExecutionPhase.PROMPT_BUILD,
+        ]
+
         start_index = phase_order.index(start_phase)
 
-        # Execute phases in sequence
+        # Execute critical init phases that come BEFORE start_phase
+        for phase in critical_init_phases:
+            try:
+                phase_index = phase_order.index(phase)
+            except ValueError:
+                continue
+
+            # Only execute if this phase is before our start phase and hasn't been initialized yet
+            if phase_index < start_index and phase not in self._initialized_phases:
+                console.print(f"[dim]Initializing required phase:[/dim] {phase.value}")
+                self._execute_phase(phase)
+                self._initialized_phases.add(phase)
+                # Don't add to checkpoint.completed_phases - these are initialization only
+
+        # Execute phases in sequence from start_phase
         for phase in phase_order[start_index:]:
             if self._should_skip_phase(phase):
                 continue
@@ -359,13 +396,8 @@ class PhaseExecutor:
         if not self.checkpoint_data:
             return False
 
-        # Never skip critical initialization phases - they're needed for execution environment
-        # These phases are idempotent and essential for proper system state
-        critical_phases = [ExecutionPhase.CONFIG_LOAD, ExecutionPhase.BACKEND_INIT]
-        if phase in critical_phases:
-            return False
-
-        # Skip phases that have already been completed
+        # Simplified logic - only skip if completed in THIS session
+        # Critical phases are handled by _execute_phase_sequence initialization
         if phase.value in self.checkpoint_data.completed_phases:
             console.print(f"[dim]Skipping completed phase:[/dim] {phase.value}")
             return True
@@ -447,7 +479,22 @@ class PhaseExecutor:
         if verbose:
             console.print("[dim]Initializing AI backend...[/dim]")
 
-        self.llm_backend = get_backend(config_backend=backend_name)
+        # Better error handling for backend initialization
+        try:
+            self.llm_backend = get_backend(config_backend=backend_name)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to initialize {backend_name or 'default'} backend. "
+                f"Please check that your API key is set correctly in environment variables. "
+                f"Error: {e}"
+            ) from e
+
+        if not self.llm_backend:
+            backend_display = backend_name or "auto-detected backend"
+            raise RuntimeError(
+                f"Backend initialization returned None for '{backend_display}'. "
+                f"Please verify your API key is set and valid."
+            )
 
         if verbose and self.llm_backend:
             console.print(f"[dim]Using {self.llm_backend.name} backend[/dim]")

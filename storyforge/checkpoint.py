@@ -493,12 +493,51 @@ class CheckpointManager:
         except Exception:
             return 0
 
+    def cleanup_stale_active_sessions(self, max_age_hours: int = 24) -> int:
+        """
+        Mark active sessions older than max_age_hours as FAILED (abandoned).
+
+        Args:
+            max_age_hours: Maximum age in hours for an active session to be considered valid
+
+        Returns:
+            int: Number of stale sessions cleaned up
+        """
+        from datetime import datetime, timedelta
+
+        try:
+            checkpoint_files = list(self.checkpoint_dir.glob("checkpoint_*.yaml"))
+            stale_count = 0
+            cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
+
+            for file_path in checkpoint_files:
+                try:
+                    file_mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
+                    if file_mtime < cutoff_time:
+                        checkpoint = self.load_checkpoint(file_path)
+                        if checkpoint.status == "active":
+                            checkpoint.mark_failed("Session abandoned (stale)")
+                            self.save_checkpoint(checkpoint)
+                            stale_count += 1
+                            console.print(f"[dim]Marked stale session as failed: {file_path.name}[/dim]")
+                except Exception:
+                    continue
+
+            return stale_count
+
+        except Exception:
+            return 0
+
     def auto_cleanup_on_start(self) -> None:
         """
         Perform automatic cleanup when CheckpointManager is initialized.
-        Keeps the 15 most recent checkpoints and removes all failed sessions older than 1 day.
+        Keeps the 15 most recent checkpoints, marks stale active sessions as failed,
+        and removes old failed sessions.
         """
         try:
+            # Mark stale active sessions as failed (older than 24 hours)
+            self.cleanup_stale_active_sessions(max_age_hours=24)
+
             # Clean up old checkpoints (keep 15 most recent)
             self.cleanup_old_checkpoints(keep_recent=15)
 
