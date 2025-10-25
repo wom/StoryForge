@@ -10,6 +10,7 @@ and image naming across different LLM backends.
 
 import random
 from dataclasses import dataclass
+from typing import Literal
 
 from .schema import STORYFORGE_SCHEMA, SchemaValidator
 
@@ -62,6 +63,8 @@ class Prompt:
     characters: list[str] | None = None
     learning_focus: str | None = None
     image_style: str = "chibi"
+    continuation_mode: bool = False
+    ending_type: Literal["wrap_up", "cliffhanger"] = "wrap_up"
 
     def __post_init__(self) -> None:
         """Resolve random parameters and validate after initialization."""
@@ -152,6 +155,33 @@ class Prompt:
         }
         return style_descriptions[self.style]
 
+    def _build_continuation_instruction(self) -> str:
+        """Build instruction for story continuation."""
+        recap_instruction = (
+            "\n\nIMPORTANT: Begin your continuation with a brief recap "
+            "(2-3 sentences starting with a phrase like 'When last we left our friends...' "
+            "or 'Previously...' or 'In our last adventure...') that reminds readers "
+            "what happened in the original story before continuing with new content."
+        )
+
+        if self.ending_type == "wrap_up":
+            instruction = (
+                "CONTINUATION TASK: The following is an existing story. "
+                "Please write a continuation that wraps up the narrative "
+                "with a satisfying resolution and complete ending."
+                f"{recap_instruction}"
+            )
+        else:  # cliffhanger
+            instruction = (
+                "CONTINUATION TASK: The following is an existing story. "
+                "Please write a continuation that advances the plot but "
+                "ends with a cliffhanger - an exciting moment that sets "
+                "up the next adventure without full resolution."
+                f"{recap_instruction}"
+            )
+
+        return instruction
+
     @property
     def story(self) -> str:
         """
@@ -163,50 +193,70 @@ class Prompt:
         # Start with the base prompt
         prompt_parts = []
 
+        # Add continuation instruction if in continuation mode
+        if self.continuation_mode:
+            continuation_instruction = self._build_continuation_instruction()
+            prompt_parts.append(f"{continuation_instruction}\n\n")
+
         # Add context if provided
         if self.context:
             prompt_parts.append(f"Context for story generation:\n{self.context}\n")
-            prompt_parts.append("Based on the above context, ")
+            if not self.continuation_mode:
+                prompt_parts.append("Based on the above context, ")
 
-        # Main story instruction
-        prompt_parts.append(f"write {self._get_length_description()} story")
+        # Main story instruction (skip if in continuation mode since context IS the story)
+        if not self.continuation_mode:
+            prompt_parts.append(f"write {self._get_length_description()} story")
 
-        # Add style and tone
-        prompt_parts.append(f" that is {self._get_style_description()}")
-        prompt_parts.append(f" with a {self.tone} tone")
+            # Add style and tone
+            prompt_parts.append(f" that is {self._get_style_description()}")
+            prompt_parts.append(f" with a {self.tone} tone")
 
-        # Add the main prompt
-        prompt_parts.append(f" based on this prompt: {self.prompt}")
+            # Add the main prompt
+            prompt_parts.append(f" based on this prompt: {self.prompt}")
 
-        # Add setting if specified
-        if self.setting:
-            prompt_parts.append(f" The story should be set in: {self.setting}")
+            # Add setting if specified
+            if self.setting:
+                prompt_parts.append(f" The story should be set in: {self.setting}")
 
-        # Add characters if specified
-        if self.characters:
-            char_list = ", ".join(self.characters)
-            prompt_parts.append(f" Include these characters: {char_list}")
+            # Add characters if specified
+            if self.characters:
+                char_list = ", ".join(self.characters)
+                prompt_parts.append(f" Include these characters: {char_list}")
 
-        # Add theme if specified
-        if self.theme:
-            prompt_parts.append(f" The story should emphasize the theme of {self.theme}")
+            # Add theme if specified
+            if self.theme:
+                prompt_parts.append(f" The story should emphasize the theme of {self.theme}")
 
-        # Add learning focus if specified
-        if self.learning_focus:
-            prompt_parts.append(f" Incorporate learning about {self.learning_focus} naturally into the story")
+            # Add learning focus if specified
+            if self.learning_focus:
+                prompt_parts.append(f" Incorporate learning about {self.learning_focus} naturally into the story")
 
-        # Add age-appropriate guidance
-        prompt_parts.append(f"\n\nAge-appropriate guidelines: {self._get_age_appropriate_guidance()}")
+            # Add age-appropriate guidance
+            prompt_parts.append(f"\n\nAge-appropriate guidelines: {self._get_age_appropriate_guidance()}")
 
-        # Add safety and quality guidelines
-        prompt_parts.append("\n\nEnsure the story is:")
-        prompt_parts.append("- Completely safe and appropriate for children")
-        prompt_parts.append("- Positive and uplifting with a happy or meaningful ending")
-        prompt_parts.append("- Educational or character-building in some way")
-        prompt_parts.append("- Engaging and fun to read aloud")
+            # Add safety and quality guidelines
+            prompt_parts.append("\n\nEnsure the story is:")
+            prompt_parts.append("- Completely safe and appropriate for children")
+            prompt_parts.append("- Positive and uplifting with a happy or meaningful ending")
+            prompt_parts.append("- Educational or character-building in some way")
+            prompt_parts.append("- Engaging and fun to read aloud")
 
-        if self.context:
-            prompt_parts.append("- Consistent with the provided context and character descriptions")
+            if self.context:
+                prompt_parts.append("- Consistent with the provided context and character descriptions")
+        else:
+            # In continuation mode, provide guidance for the continuation
+            prompt_parts.append(f"\nWrite a {self._get_length_description()} continuation ")
+            prompt_parts.append(f"that maintains the {self.tone} tone and {self.style} style.")
+
+            # Add age-appropriate guidance
+            prompt_parts.append(f"\n\nAge-appropriate guidelines: {self._get_age_appropriate_guidance()}")
+
+            # Add safety guidelines
+            prompt_parts.append("\n\nEnsure the continuation is:")
+            prompt_parts.append("- Completely safe and appropriate for children")
+            prompt_parts.append("- Consistent with the original story's characters and setting")
+            prompt_parts.append("- Engaging and fun to read aloud")
 
         return "".join(prompt_parts)
 

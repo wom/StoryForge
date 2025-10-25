@@ -38,6 +38,7 @@ class PhaseExecutor:
         self.story_prompt: Any = None  # Prompt type not available in this scope
         self.story: str | None = None
         self.refinements: str | None = None
+        self._initialized_phases: set[ExecutionPhase] = set()  # Track which phases have been initialized
 
     def execute_from_checkpoint(self, checkpoint_data: CheckpointData, resume_phase: ExecutionPhase) -> None:
         """Execute StoryForge starting from a checkpoint and specific phase."""
@@ -81,7 +82,18 @@ class PhaseExecutor:
                 self.checkpoint_data.mark_failed(error_msg)
                 try:
                     self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-                    console.print(f"[dim]Failed session saved as:[/dim] {self.checkpoint_data.session_id}")
+                    resumed_from = (
+                        self.checkpoint_data.progress.get("resumed_from_session")
+                        if self.checkpoint_data.progress
+                        else None
+                    )
+                    if resumed_from:
+                        console.print(
+                            f"[dim]Failed resumed session saved as:[/dim] {self.checkpoint_data.session_id} "
+                            f"[dim](resumed from {resumed_from})[/dim]"
+                        )
+                    else:
+                        console.print(f"[dim]Failed session saved as:[/dim] {self.checkpoint_data.session_id}")
                 except Exception as save_error:
                     console.print(f"[red]Could not save failed session:[/red] {save_error}")
             raise
@@ -93,14 +105,15 @@ class PhaseExecutor:
         now = datetime.now().isoformat() + "Z"
         new_session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_sf_resumed"
 
-        # Create new checkpoint with fresh user decisions for phases at and after resume_phase
+        # Don't pre-mark phases as completed - start fresh to avoid skip logic issues
+        # Only preserve generated content and decisions up to resume point
         new_checkpoint = CheckpointData(
             session_id=new_session_id,
             created_at=now,
             updated_at=now,
             status="active",
             current_phase=resume_phase.value,
-            completed_phases=self._get_completed_phases_before(resume_phase),
+            completed_phases=[],  # Start fresh - phases will be marked as we execute them
             original_inputs=original_checkpoint.original_inputs.copy(),
             resolved_config=original_checkpoint.resolved_config.copy(),
             generated_content=self._get_content_up_to_phase(original_checkpoint, resume_phase),
@@ -108,8 +121,10 @@ class PhaseExecutor:
             context_data=original_checkpoint.context_data.copy() if original_checkpoint.context_data else None,
             progress={
                 "total_phases": len(ExecutionPhase) - 1,  # Exclude COMPLETED
-                "completed_count": len(self._get_completed_phases_before(resume_phase)),
+                "completed_count": 0,
                 "completion_percentage": 0,
+                "resumed_from_session": original_checkpoint.session_id,  # Track parent session
+                "resumed_at_phase": resume_phase.value,  # Track resume point
             },
         )
 
@@ -222,14 +237,28 @@ class PhaseExecutor:
         prompt: str,
         cli_arguments: dict[str, Any],
         resolved_config: dict[str, Any],
+        prompt_obj: Prompt | None = None,
     ) -> None:
-        """Execute a new StoryForge session with checkpointing."""
+        """
+        Execute a new StoryForge session with checkpointing.
+
+        Args:
+            prompt: The story prompt string
+            cli_arguments: CLI arguments dictionary
+            resolved_config: Resolved configuration dictionary
+            prompt_obj: Optional pre-built Prompt object (for extend command)
+        """
         # Validate inputs
         if not prompt or not prompt.strip():
-            raise ValueError("Story prompt cannot be empty")
+            if not prompt_obj or not prompt_obj.continuation_mode:
+                raise ValueError("Story prompt cannot be empty")
 
         # Create new checkpoint data
         self.checkpoint_data = CheckpointData.create_new(prompt, cli_arguments, resolved_config)
+
+        # Store the pre-built prompt object if provided
+        if prompt_obj:
+            self.story_prompt = prompt_obj
 
         console.print(f"[bold cyan]Starting new StoryForge session:[/bold cyan] {self.checkpoint_data.session_id}")
 
@@ -324,10 +353,32 @@ class PhaseExecutor:
             ExecutionPhase.CONTEXT_SAVE,
         ]
 
-        # Find the starting index
+        # Always execute critical initialization phases BEFORE the start phase
+        # These are idempotent and required for execution environment
+        critical_init_phases = [
+            ExecutionPhase.CONFIG_LOAD,
+            ExecutionPhase.BACKEND_INIT,
+            ExecutionPhase.CONTEXT_LOAD,
+            ExecutionPhase.PROMPT_BUILD,
+        ]
+
         start_index = phase_order.index(start_phase)
 
-        # Execute phases in sequence
+        # Execute critical init phases that come BEFORE start_phase
+        for phase in critical_init_phases:
+            try:
+                phase_index = phase_order.index(phase)
+            except ValueError:
+                continue
+
+            # Only execute if this phase is before our start phase and hasn't been initialized yet
+            if phase_index < start_index and phase not in self._initialized_phases:
+                console.print(f"[dim]Initializing required phase:[/dim] {phase.value}")
+                self._execute_phase(phase)
+                self._initialized_phases.add(phase)
+                # Don't add to checkpoint.completed_phases - these are initialization only
+
+        # Execute phases in sequence from start_phase
         for phase in phase_order[start_index:]:
             if self._should_skip_phase(phase):
                 continue
@@ -345,7 +396,8 @@ class PhaseExecutor:
         if not self.checkpoint_data:
             return False
 
-        # Skip phases that have already been completed
+        # Simplified logic - only skip if completed in THIS session
+        # Critical phases are handled by _execute_phase_sequence initialization
         if phase.value in self.checkpoint_data.completed_phases:
             console.print(f"[dim]Skipping completed phase:[/dim] {phase.value}")
             return True
@@ -371,7 +423,7 @@ class PhaseExecutor:
             elif phase == ExecutionPhase.CONTEXT_LOAD:
                 self._phase_context_load()
             elif phase == ExecutionPhase.PROMPT_BUILD:
-                self._phase_prompt_build()
+                self._phase_build_prompt()
             elif phase == ExecutionPhase.STORY_GENERATE:
                 self._phase_story_generate()
             elif phase == ExecutionPhase.STORY_SAVE:
@@ -427,7 +479,22 @@ class PhaseExecutor:
         if verbose:
             console.print("[dim]Initializing AI backend...[/dim]")
 
-        self.llm_backend = get_backend(config_backend=backend_name)
+        # Better error handling for backend initialization
+        try:
+            self.llm_backend = get_backend(config_backend=backend_name)
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to initialize {backend_name or 'default'} backend. "
+                f"Please check that your API key is set correctly in environment variables. "
+                f"Error: {e}"
+            ) from e
+
+        if not self.llm_backend:
+            backend_display = backend_name or "auto-detected backend"
+            raise RuntimeError(
+                f"Backend initialization returned None for '{backend_display}'. "
+                f"Please verify your API key is set and valid."
+            )
 
         if verbose and self.llm_backend:
             console.print(f"[dim]Using {self.llm_backend.name} backend[/dim]")
@@ -487,15 +554,25 @@ class PhaseExecutor:
             if verbose:
                 console.print("[dim]Context loading skipped due to --no-use-context[/dim]")
 
-    def _phase_prompt_build(self) -> None:
-        """Build story prompt phase."""
+    def _phase_build_prompt(self) -> None:
+        """Build the story prompt from inputs."""
         assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
-        # Extract parameters from checkpoint
+
+        # If prompt is already built (e.g., from extend command), skip this phase
+        if self.story_prompt is not None:
+            if self.checkpoint_data.resolved_config.get("verbose"):
+                console.print("[dim]Using pre-built prompt object[/dim]")
+            return
+
         original_inputs = self.checkpoint_data.original_inputs
         resolved_config = self.checkpoint_data.resolved_config
         cli_args = original_inputs.get("cli_arguments", {})
 
         prompt = str(original_inputs.get("prompt", ""))
+
+        # Get continuation mode parameters if present
+        continuation_mode = cli_args.get("continuation_mode", False)
+        ending_type = cli_args.get("ending_type", "wrap_up")
 
         self.story_prompt = Prompt(
             prompt=prompt,
@@ -509,6 +586,8 @@ class PhaseExecutor:
             characters=cli_args.get("characters"),
             learning_focus=cli_args.get("learning_focus"),
             image_style=str(cli_args.get("image_style") or resolved_config.get("image_style") or ""),
+            continuation_mode=continuation_mode,
+            ending_type=ending_type,
         )
 
     def _phase_story_generate(self) -> None:
@@ -657,7 +736,9 @@ class PhaseExecutor:
         if not output_dir:
             from .StoryForge import generate_default_output_dir
 
-            output_dir = generate_default_output_dir()
+            # Check if this is an extended story
+            continuation_mode = self.checkpoint_data.resolved_config.get("continuation_mode", False)
+            output_dir = generate_default_output_dir(extended=continuation_mode)
             self.checkpoint_data.resolved_config["output_directory"] = output_dir
 
         story_filename = "story.txt"
