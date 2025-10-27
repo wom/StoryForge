@@ -6,7 +6,7 @@ StoryForge is a command-line tool that generates illustrated children's stories 
 
 - **Google Gemini** - Fully supported for story and image generation
 - **OpenAI** - Fully supported for story and image generation
-- **Anthropic** - Supported for story (text) generation only; image generation is not currently supported by this backend
+- **Anthropic** - Supported for story (text) generation only; image generation is not currently supported
 
 ## Features
 
@@ -17,6 +17,8 @@ StoryForge is a command-line tool that generates illustrated children's stories 
 - 🖥️ Interactive terminal interface or direct CLI usage
 - 📚 Context system for character consistency across stories
 - ⏯️ **Checkpoint system** for resuming interrupted sessions
+- 📝 **Story extension** - Continue existing stories with wrap-up or cliffhanger endings
+- 🔄 **Intelligent context summarization** for efficient token usage with large context files
 
 ## Configuration
 
@@ -25,14 +27,35 @@ For detailed configuration options, defaults, and examples see the full configur
 ### Generate a default config file
 
 ```bash
-# Create config file (won't overwrite an existing file)
-storyforge init-config
+# Create config file in default location
+storyforge config init
 
 # Force overwrite an existing config file
-storyforge init-config --force
+storyforge config init --force
+
+# Create config at custom location
+storyforge config init --path /path/to/config.ini
 ```
 
 The config file will be created at `~/.config/storyforge/storyforge.ini` by default. You can override the location using the `STORYFORGE_CONFIG` environment variable.
+
+### Command Alias
+
+For convenience, `sf` can be used as a shorter alias for all `storyforge` commands:
+
+```bash
+# These are equivalent
+storyforge "A brave knight befriends a dragon"
+sf "A brave knight befriends a dragon"
+
+# Works with all commands
+sf config init
+sf continue
+sf extend
+sf --help
+```
+
+## Requirements
 
 ## Checkpoint System
 
@@ -41,7 +64,11 @@ StoryForge automatically saves your progress during story generation, allowing y
 ### Resume from Previous Sessions
 
 ```bash
-storyforge --continue
+# Resume from a previous session (interactive selection)
+storyforge continue
+
+# Or use the --continue flag with main command
+storyforge main --continue
 ```
 
 This will show you the last 5 sessions and let you choose:
@@ -59,17 +86,67 @@ Checkpoint files are automatically stored in:
 - **Linux/macOS**: `~/.local/share/storyforge/checkpoints/`
 - **Windows**: `%APPDATA%\storyforge\storyforge\checkpoints\`
 
-The system automatically cleans up old checkpoints, keeping the 15 most recent sessions.
+The system automatically cleans up old checkpoints, keeping the 15 most recent sessions. Stale active sessions (older than 24 hours) are automatically marked as failed/abandoned.
 
 ### Example Workflow
 
 ```bash
 # Start a story generation
 storyforge "A dragon learning to dance"
+
 # If interrupted, resume later with:
-storyforge --continue
+storyforge continue
 # Select your session and choose where to resume
 ```
+
+## Story Extension
+
+Create continuations of previously generated stories with the `extend` command. This is perfect for creating sequels or adding new chapters to existing stories.
+
+### Extend an Existing Story
+
+```bash
+# Interactive story selection from recent stories
+storyforge extend
+
+# The extend command will:
+# 1. Show you a list of recently generated stories
+# 2. Let you select which story to continue
+# 3. Ask if you want to wrap up or leave a cliffhanger
+# 4. Generate a continuation based on your choice
+```
+
+### Example Extend Workflow
+
+```bash
+# First, generate a story
+storyforge "A brave mouse named Max finds a magic acorn"
+
+# Later, extend it with a continuation
+storyforge extend
+
+# Output:
+# Recent stories:
+#   1. "A brave mouse named Max finds a magic acorn" (2025-10-26 14:30)
+#   2. "Two robots become friends" (2025-10-25 10:15)
+#   ...
+# 
+# Select story to extend [1-5]: 1
+# 
+# How should the continuation end?
+#   1. Wrap up the story (satisfying conclusion)
+#   2. Leave a cliffhanger (sets up next adventure)
+# 
+# Select ending type [1/2]: 2
+#
+# Generating continuation...
+```
+
+The extended story will:
+- Continue from where the original story left off
+- Maintain character consistency and story context
+- Be saved in a new timestamped output directory
+- Include the original story context for reference
 
 ## Installation
 
@@ -136,7 +213,7 @@ export ANTHROPIC_API_KEY=your_api_key_here
 |----------|---------|---------|-------------|
 | `GEMINI_API_KEY` | Google Gemini | ✅ Fully Supported | Required for Gemini backend |
 | `OPENAI_API_KEY` | OpenAI | ✅ Fully Supported | Required for OpenAI backend |
-| `ANTHROPIC_API_KEY` | Anthropic | 🧪 Experimental | Required for Anthropic backend (coming soon) |
+| `ANTHROPIC_API_KEY` | Anthropic | 🧪 Experimental | Required for Anthropic backend |
 | `LLM_BACKEND` | All | Optional | Force specific backend (`gemini`, `openai`, `anthropic`) |
 
 **Note**: StoryForge will automatically detect which backend to use based on available API keys. If multiple keys are set, you can specify which backend to use with the `LLM_BACKEND` environment variable.
@@ -158,12 +235,27 @@ source ~/.bashrc
 ### Basic Story Generation
 
 ```bash
+# Generate a story from a simple prompt
 storyforge "Tell me a story about a robot learning to make friends"
+```
+
+### Continue an Existing Story
+
+```bash
+# Extend a previously generated story
+storyforge extend
+```
+
+### Resume a Previous Session
+
+```bash
+# Resume from an interrupted or completed session
+storyforge continue
 ```
 
 ### Interactive prompts
 
-The CLI is interactive and will ask for confirmation and decisions during the run (for images, story refinements, etc.). There is not a separate `tui` subcommand in this version of the code.
+The CLI is interactive and will ask for confirmation and decisions during the run (for images, story refinements, etc.).
 
 ### Advanced Options
 
@@ -173,7 +265,8 @@ storyforge "A brave mouse goes on an adventure" \
   --length short \
   --tone exciting \
   --image-style cartoon \
-  --output-dir my_story
+  --output-dir my_story \
+  -n 3
 ```
 
 #### Available Options
@@ -184,6 +277,29 @@ storyforge "A brave mouse goes on an adventure" \
 - **Tone**: `gentle`, `exciting`, `silly`, `heartwarming`, `magical`, `random`
 - **Theme**: `courage`, `kindness`, `teamwork`, `problem_solving`, `creativity`, `random`
 - **Image Style**: `chibi`, `realistic`, `cartoon`, `watercolor`, `sketch`
+- **Image Count** (`-n`, `--num-images`): Number of images to generate (1-5, default: 3)
+
+### All Available Commands
+
+```bash
+# Generate a new story
+storyforge "Your story prompt here" [options]
+
+# Continue/extend an existing story
+storyforge extend
+
+# Resume a previous session
+storyforge continue
+
+# Initialize configuration file
+storyforge config init [--force] [--path PATH]
+
+# Show help
+storyforge --help
+storyforge extend --help
+storyforge continue --help
+storyforge config --help
+```
 
 ## Tab Completion
 
