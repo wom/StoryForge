@@ -2,6 +2,40 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.5] - 2025-10-26
+
+### Added
+- Story extension command (`storyforge extend`) allowing users to select and continue previously generated stories with wrap-up or cliffhanger endings. (commit: bbf8286)
+- Dedicated `continue` subcommand for resuming previous sessions, providing same functionality as `--continue` flag. (commit: e672719)
+- `config init` subcommand to replace `--init-config` flag with support for `--force` and `--path` options. (commits: 889f4d6, ff37350)
+- Intelligent context summarization with extractive compression, keyword-based relevance scoring, and token budget management for efficient LLM context usage. (commits: fa8228e, 2eb7989)
+- Configurable `image_count` field in images section (1-5 range) with CLI flag support. (commit: b0579ce)
+- Cleanup of stale active sessions (older than 24 hours) automatically marked as failed/abandoned on startup. (commit: 04aced6)
+- Parent session tracking in resumed checkpoints for better debugging and traceability. (commit: 04aced6)
+- Comprehensive test suites for config module, extend command, context management, and CLI integration. (commits: b0579ce, a0162c7, ff37350)
+
+### Changed
+- Checkpoint resumption logic now starts with fresh phase state instead of pre-marking phases as completed, preventing skip logic issues. (commit: 04aced6)
+- Critical initialization phases (CONFIG_LOAD, BACKEND_INIT, CONTEXT_LOAD, PROMPT_BUILD) are now always executed before resume point to ensure proper system state. (commits: 2eb7989, 04aced6)
+- Application directories normalized to lowercase 'storyforge' for cross-platform consistency. (commit: 889f4d6)
+- CLI shows comprehensive help with usage examples by default when no arguments are provided. (commit: 9fb1f44)
+- Context loading replaced with intelligent extractive summarization that preserves semantic content within token limits. (commit: fa8228e)
+
+### Fixed
+- Backend initialization error on resume: critical phases now properly initialize before resuming to prevent `'NoneType' object has no attribute 'generate_story'` errors. (commit: 04aced6)
+- Corrupted YAML checkpoint files now handled gracefully with option to move to `.corrupt` extension instead of crashing. (commit: 908fb61)
+- Backend initialization errors now provide clearer messages suggesting API key verification. (commit: 04aced6)
+- Checkpoint tests updated to match new phase skip logic and resume behavior. (commit: 8e940d1)
+
+### Refactor
+- Phase skip logic simplified to only check current session completion status. (commit: 04aced6)
+- Separate tracking of initialized phases to support idempotent critical phase execution. (commit: 04aced6)
+
+### Docs
+- Added comprehensive configuration documentation at `docs/CONFIGURATION.md`. (commit: 889f4d6)
+- README updated with new config command examples and CLI usage patterns. (commit: 889f4d6)
+- CLI help text enhanced with common usage examples in epilog. (commit: 9fb1f44)
+
 ## [0.0.4] - 2025-10-01
 
 ### Added
