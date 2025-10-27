@@ -383,8 +383,8 @@ class TestPhaseExecutor:
 
         assert all(decision is None for decision in decisions_for_early_phase.values())
 
-    def test_should_skip_phase_critical_phases_never_skipped(self):
-        """Test that critical initialization phases are never skipped."""
+    def test_should_skip_phase_skips_completed_phases(self):
+        """Test that phases are skipped when marked as completed in the current session."""
         # Create a checkpoint with all phases marked as completed
         checkpoint_data = CheckpointData.create_new("test", {}, {})
         checkpoint_data.completed_phases = [
@@ -399,12 +399,12 @@ class TestPhaseExecutor:
         ]
         self.phase_executor.checkpoint_data = checkpoint_data
 
-        # Test that critical initialization phases are never skipped
-        # even when marked as completed
-        assert self.phase_executor._should_skip_phase(ExecutionPhase.CONFIG_LOAD) is False
-        assert self.phase_executor._should_skip_phase(ExecutionPhase.BACKEND_INIT) is False
+        # Test that phases ARE skipped when completed in THIS session
+        # (Critical phases are handled by _execute_phase_sequence initialization, not skip logic)
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.CONFIG_LOAD) is True
+        assert self.phase_executor._should_skip_phase(ExecutionPhase.BACKEND_INIT) is True
 
-        # Test that non-critical phases ARE skipped when completed
+        # Test that other phases ARE also skipped when completed
         assert self.phase_executor._should_skip_phase(ExecutionPhase.STORY_GENERATE) is True
         assert self.phase_executor._should_skip_phase(ExecutionPhase.STORY_SAVE) is True
 
@@ -496,20 +496,14 @@ class TestCheckpointIntegration:
                 assert resumed_checkpoint.generated_content["story"] == "Once upon a time..."
                 assert resumed_checkpoint.current_phase == ExecutionPhase.IMAGE_DECISION.value
 
-                # Verify phases before IMAGE_DECISION are marked as completed
-                # Since the original checkpoint was at STORY_SAVE and completed,
-                # the resumed session should include STORY_SAVE in completed phases
-                expected_completed = [
-                    ExecutionPhase.INIT.value,
-                    ExecutionPhase.CONFIG_LOAD.value,
-                    ExecutionPhase.BACKEND_INIT.value,
-                    ExecutionPhase.PROMPT_CONFIRM.value,
-                    ExecutionPhase.CONTEXT_LOAD.value,
-                    ExecutionPhase.PROMPT_BUILD.value,
-                    ExecutionPhase.STORY_GENERATE.value,
-                    ExecutionPhase.STORY_SAVE.value,
-                ]
-                assert resumed_checkpoint.completed_phases == expected_completed
+                # Verify resumed session starts with empty completed_phases
+                # (Critical phases will be initialized by _execute_phase_sequence before resume point)
+                assert resumed_checkpoint.completed_phases == []
+
+                # Verify parent session tracking
+                assert resumed_checkpoint.progress is not None
+                assert resumed_checkpoint.progress.get("resumed_from_session") == loaded_checkpoint.session_id
+                assert resumed_checkpoint.progress.get("resumed_at_phase") == ExecutionPhase.IMAGE_DECISION.value
 
     def test_checkpoint_yaml_structure(self):
         """Test that checkpoint YAML has expected structure and is readable."""
