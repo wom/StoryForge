@@ -227,12 +227,13 @@ class TestExtendCommandIntegration:
         assert exc_info.value.exit_code == 1
 
     @patch("storyforge.StoryForge.ContextManager")
+    @patch("storyforge.StoryForge.Confirm.ask")
     @patch("storyforge.StoryForge.PhaseExecutor")
     @patch("storyforge.StoryForge.load_config")
     @patch("storyforge.StoryForge.CheckpointManager")
     @patch("typer.prompt")
     def test_extend_command_wrap_up(
-        self, mock_prompt, mock_checkpoint_mgr, mock_load_config, mock_executor, mock_context_mgr
+        self, mock_prompt, mock_checkpoint_mgr, mock_load_config, mock_executor, mock_confirm, mock_context_mgr
     ):
         """Test extend command with wrap-up ending."""
         # Mock context manager
@@ -264,6 +265,7 @@ class TestExtendCommandIntegration:
 
         # Mock user input
         mock_prompt.side_effect = [1, 1]  # Select story 1, wrap-up ending
+        mock_confirm.return_value = False  # Don't view full story
 
         # Mock config
         mock_config = Mock()
