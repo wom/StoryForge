@@ -436,6 +436,17 @@ def extend_story(
 
         selected_context = available_contexts[selection - 1]
 
+        # Show the story chain
+        story_chain = context_mgr.get_story_chain(selected_context["filepath"])
+        if len(story_chain) > 1:
+            console.print("\n[bold cyan]📚 Story Chain:[/bold cyan]")
+            for idx, story in enumerate(story_chain, 1):
+                timestamp = story.get("timestamp", "Unknown")
+                prompt_text = story.get("prompt", "No prompt")[:50]
+                console.print(f"  {idx}. [dim]{story['filename']}[/dim]")
+                console.print(f"     {timestamp} - {prompt_text}...")
+            console.print()
+
         # Show preview
         story_content, metadata = context_mgr.load_context_for_extension(selected_context["filepath"])
 
@@ -525,6 +536,7 @@ def extend_story(
             "style": prompt.style,
             "tone": prompt.tone,
             "image_style": prompt.image_style,
+            "source_context_file": str(selected_context["filepath"]),
         }
 
         # Execute via PhaseExecutor with checkpoint support
@@ -549,6 +561,114 @@ def extend_story(
         raise typer.Exit(1) from e
 
 
+@app.command()
+def export_chain(
+    context: Annotated[
+        str | None,
+        typer.Option("--context", "-c", help="Name or path of context file to export (if not provided, will prompt)"),
+    ] = None,
+    output: Annotated[
+        str | None, typer.Option("--output", "-o", help="Output file path (default: complete_story_TIMESTAMP.txt)")
+    ] = None,
+    config_file: Annotated[str | None, typer.Option("--config", help="Path to configuration file")] = None,
+) -> None:
+    """
+    Export a complete story chain to a single file.
+
+    This command reconstructs the full lineage of an extended story by tracing
+    back through all parent stories, then combines them into a single file
+    in chronological order.
+
+    Examples:
+        # Export with interactive selection (shows only chains)
+        sf export-chain
+
+        # Export specific context
+        sf export-chain -c wizard_story_extended
+
+        # Export to specific file
+        sf export-chain -c wizard_story -o my_complete_story.txt
+    """
+    try:
+        console.print("[bold cyan]📚 Export Story Chain[/bold cyan]\n")
+
+        # Create context manager
+        context_mgr = ContextManager()
+
+        # Get available contexts
+        available_contexts = context_mgr.list_available_contexts()
+        if not available_contexts:
+            console.print("[yellow]No context files found. Generate and save a story first.[/yellow]")
+            raise typer.Exit(1)
+
+        # Select context file
+        if context:
+            # Find matching context
+            matches = [ctx for ctx in available_contexts if context.lower() in ctx["filename"].lower()]
+            if not matches:
+                console.print(f"[red]No context file matching '{context}' found.[/red]")
+                raise typer.Exit(1)
+            selected_context = matches[0]
+        else:
+            # Interactive selection - filter to only extended stories
+            contexts_with_chains = []
+            for ctx in available_contexts:
+                chain = context_mgr.get_story_chain(ctx["filepath"])
+                if len(chain) > 1:  # Only include chains (2+ parts)
+                    contexts_with_chains.append({"context": ctx, "chain": chain})
+
+            if not contexts_with_chains:
+                console.print("[yellow]No extended story chains found. Only single stories available.[/yellow]")
+                console.print("[dim]Extend a story first with 'sf extend' to create a chain.[/dim]")
+                raise typer.Exit(1)
+
+            # Display chains with lineage
+            console.print("[bold]Available story chains to export:[/bold]\n")
+            for idx, ctx_chain in enumerate(contexts_with_chains, 1):
+                ctx, chain = ctx_chain["context"], ctx_chain["chain"]
+                console.print(f"{idx}. [cyan]{ctx['filename']}[/cyan]")
+                console.print(f"   [bold yellow]📚 Chain: {len(chain)} parts[/bold yellow]")
+                for chain_idx, story in enumerate(chain, 1):
+                    label = " (original)" if chain_idx == 1 else (" (latest)" if chain_idx == len(chain) else "")
+                    console.print(f"      └─ Part {chain_idx}: {story['filename']}{label}")
+                if "prompt" in ctx:
+                    console.print(f"   Prompt: {ctx['prompt'][:60]}...")
+                console.print()
+
+            selection = typer.prompt("\nSelect a story chain to export", type=int)
+            if selection < 1 or selection > len(contexts_with_chains):
+                console.print("[red]Invalid selection.[/red]")
+                raise typer.Exit(1)
+
+            selected_context = contexts_with_chains[selection - 1]["context"]
+
+        # Determine output path
+        if output:
+            output_path = Path(output)
+        else:
+            from datetime import datetime
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base_name = selected_context["filename"].replace("_context", "").replace(".md", "")
+            output_path = Path(f"complete_story_{base_name}_{timestamp}.txt")
+
+        # Export the chain
+        try:
+            result_path = context_mgr.write_chain_to_file(selected_context["filepath"], output_path)
+            story_chain = context_mgr.get_story_chain(selected_context["filepath"])
+            console.print(f"\n[bold green]✓ Exported to:[/bold green] {result_path}")
+            console.print(f"[dim]Total parts: {len(story_chain)}[/dim]")
+        except Exception as e:
+            console.print(f"[red]Error: {e}[/red]")
+            raise typer.Exit(1) from e
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise typer.Exit(1) from e
+
+
 if __name__ == "__main__":
     import sys
 
@@ -562,6 +682,7 @@ if __name__ == "__main__":
             "config",
             "continue",
             "extend",
+            "export-chain",
         ]
     ):
         sys.argv.insert(1, "main")
@@ -576,6 +697,12 @@ def cli_entry() -> None:
     if len(sys.argv) == 1:
         sys.argv.append("--help")
     # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
-    elif not sys.argv[1].startswith("-") and sys.argv[1] not in ["main", "config", "continue", "extend"]:
+    elif not sys.argv[1].startswith("-") and sys.argv[1] not in [
+        "main",
+        "config",
+        "continue",
+        "extend",
+        "export-chain",
+    ]:
         sys.argv.insert(1, "main")
     app()

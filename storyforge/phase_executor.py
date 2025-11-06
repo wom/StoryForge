@@ -908,6 +908,12 @@ class PhaseExecutor:
                 context_content += f"**Generated on:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
                 context_content += f"**Original Prompt:** {prompt_summary}\n\n"
 
+                # Add parent story tracking for extensions
+                source_file = self.checkpoint_data.resolved_config.get("source_context_file")
+                if source_file:
+                    parent_file = Path(source_file).stem
+                    context_content += f"**Extended From:** {parent_file}\n\n"
+
                 # Add story parameters if available
                 cli_args = self.checkpoint_data.original_inputs.get("cli_arguments", {})
                 if cli_args and cli_args.get("characters"):
