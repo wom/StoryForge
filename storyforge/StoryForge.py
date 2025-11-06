@@ -5,7 +5,7 @@ Supports Google Gemini and Anthropic Claude backends.
 
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Literal, cast
+from typing import Annotated, Any, Literal, cast
 
 import typer
 from rich.console import Console
@@ -447,16 +447,37 @@ def extend_story(
                 console.print(f"     {timestamp} - {prompt_text}...")
             console.print()
 
-        # Show preview
+        # Load story content
         story_content, metadata = context_mgr.load_context_for_extension(selected_context["filepath"])
 
-        console.print("\n[bold cyan]📖 Original Story Preview:[/bold cyan]")
+        # Show story viewer with expand option
+        console.print("\n[bold cyan]📖 Story Preview:[/bold cyan]")
         # Extract just the story part, skip metadata
         story_text = story_content
         if "## Story" in story_content:
             story_text = story_content.split("## Story", 1)[1]
-        preview_words = " ".join(story_text.split()[:50])
+
+        # Show first 100 words as preview
+        preview_words = " ".join(story_text.split()[:100])
         console.print(f"[dim]{preview_words}...[/dim]\n")
+
+        # Ask if user wants to see the full story
+        view_full = Confirm.ask("📜 View full story before extending?", default=False)
+
+        if view_full:
+            from rich.markdown import Markdown
+            from rich.panel import Panel
+
+            console.print("\n")
+            # Create a formatted panel with the full story
+            full_story_panel = Panel(
+                Markdown(story_text.strip()),
+                title=f"[bold cyan]Complete Story: {selected_context['filename']}[/bold cyan]",
+                border_style="cyan",
+                padding=(1, 2),
+            )
+            console.print(full_story_panel)
+            console.print()
 
         # Ask continuation preference
         console.print("[bold cyan]🎬 How should this story continue?[/bold cyan]")
@@ -611,7 +632,7 @@ def export_chain(
             selected_context = matches[0]
         else:
             # Interactive selection - filter to only extended stories
-            contexts_with_chains = []
+            contexts_with_chains: list[dict[str, Any]] = []
             for ctx in available_contexts:
                 chain = context_mgr.get_story_chain(ctx["filepath"])
                 if len(chain) > 1:  # Only include chains (2+ parts)
@@ -625,14 +646,15 @@ def export_chain(
             # Display chains with lineage
             console.print("[bold]Available story chains to export:[/bold]\n")
             for idx, ctx_chain in enumerate(contexts_with_chains, 1):
-                ctx, chain = ctx_chain["context"], ctx_chain["chain"]
-                console.print(f"{idx}. [cyan]{ctx['filename']}[/cyan]")
-                console.print(f"   [bold yellow]📚 Chain: {len(chain)} parts[/bold yellow]")
-                for chain_idx, story in enumerate(chain, 1):
-                    label = " (original)" if chain_idx == 1 else (" (latest)" if chain_idx == len(chain) else "")
+                story_ctx: dict[str, Any] = ctx_chain["context"]
+                story_chain: list[dict[str, Any]] = ctx_chain["chain"]
+                console.print(f"{idx}. [cyan]{story_ctx['filename']}[/cyan]")
+                console.print(f"   [bold yellow]📚 Chain: {len(story_chain)} parts[/bold yellow]")
+                for chain_idx, story in enumerate(story_chain, 1):
+                    label = " (original)" if chain_idx == 1 else (" (latest)" if chain_idx == len(story_chain) else "")
                     console.print(f"      └─ Part {chain_idx}: {story['filename']}{label}")
-                if "prompt" in ctx:
-                    console.print(f"   Prompt: {ctx['prompt'][:60]}...")
+                if "prompt" in story_ctx:
+                    console.print(f"   Prompt: {story_ctx['prompt'][:60]}...")
                 console.print()
 
             selection = typer.prompt("\nSelect a story chain to export", type=int)
@@ -641,6 +663,67 @@ def export_chain(
                 raise typer.Exit(1)
 
             selected_context = contexts_with_chains[selection - 1]["context"]
+
+        # Load and preview the complete chain
+        story_chain = context_mgr.get_story_chain(selected_context["filepath"])
+
+        # Show chain preview
+        console.print("\n[bold cyan]📖 Chain Preview:[/bold cyan]")
+        console.print(f"Total parts: {len(story_chain)}")
+
+        # Show preview of each part (first 50 words)
+        for idx, story_meta in enumerate(story_chain, 1):
+            story_path = story_meta.get("filepath")
+            if story_path and Path(story_path).exists():
+                with open(story_path, encoding="utf-8") as f:
+                    content = f.read()
+                    # Extract story content
+                    story_text = content
+                    if "## Story" in content:
+                        story_text = content.split("## Story", 1)[1]
+                    preview = " ".join(story_text.split()[:50])
+                    console.print(f"\n[bold]Part {idx}:[/bold] {story_meta['filename']}")
+                    console.print(f"[dim]{preview}...[/dim]")
+
+        console.print()
+
+        # Ask if user wants to see the full chain
+        view_full = Confirm.ask("📜 View complete chain before exporting?", default=False)
+
+        if view_full:
+            from rich.markdown import Markdown
+            from rich.panel import Panel
+
+            console.print("\n")
+
+            # Display each part in the chain
+            for idx, story_meta in enumerate(story_chain, 1):
+                story_path = story_meta.get("filepath")
+                if story_path and Path(story_path).exists():
+                    with open(story_path, encoding="utf-8") as f:
+                        content = f.read()
+                        # Extract story content
+                        story_text = content
+                        if "## Story" in content:
+                            story_text = content.split("## Story", 1)[1]
+
+                        # Create panel for this part
+                        part_label = " (original)" if idx == 1 else (" (latest)" if idx == len(story_chain) else "")
+                        title = (
+                            f"[bold cyan]Part {idx} of {len(story_chain)}: "
+                            f"{story_meta['filename']}{part_label}[/bold cyan]"
+                        )
+                        panel = Panel(
+                            Markdown(story_text.strip()),
+                            title=title,
+                            border_style="cyan",
+                            padding=(1, 2),
+                        )
+                        console.print(panel)
+                        if idx < len(story_chain):
+                            console.print()  # Add spacing between parts
+
+            console.print()
 
         # Determine output path
         if output:
