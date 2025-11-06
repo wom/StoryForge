@@ -538,6 +538,16 @@ class ContextManager:
             if art_style_match:
                 metadata["art_style"] = art_style_match.group(1).strip()
 
+            # Extract original prompt from **Original Prompt:** field
+            prompt_match = re.search(r"\*\*Original Prompt:\*\*\s*(.+)", content)
+            if prompt_match:
+                metadata["prompt"] = prompt_match.group(1).strip()
+
+            # Extract parent story reference for chain tracking
+            extended_from_match = re.search(r"\*\*Extended From:\*\*\s*(.+)", content)
+            if extended_from_match:
+                metadata["extended_from"] = extended_from_match.group(1).strip()
+
             # Extract story preview - find the story section after metadata
             # Look for "## Story" or just get text after multiple newlines
             story_match = re.search(r"##\s*Story\s*\n+(.+)", content, re.DOTALL)
@@ -587,6 +597,149 @@ class ContextManager:
             full_content = ""
 
         return full_content, metadata
+
+    def get_story_chain(self, filepath: Path) -> list[dict[str, Any]]:
+        """
+        Reconstruct the full story chain by tracing back parent references.
+
+        This method follows the chain of extended stories backward from the given
+        file to the original story, returning metadata for each story in the chain
+        in chronological order (oldest to newest).
+
+        Args:
+            filepath: Path to the final story in the chain
+
+        Returns:
+            List of story metadata dicts in chronological order (oldest to newest).
+            Each dict contains: filename, timestamp, prompt, characters, setting, etc.
+
+        Example:
+            >>> chain = context_mgr.get_story_chain(Path("story_extended_extended.md"))
+            >>> for story in chain:
+            ...     print(f"{story['filename']}: {story.get('prompt', 'No prompt')}")
+            story_original.md: A knight on a quest
+            story_extended.md: A knight on a quest (continued)
+            story_extended_extended.md: A knight on a quest (final chapter)
+        """
+        chain: list[dict[str, Any]] = []
+        current_file = filepath
+        seen_files: set[str] = set()
+
+        while current_file and str(current_file) not in seen_files:
+            seen_files.add(str(current_file))
+
+            try:
+                metadata = self.parse_context_metadata(current_file)
+                chain.insert(0, metadata)  # Add to beginning for chronological order
+
+                # Check for parent reference
+                if "extended_from" in metadata:
+                    parent_name = metadata["extended_from"]
+                    context_dir = self.get_context_directory()
+                    # Look for exact filename match
+                    parent_file = context_dir / f"{parent_name}.md"
+                    if parent_file.exists():
+                        current_file = parent_file
+                    else:
+                        # Parent not found, stop here
+                        break
+                else:
+                    # No parent reference, reached the original story
+                    break
+            except Exception:
+                # Error reading file, stop here
+                break
+
+        return chain
+
+    def write_chain_to_file(self, filepath: Path, output_path: Path) -> Path:
+        """
+        Write the complete story chain to a single file.
+
+        Reconstructs the full story chain and combines all stories into a single
+        output file, preserving the chronological order and adding separators
+        between each story segment.
+
+        Args:
+            filepath: Path to the final story in the chain
+            output_path: Path where the combined story should be written
+
+        Returns:
+            Path to the created file
+
+        Example:
+            >>> output = context_mgr.write_chain_to_file(
+            ...     Path("story_extended.md"),
+            ...     Path("complete_story.txt")
+            ... )
+            >>> print(f"Complete story written to: {output}")
+            Complete story written to: complete_story.txt
+        """
+        from datetime import datetime
+
+        chain = self.get_story_chain(filepath)
+
+        if not chain or ("error" in chain[0] if chain else False):
+            raise ValueError("No stories found in chain")
+
+        # Create the combined story content
+        combined_content = []
+        combined_content.append("=" * 80)
+        combined_content.append("COMPLETE STORY CHAIN")
+        combined_content.append("=" * 80)
+        combined_content.append(f"\nGenerated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        combined_content.append(f"Total stories in chain: {len(chain)}\n")
+
+        # Add metadata about the chain
+        if chain:
+            first_story = chain[0]
+            combined_content.append(f"Original prompt: {first_story.get('prompt', 'Unknown')}")
+            if "characters" in first_story:
+                combined_content.append(f"Characters: {first_story['characters']}")
+            if "setting" in first_story:
+                combined_content.append(f"Setting: {first_story['setting']}")
+
+        combined_content.append("=" * 80 + "\n")
+
+        # Add each story in the chain
+        for idx, story_meta in enumerate(chain, 1):
+            combined_content.append(f"\n{'=' * 80}")
+            combined_content.append(f"PART {idx} of {len(chain)}")
+            combined_content.append(f"{'=' * 80}")
+            combined_content.append(f"Generated: {story_meta.get('timestamp', 'Unknown')}")
+            combined_content.append(f"Source: {story_meta.get('filename', 'Unknown')}")
+            if idx > 1 and "extended_from" in story_meta:
+                combined_content.append(f"Extended from: {story_meta['extended_from']}")
+            combined_content.append(f"{'=' * 80}\n")
+
+            # Read and add the actual story content
+            story_path = story_meta.get("filepath")
+            if story_path and Path(story_path).exists():
+                with open(story_path, encoding="utf-8") as f:
+                    content = f.read()
+                    # Extract just the story content (skip metadata header)
+                    story_start = content.find("---\n## Story Preview")
+                    if story_start != -1:
+                        story_content = content[story_start + len("---\n## Story Preview\n\n") :]
+                    else:
+                        parts = content.split("---", 2)
+                        story_content = parts[2] if len(parts) > 2 else content
+                    combined_content.append(story_content.strip())
+            else:
+                combined_content.append(f"[Story content not found: {story_path}]")
+            combined_content.append("\n")
+
+        # Add footer
+        combined_content.append("\n" + "=" * 80)
+        combined_content.append("END OF STORY CHAIN")
+        combined_content.append("=" * 80)
+
+        # Write to output file
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(combined_content))
+
+        return output_path
 
 
 def get_default_context_manager() -> ContextManager:

@@ -251,6 +251,15 @@ class TestExtendCommandIntegration:
             "# Story\nFull story content...",
             {"characters": "Alice", "theme": "courage"},  # Valid theme
         )
+        # Mock get_story_chain to return a single-story chain
+        mock_mgr.get_story_chain.return_value = [
+            {
+                "filepath": Path("/tmp/story1.md"),
+                "filename": "story1",
+                "timestamp": "2025-10-22",
+                "prompt": "Original story",
+            }
+        ]
         mock_context_mgr.return_value = mock_mgr
 
         # Mock user input
