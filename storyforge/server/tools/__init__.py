@@ -7,6 +7,7 @@ from .config import register_config_tools
 from .content import register_content_tools
 from .extension import register_extension_tools
 from .image import register_image_tools
+from .refinement import register_refinement_tools
 from .session import register_session_tools
 from .story import register_story_tools
 
@@ -19,4 +20,4 @@ def register_all_tools(server: Server, queue_manager: QueueManager) -> None:
     register_content_tools(server)
     register_image_tools(server)
     register_config_tools(server)
-    # More tool registrations will be added here
+    register_refinement_tools(server)
