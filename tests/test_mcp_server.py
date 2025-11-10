@@ -1,8 +1,6 @@
 """Simple test script to verify MCP server can start and handle basic operations."""
 
 import asyncio
-import json
-from pathlib import Path
 
 import pytest
 
@@ -70,7 +68,7 @@ async def test_list_sessions() -> bool:
     try:
         result = session_manager.list_sessions(status_filter="all", limit=10)
         print(f"✓ list_sessions works: found {len(result['sessions'])} sessions")
-        if result['sessions']:
+        if result["sessions"]:
             print(f"  First session: {result['sessions'][0]['session_id']}")
         return True
     except Exception as e:
@@ -89,11 +87,11 @@ async def test_get_session_status() -> bool:
 
     # First get a session ID
     sessions = session_manager.list_sessions()
-    if not sessions['sessions']:
+    if not sessions["sessions"]:
         print("✗ No sessions available for testing get_session_status")
         return False
 
-    session_id = sessions['sessions'][0]['session_id']
+    session_id = sessions["sessions"][0]["session_id"]
 
     try:
         result = session_manager.get_session_status(session_id)

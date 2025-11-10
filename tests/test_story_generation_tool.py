@@ -30,8 +30,7 @@ def test_all_tools_registration():
 
     print("✓ All tools registered successfully")
 
+
 if __name__ == "__main__":
     test_story_tool_registration()
     test_all_tools_registration()
-
-
