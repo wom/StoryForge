@@ -8,7 +8,10 @@ from pathlib import Path
 async def create_test_checkpoint() -> None:
     """Create a test checkpoint file."""
     from storyforge.checkpoint import CheckpointData
-    from datetime import datetime
+    from storyforge.server.path_resolver import PathResolver
+
+    # Use the server's path resolver to get the correct checkpoint directory
+    path_resolver = PathResolver()
 
     session_id = "test_session_001"
     checkpoint = CheckpointData.create_new(
@@ -25,17 +28,34 @@ async def create_test_checkpoint() -> None:
         },
     )
 
-    # Save checkpoint
-    from storyforge.checkpoint import CheckpointManager
-    manager = CheckpointManager()
-    manager.save_checkpoint(checkpoint)
-    print(f"✓ Created test checkpoint: {session_id}")
+    # Save checkpoint to server's checkpoint directory
+    checkpoint_path = path_resolver.get_checkpoint_path(session_id)
+    import yaml
+
+    with open(checkpoint_path, "w") as f:
+        yaml.safe_dump(
+            {
+                "session_id": checkpoint.session_id,
+                "created_at": checkpoint.created_at,
+                "updated_at": checkpoint.updated_at,
+                "status": checkpoint.status,
+                "current_phase": checkpoint.current_phase,
+                "completed_phases": checkpoint.completed_phases,
+                "original_inputs": checkpoint.original_inputs,
+                "resolved_config": checkpoint.resolved_config,
+                "generated_content": checkpoint.generated_content,
+                "user_decisions": checkpoint.user_decisions,
+            },
+            f,
+        )
+
+    print(f"✓ Created test checkpoint: {session_id} at {checkpoint_path}")
 
 
-async def test_list_sessions() -> None:
+async def test_list_sessions() -> bool:
     """Test listing sessions."""
+    from storyforge.server.path_resolver import PathResolver
     from storyforge.server.tools.session import SessionManager
-    from storyforge.shared.path_resolver import PathResolver
 
     path_resolver = PathResolver()
     session_manager = SessionManager(path_resolver)
@@ -51,10 +71,10 @@ async def test_list_sessions() -> None:
         return False
 
 
-async def test_get_session_status() -> None:
+async def test_get_session_status() -> bool:
     """Test getting session status."""
+    from storyforge.server.path_resolver import PathResolver
     from storyforge.server.tools.session import SessionManager
-    from storyforge.shared.path_resolver import PathResolver
 
     path_resolver = PathResolver()
     session_manager = SessionManager(path_resolver)
