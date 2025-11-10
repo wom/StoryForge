@@ -4,6 +4,12 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
+# Configure anyio to use asyncio only
+pytest_plugins = ("anyio",)
+
+
 # Create a mock checkpoint for testing
 async def create_test_checkpoint() -> None:
     """Create a test checkpoint file."""
@@ -52,6 +58,7 @@ async def create_test_checkpoint() -> None:
     print(f"✓ Created test checkpoint: {session_id} at {checkpoint_path}")
 
 
+@pytest.mark.anyio
 async def test_list_sessions() -> bool:
     """Test listing sessions."""
     from storyforge.server.path_resolver import PathResolver
@@ -71,6 +78,7 @@ async def test_list_sessions() -> bool:
         return False
 
 
+@pytest.mark.anyio
 async def test_get_session_status() -> bool:
     """Test getting session status."""
     from storyforge.server.path_resolver import PathResolver
@@ -98,12 +106,13 @@ async def test_get_session_status() -> bool:
         return False
 
 
+@pytest.mark.anyio
 async def test_get_queue_status() -> None:
     """Test queue status."""
     # Simple test - just verify it returns expected structure
     result = {"active_session": None, "queue": [], "queue_length": 0}
     print(f"✓ get_queue_status works: {result}")
-    return True
+    assert result is not None
 
 
 async def main() -> None:

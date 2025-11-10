@@ -7,8 +7,11 @@ import pytest
 from storyforge.server.queue_manager import QueueManager
 from storyforge.shared.types import ErrorCode, MCPError
 
+# Configure anyio to use asyncio only
+pytest_plugins = ("anyio",)
 
-@pytest.mark.asyncio
+
+@pytest.mark.anyio
 async def test_queue_manager_basic():
     """Test basic queue manager functionality."""
     queue_manager = QueueManager(max_queue_size=2)
@@ -49,7 +52,7 @@ async def test_queue_manager_basic():
     assert len(queue_manager.queue) == 0
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_queue_manager_full():
     """Test queue full error."""
     queue_manager = QueueManager(max_queue_size=1)
@@ -72,7 +75,7 @@ async def test_queue_manager_full():
     assert "full" in exc_info.value.message.lower()
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_queue_manager_fifo():
     """Test FIFO queue ordering."""
     queue_manager = QueueManager(max_queue_size=5)
@@ -98,7 +101,7 @@ async def test_queue_manager_fifo():
     assert results == ["session1", "session2", "session3", "session4"]
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_queue_manager_error_handling():
     """Test error handling in queued tasks."""
     queue_manager = QueueManager(max_queue_size=2)
@@ -126,7 +129,7 @@ async def test_queue_manager_error_handling():
     assert result2 == [{"result": "success"}]
 
 
-@pytest.mark.asyncio
+@pytest.mark.anyio
 async def test_queue_status_caching():
     """Test queue status caching."""
     queue_manager = QueueManager()
