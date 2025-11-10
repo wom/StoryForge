@@ -10,9 +10,10 @@ from ...config import load_config
 from ...phase_executor import PhaseExecutor
 from ...shared.types import ErrorCode, MCPError
 from ..path_resolver import PathResolver
+from ..queue_manager import QueueManager
 
 
-def register_story_tools(server: Server) -> None:
+def register_story_tools(server: Server, queue_manager: QueueManager) -> None:
     """Register story generation tools with the MCP server."""
     path_resolver = PathResolver()
     checkpoint_manager = CheckpointManager()
@@ -87,7 +88,24 @@ def register_story_tools(server: Server) -> None:
         """Handle story generation tool calls."""
         try:
             if name == "storyforge_generate_story":
-                return await handle_generate_story(arguments, checkpoint_manager, path_resolver)
+                # Generate session ID
+                import uuid
+
+                session_id = arguments.get("session_id", str(uuid.uuid4()))
+
+                # Enqueue the request (will execute immediately if no active session)
+                future = await queue_manager.enqueue(
+                    session_id=session_id,
+                    handler=handle_generate_story,
+                    arguments=arguments,
+                    checkpoint_manager=checkpoint_manager,
+                    path_resolver=path_resolver,
+                    session_id_override=session_id,
+                )
+
+                # Wait for completion
+                result: list[Any] = await future
+                return result
             else:
                 raise ValueError(f"Unknown tool: {name}")
         except MCPError:
@@ -104,6 +122,7 @@ async def handle_generate_story(
     arguments: dict[str, Any],
     checkpoint_manager: CheckpointManager,
     path_resolver: PathResolver,
+    session_id_override: str | None = None,
 ) -> list[Any]:
     """
     Handle generate_story tool call.
@@ -200,6 +219,10 @@ async def handle_generate_story(
         cli_arguments=cli_arguments,
         resolved_config=resolved_config,
     )
+
+    # Override session_id if provided (for queue management)
+    if session_id_override:
+        checkpoint_data.session_id = session_id_override
 
     # Save initial checkpoint
     checkpoint_manager.save_checkpoint(checkpoint_data)

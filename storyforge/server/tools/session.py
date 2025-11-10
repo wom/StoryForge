@@ -10,9 +10,10 @@ from ...checkpoint import CheckpointManager, ExecutionPhase
 from ...checkpoint import SessionStatus as CheckpointStatus
 from ...shared.types import ErrorCode, MCPError, SessionStatus
 from ..path_resolver import PathResolver
+from ..queue_manager import QueueManager
 
 
-def register_session_tools(server: Server) -> None:
+def register_session_tools(server: Server, queue_manager: QueueManager) -> None:
     """Register session management tools with the MCP server."""
     path_resolver = PathResolver()
     session_manager = SessionManager(path_resolver)
@@ -124,8 +125,8 @@ def register_session_tools(server: Server) -> None:
                 )
                 return [result]
             elif name == "storyforge_get_queue_status":
-                # TODO: Implement proper queue management
-                return [{"active_session": None, "queue": [], "queue_length": 0}]
+                # Return current queue status from queue manager
+                return [queue_manager.get_status()]
             else:
                 raise ValueError(f"Unknown tool: {name}")
         except MCPError:

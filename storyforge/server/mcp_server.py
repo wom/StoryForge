@@ -7,6 +7,7 @@ from mcp.server.stdio import stdio_server
 
 from ..shared.errors import StoryForgeError
 from ..shared.types import ErrorResponse
+from .queue_manager import QueueManager
 from .tools import register_all_tools
 
 
@@ -16,11 +17,10 @@ class StoryForgeMCPServer:
     def __init__(self) -> None:
         """Initialize the MCP server."""
         self.server = Server("storyforge-server")
-        self.active_session: str | None = None
-        self.queue: list[str] = []
+        self.queue_manager = QueueManager(max_queue_size=10)
 
-        # Register all tools
-        register_all_tools(self.server)
+        # Register all tools with queue manager
+        register_all_tools(self.server, self.queue_manager)
 
     def format_error(self, error: Exception) -> dict:
         """Format an exception as a structured error response."""
