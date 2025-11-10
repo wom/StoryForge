@@ -7,3 +7,7 @@ __pycache__/
 context/
 junk
 .github
+
+# Story output directories and files
+storyforge_output_*/
+complete_story_*.txt
