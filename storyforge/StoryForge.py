@@ -12,6 +12,7 @@ from rich.console import Console
 from rich.prompt import Confirm
 
 from .checkpoint import CheckpointManager
+from .client import display_error, display_success, get_client, poll_session_until_complete, run_sync
 from .config import Config, ConfigError, load_config
 from .context import ContextManager
 from .phase_executor import PhaseExecutor
@@ -305,43 +306,58 @@ def main(
 
     # Use phase executor for both new sessions and checkpoint resumption
     try:
-        # Prepare CLI arguments for checkpoint
-        cli_arguments = {
-            "length": length,
-            "age_range": age_range,
-            "style": style,
-            "tone": tone,
-            "theme": theme,
-            "learning_focus": learning_focus,
-            "setting": setting,
-            "characters": characters,
-            "image_style": image_style,
-            "output_dir": output_dir,
-            "use_context": use_context,
-            "verbose": verbose,
-            "debug": debug,
-            "backend": config_backend,
-        }
+        # Execute new session via MCP client
+        client = get_client()
 
-        # Prepare resolved configuration
-        resolved_config = {
-            "backend": config_backend,
-            "output_directory": output_dir,
-            "use_context": use_context,
-            "verbose": verbose,
-            "debug": debug,
-            "length": length,
-            "age_range": age_range,
-            "style": style,
-            "tone": tone,
-            "theme": theme,
-            "image_style": image_style,
-        }
+        try:
+            # Start story generation
+            result = run_sync(
+                client.generate_story(
+                    prompt=prompt or "",
+                    backend=str(config_backend) if config_backend is not None else None,
+                    length=length,
+                    age_range=age_range,
+                    style=style,
+                    tone=tone,
+                    theme=theme,
+                    learning_focus=learning_focus,
+                    setting=setting,
+                    characters=characters,
+                    image_style=image_style,
+                    output_directory=output_dir,
+                    use_context=use_context,
+                )
+            )
 
-        # Execute new session with checkpointing
-        checkpoint_manager = CheckpointManager()
-        phase_executor = PhaseExecutor(checkpoint_manager)
-        phase_executor.execute_new_session(prompt, cli_arguments, resolved_config)
+            session_id = result["session_id"]
+            console.print(f"\n[green]✓[/green] Story generation started (Session: {session_id})\n")
+
+            # Poll for completion with progress display
+            final_status = poll_session_until_complete(session_id, client)
+
+            # Display results
+            if final_status["status"] == "completed":
+                display_success("Story generation completed successfully!")
+
+                # Show output files
+                story_file = final_status.get("story_file")
+                if story_file:
+                    console.print(f"\n[bold cyan]Story saved to:[/bold cyan] {story_file}")
+
+                images = final_status.get("images", [])
+                if images:
+                    console.print(f"\n[bold cyan]Generated {len(images)} images:[/bold cyan]")
+                    for img in images:
+                        console.print(f"  • {img}")
+
+            elif final_status["status"] == "failed":
+                error_msg = final_status.get("error", "Unknown error")
+                display_error(Exception(error_msg))
+                raise typer.Exit(1)
+
+        finally:
+            # Disconnect client
+            run_sync(client.disconnect())
 
     except Exception as e:
         if verbose:
