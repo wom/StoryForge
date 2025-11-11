@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.prompt import Confirm
 
 from .checkpoint import CheckpointManager
-from .client import display_error, display_success, get_client, poll_session_until_complete, run_sync
+from .client import display_error, get_client, poll_session_until_complete, run_sync
 from .config import Config, ConfigError, load_config
 from .context import ContextManager
 from .phase_executor import PhaseExecutor
@@ -303,60 +303,53 @@ def main(
         output_dir = generate_default_output_dir()
         console.print(f"[bold blue]📁 Generated output directory:[/bold blue] {output_dir}")
 
-    # Use phase executor for both new sessions and checkpoint resumption
+    # Use MCP client for consistent protocol-based communication
     try:
-        # Execute new session via MCP client
         client = get_client()
 
-        try:
-            # Start story generation
-            result = run_sync(
-                client.generate_story(
-                    prompt=prompt or "",
-                    backend=str(config_backend) if config_backend is not None else None,
-                    length=length,
-                    age_range=age_range,
-                    style=style,
-                    tone=tone,
-                    theme=theme,
-                    learning_focus=learning_focus,
-                    setting=setting,
-                    characters=characters,
-                    image_style=image_style,
-                    output_directory=output_dir,
-                    use_context=use_context,
-                )
+        # Start story generation via MCP protocol
+        console.print("\n[bold cyan]🚀 Starting story generation via MCP...[/bold cyan]")
+
+        result = run_sync(
+            client.generate_story(
+                prompt=prompt or "",
+                backend=str(config_backend) if config_backend is not None else None,
+                length=length or "short",
+                age_range=age_range or "6-8",
+                style=style or "adventurous",
+                tone=tone or "lighthearted",
+                theme=theme,
+                learning_focus=learning_focus,
+                setting=setting,
+                characters=characters,
+                image_style=image_style or "chibi",
+                output_directory=output_dir,
+                use_context=use_context,
             )
+        )
 
-            session_id = result["session_id"]
-            console.print(f"\n[green]✓[/green] Story generation started (Session: {session_id})\n")
+        session_id = result.get("session_id")
+        status = result.get("status")
 
-            # Poll for completion with progress display
-            final_status = poll_session_until_complete(session_id, client)
+        # Display results
+        if status == "completed":
+            console.print(f"\n[bold green]✓ Story generation completed! (Session: {session_id})[/bold green]")
 
-            # Display results
-            if final_status["status"] == "completed":
-                display_success("Story generation completed successfully!")
+            story = result.get("story")
+            if story:
+                console.print(f"\n[bold cyan]Story:[/bold cyan]\n{story[:200]}...")
 
-                # Show output files
-                story_file = final_status.get("story_file")
-                if story_file:
-                    console.print(f"\n[bold cyan]Story saved to:[/bold cyan] {story_file}")
+            images = result.get("images", [])
+            if images:
+                console.print(f"\n[bold cyan]Generated {len(images)} images[/bold cyan]")
+                for img in images:
+                    console.print(f"  • {img}")
 
-                images = final_status.get("images", [])
-                if images:
-                    console.print(f"\n[bold cyan]Generated {len(images)} images:[/bold cyan]")
-                    for img in images:
-                        console.print(f"  • {img}")
-
-            elif final_status["status"] == "failed":
-                error_msg = final_status.get("error", "Unknown error")
-                display_error(Exception(error_msg))
-                raise typer.Exit(1)
-
-        finally:
-            # Disconnect client
-            run_sync(client.disconnect())
+            checkpoint_path = result.get("checkpoint_path")
+            if checkpoint_path:
+                console.print(f"\n[dim]Session checkpoint: {checkpoint_path}[/dim]")
+        else:
+            console.print(f"\n[yellow]Story generation status: {status}[/yellow]")
 
     except Exception as e:
         if verbose:

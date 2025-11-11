@@ -1,6 +1,7 @@
 """MCP client wrapper for StoryForge thin CLI."""
 
 import asyncio
+import sys
 from typing import Any
 
 from mcp import ClientSession, StdioServerParameters
@@ -26,8 +27,9 @@ class MCPClient:
             return  # Already connected
 
         # Server parameters for stdio transport
+        # Use sys.executable to ensure we use the same Python interpreter
         server_params = StdioServerParameters(
-            command="python",
+            command=sys.executable,
             args=["-m", "storyforge.server.mcp_server"],
             env=None,
         )

@@ -502,9 +502,15 @@ class PhaseExecutor:
     def _phase_prompt_confirm(self) -> None:
         """Prompt confirmation phase."""
         assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+
+        # Check if auto-confirm is enabled (MCP mode or --yes flag)
+        resolved_config = self.checkpoint_data.resolved_config
+        if resolved_config.get("auto_confirm", False):
+            console.print("[dim]Auto-confirming story generation (MCP mode)[/dim]")
+            return
+
         # Extract parameters from checkpoint
         original_inputs = self.checkpoint_data.original_inputs
-        resolved_config = self.checkpoint_data.resolved_config
 
         prompt = str(original_inputs.get("prompt", ""))
         cli_args = original_inputs.get("cli_arguments", {})
@@ -641,6 +647,7 @@ class PhaseExecutor:
         assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
         debug = self.checkpoint_data.resolved_config.get("debug", False)
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
+        auto_confirm = self.checkpoint_data.resolved_config.get("auto_confirm", False)
 
         # Display the generated story
         console.print("\n[bold green]Generated Story:[/bold green]")
@@ -651,6 +658,11 @@ class PhaseExecutor:
         console.print()
         console.print(self.story or "")
         console.print()
+
+        # Skip refinement in auto-confirm mode (MCP)
+        if auto_confirm:
+            console.print("[dim]Skipping refinement (MCP mode)[/dim]")
+            return
 
         # Ask if user wants to refine
         if Confirm.ask(
@@ -757,6 +769,15 @@ class PhaseExecutor:
         assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
         # Check if decision already made
         if self.checkpoint_data.user_decisions.get("wants_images") is not None:
+            return
+
+        # Check if auto-confirm is enabled (MCP mode)
+        resolved_config = self.checkpoint_data.resolved_config
+        if resolved_config.get("auto_confirm", False):
+            # Auto-confirm: generate 3 images by default in MCP mode
+            self.checkpoint_data.user_decisions["wants_images"] = True
+            self.checkpoint_data.user_decisions["num_images_requested"] = 3
+            console.print("[dim]Auto-confirming image generation (3 images)[/dim]")
             return
 
         wants_images = Confirm.ask("Would you like to generate illustrations for the story?")
@@ -879,12 +900,19 @@ class PhaseExecutor:
         if self.checkpoint_data.user_decisions.get("save_as_context") is not None:
             return
 
-        save_as_context = Confirm.ask(
-            "[bold blue]Save this story as future context for character development?[/bold blue]"
-        )
-        self.checkpoint_data.user_decisions["save_as_context"] = save_as_context
+        # Check if auto-confirm is enabled (MCP mode)
+        auto_confirm = self.checkpoint_data.resolved_config.get("auto_confirm", False)
+        if auto_confirm:
+            # Auto-save context in MCP mode
+            self.checkpoint_data.user_decisions["save_as_context"] = True
+            console.print("[dim]Auto-saving as context (MCP mode)[/dim]")
+        else:
+            save_as_context = Confirm.ask(
+                "[bold blue]Save this story as future context for character development?[/bold blue]"
+            )
+            self.checkpoint_data.user_decisions["save_as_context"] = save_as_context
 
-        if save_as_context:
+        if self.checkpoint_data.user_decisions["save_as_context"]:
             try:
                 # Get context directory (normalized to lowercase 'storyforge')
                 context_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"

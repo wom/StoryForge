@@ -202,6 +202,7 @@ async def handle_generate_story(
         "use_context": True,  # Always use context in MCP mode
         "verbose": False,  # No verbose output in MCP mode
         "debug": False,
+        "auto_confirm": True,  # Skip interactive prompts in MCP mode
         "length": length,
         "age_range": age_range,
         "style": style,
