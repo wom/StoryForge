@@ -184,3 +184,25 @@ def display_success(message: str, details: dict[str, Any] | None = None) -> None
         for key, value in details.items():
             console.print(f"  [cyan]{key}:[/cyan] {value}")
     console.print()
+
+
+def display_session_list(sessions: list[dict[str, Any]]) -> None:
+    """
+    Display sessions in a formatted table.
+
+    Args:
+        sessions: List of session dicts
+    """
+    table = format_session_list(sessions)
+    console.print(table)
+
+
+def display_backends(backends: list[dict[str, Any]]) -> None:
+    """
+    Display backends in a formatted table.
+
+    Args:
+        backends: List of backend dicts
+    """
+    table = format_backend_list(backends)
+    console.print(table)

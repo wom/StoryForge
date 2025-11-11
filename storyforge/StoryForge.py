@@ -580,6 +580,433 @@ def extend_story(
 
 
 # =============================================================================
+# LIST SESSIONS COMMAND
+# =============================================================================
+
+
+@app.command(name="list", help="List all story generation sessions")
+def list_sessions(
+    status: Annotated[
+        str | None,
+        typer.Option("--status", "-s", help="Filter by status (pending, processing, completed, failed)"),
+    ] = None,
+) -> None:
+    """
+    List all story generation sessions with their status.
+
+    Examples:
+        # List all sessions
+        sf list
+
+        # List only completed sessions
+        sf list --status completed
+
+        # List failed sessions
+        sf list --status failed
+    """
+    try:
+        from .client import display_session_list
+
+        client = get_client()
+        sessions = run_sync(client.list_sessions())
+
+        if not sessions:
+            console.print("[yellow]No sessions found.[/yellow]")
+            raise typer.Exit(0)
+
+        # Filter by status if provided
+        if status:
+            sessions = [s for s in sessions if s.get("status") == status]
+            if not sessions:
+                console.print(f"[yellow]No sessions found with status '{status}'.[/yellow]")
+                raise typer.Exit(0)
+
+        display_session_list(sessions)
+        console.print(f"\n[dim]Total: {len(sessions)} session(s)[/dim]")
+
+    except Exception as e:
+        display_error(e)
+        raise typer.Exit(1) from e
+
+
+# =============================================================================
+# STATUS COMMAND
+# =============================================================================
+
+
+@app.command(name="status", help="Check the status of a specific session")
+def session_status(
+    session_id: Annotated[str, typer.Argument(help="Session ID to check")],
+) -> None:
+    """
+    Check the detailed status of a specific session.
+
+    Examples:
+        # Check status of a session
+        sf status abc123
+
+        # Monitor a running session
+        watch -n 3 sf status abc123
+    """
+    try:
+        from rich.table import Table
+
+        client = get_client()
+        status_info = run_sync(client.get_session_status(session_id))
+
+        console.print(f"\n[bold cyan]📊 Session Status: {session_id}[/bold cyan]\n")
+
+        # Main status info
+        table = Table(show_header=False, box=None)
+        table.add_column("Field", style="bold")
+        table.add_column("Value")
+
+        status_color = "green" if status_info["status"] == "completed" else "yellow"
+        table.add_row("Status", f"[{status_color}]{status_info['status']}[/]")
+        table.add_row("Created", status_info.get("created_at", "N/A"))
+        if status_info.get("updated_at"):
+            table.add_row("Updated", status_info["updated_at"])
+        if status_info.get("prompt"):
+            prompt = status_info["prompt"]
+            prompt_display = prompt[:80] + "..." if len(prompt) > 80 else prompt
+            table.add_row("Prompt", prompt_display)
+
+        console.print(table)
+
+        # Phase information
+        if status_info.get("current_phase"):
+            console.print(f"\n[bold]Current Phase:[/bold] {status_info['current_phase']}")
+
+        if status_info.get("completed_phases"):
+            console.print("\n[bold]Completed Phases:[/bold]")
+            for phase in status_info["completed_phases"]:
+                console.print(f"  ✓ {phase}")
+
+        # Output info
+        if status_info.get("output_dir"):
+            console.print(f"\n[bold]Output Directory:[/bold] {status_info['output_dir']}")
+
+        # Error info
+        if status_info.get("error"):
+            console.print(f"\n[bold red]Error:[/bold red] {status_info['error']}")
+
+    except Exception as e:
+        display_error(e)
+        raise typer.Exit(1) from e
+
+
+# =============================================================================
+# DELETE SESSION COMMAND
+# =============================================================================
+
+
+@app.command(name="delete", help="Delete a session and its checkpoint")
+def delete_session(
+    session_id: Annotated[str, typer.Argument(help="Session ID to delete")],
+    force: Annotated[bool, typer.Option("--force", "-f", help="Skip confirmation prompt")] = False,
+) -> None:
+    """
+    Delete a session and its checkpoint data.
+
+    Examples:
+        # Delete a session (with confirmation)
+        sf delete abc123
+
+        # Force delete without confirmation
+        sf delete abc123 --force
+    """
+    try:
+        client = get_client()
+
+        # Get session info first
+        try:
+            status_info = run_sync(client.get_session_status(session_id))
+            console.print(f"\n[bold]Session:[/bold] {session_id}")
+            console.print(f"[bold]Status:[/bold] {status_info['status']}")
+            if status_info.get("prompt"):
+                console.print(f"[bold]Prompt:[/bold] {status_info['prompt'][:60]}...")
+        except Exception:
+            console.print(f"\n[yellow]Session {session_id} not found or inaccessible.[/yellow]")
+
+        # Confirm deletion
+        if not force:
+            if not Confirm.ask(f"\n[bold red]Delete session {session_id}?[/bold red]"):
+                console.print("[yellow]Cancelled.[/yellow]")
+                raise typer.Exit(0)
+
+        # Delete the session
+        run_sync(client.delete_session(session_id))
+        console.print(f"\n[bold green]✓ Session {session_id} deleted successfully.[/bold green]")
+
+    except Exception as e:
+        display_error(e)
+        raise typer.Exit(1) from e
+
+
+# =============================================================================
+# REFINE STORY COMMAND
+# =============================================================================
+
+
+@app.command(name="refine", help="Refine and improve an existing story")
+def refine_story(
+    session_id: Annotated[str, typer.Argument(help="Session ID to refine")],
+    feedback: Annotated[str | None, typer.Option("--feedback", "-f", help="Specific feedback for refinement")] = None,
+    output_dir: Annotated[
+        str | None, typer.Option("--output", "-o", help="Output directory for refined story")
+    ] = None,
+) -> None:
+    """
+    Refine and improve an existing story with optional feedback.
+
+    Examples:
+        # Refine a story (interactive)
+        sf refine abc123
+
+        # Refine with specific feedback
+        sf refine abc123 --feedback "Make it more suspenseful"
+
+        # Refine and save to specific directory
+        sf refine abc123 -o refined_output
+    """
+    try:
+        client = get_client()
+
+        # Get session status
+        status_info = run_sync(client.get_session_status(session_id))
+
+        if status_info["status"] != "completed":
+            console.print(f"[yellow]Session {session_id} is not completed. Status: {status_info['status']}[/yellow]")
+            raise typer.Exit(1)
+
+        console.print(f"\n[bold cyan]✨ Refining Story: {session_id}[/bold cyan]\n")
+
+        if status_info.get("prompt"):
+            console.print(f"[bold]Original Prompt:[/bold] {status_info['prompt'][:80]}...")
+
+        # Get feedback if not provided
+        if not feedback:
+            console.print("\n[bold]Enter your refinement feedback:[/bold]")
+            console.print("[dim]Examples: 'Make it more exciting', 'Add more dialogue', 'Improve the ending'[/dim]")
+            feedback = typer.prompt("\nFeedback")
+
+        if not feedback:
+            console.print("[yellow]No feedback provided. Cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+        console.print(f"\n[bold]Feedback:[/bold] {feedback}")
+
+        if not Confirm.ask("\n[bold green]Proceed with refinement?[/bold green]"):
+            console.print("[yellow]Cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+        # Start refinement
+        console.print("\n[bold cyan]🔄 Starting refinement...[/bold cyan]")
+        result = run_sync(client.refine_story(session_id, feedback, output_dir))
+
+        refined_session_id = result.get("session_id")
+        if not refined_session_id:
+            console.print("[red]Error: No session ID returned from refinement.[/red]")
+            raise typer.Exit(1)
+
+        console.print(f"\n[bold green]✓ Refinement started: {refined_session_id}[/bold green]")
+
+        # Poll for completion
+        console.print("\n[bold]Monitoring refinement progress...[/bold]")
+        poll_session_until_complete(refined_session_id, client)
+
+        # Get final status
+        final_status = run_sync(client.get_session_status(refined_session_id))
+
+        if final_status["status"] == "completed":
+            console.print("\n[bold green]✓ Story refined successfully![/bold green]")
+            if final_status.get("output_dir"):
+                console.print(f"[bold]Output:[/bold] {final_status['output_dir']}")
+        else:
+            console.print(f"\n[yellow]Refinement status: {final_status['status']}[/yellow]")
+
+    except Exception as e:
+        display_error(e)
+        raise typer.Exit(1) from e
+
+
+# =============================================================================
+# GENERATE IMAGES COMMAND
+# =============================================================================
+
+
+@app.command(name="images", help="Generate additional images for an existing story")
+def generate_additional_images(
+    session_id: Annotated[str, typer.Argument(help="Session ID to generate images for")],
+    count: Annotated[int, typer.Option("--count", "-n", help="Number of images to generate")] = 3,
+    image_style: Annotated[str | None, typer.Option("--style", help="Image style")] = None,
+) -> None:
+    """
+    Generate additional images for an existing story.
+
+    Examples:
+        # Generate 3 more images with default style
+        sf images abc123
+
+        # Generate 5 images with specific style
+        sf images abc123 --count 5 --style anime
+
+        # Generate images with photorealistic style
+        sf images abc123 -n 4 --style photorealistic
+    """
+    try:
+        client = get_client()
+
+        # Get session status
+        status_info = run_sync(client.get_session_status(session_id))
+
+        if status_info["status"] != "completed":
+            console.print(f"[yellow]Session {session_id} is not completed. Status: {status_info['status']}[/yellow]")
+            raise typer.Exit(1)
+
+        console.print(f"\n[bold cyan]🎨 Generating Additional Images: {session_id}[/bold cyan]\n")
+
+        if status_info.get("prompt"):
+            console.print(f"[bold]Story Prompt:[/bold] {status_info['prompt'][:80]}...")
+
+        console.print(f"[bold]Count:[/bold] {count}")
+        if image_style:
+            console.print(f"[bold]Style:[/bold] {image_style}")
+
+        if not Confirm.ask("\n[bold green]Proceed with image generation?[/bold green]"):
+            console.print("[yellow]Cancelled.[/yellow]")
+            raise typer.Exit(0)
+
+        # Start image generation
+        console.print("\n[bold cyan]🔄 Generating images...[/bold cyan]")
+        result = run_sync(client.generate_images(session_id, count, image_style))
+
+        console.print("\n[bold green]✓ Image generation started[/bold green]")
+
+        if result.get("output_dir"):
+            console.print(f"[bold]Output:[/bold] {result['output_dir']}")
+        if result.get("images"):
+            console.print(f"[bold]Images generated:[/bold] {len(result['images'])}")
+
+    except Exception as e:
+        display_error(e)
+        raise typer.Exit(1) from e
+
+
+# =============================================================================
+# BACKENDS COMMAND
+# =============================================================================
+
+
+@app.command(name="backends", help="List available LLM backends and their capabilities")
+def list_backends() -> None:
+    """
+    Display all available LLM backends and their capabilities.
+
+    Examples:
+        # List all backends
+        sf backends
+    """
+    try:
+        from .client import display_backends
+
+        client = get_client()
+        backends = run_sync(client.list_backends())
+
+        if not backends:
+            console.print("[yellow]No backends available.[/yellow]")
+            raise typer.Exit(0)
+
+        console.print("\n[bold cyan]🤖 Available LLM Backends[/bold cyan]\n")
+        display_backends(backends)
+
+    except Exception as e:
+        display_error(e)
+        raise typer.Exit(1) from e
+
+
+# =============================================================================
+# CHAIN COMMAND
+# =============================================================================
+
+
+@app.command(name="chain", help="View the story chain for an extended story")
+def view_chain(
+    context: Annotated[str, typer.Argument(help="Name or path of context file")],
+) -> None:
+    """
+    View the complete story chain showing all parts and their lineage.
+
+    Examples:
+        # View chain for a context file
+        sf chain wizard_story_extended
+
+        # View chain with full path
+        sf chain ~/.local/share/StoryForge/context/wizard_story_extended_context.md
+    """
+    try:
+        from rich.table import Table
+        from rich.tree import Tree
+
+        client = get_client()
+
+        # Get the chain
+        chain_data = run_sync(client.get_story_chain(context))
+
+        if not chain_data or not chain_data.get("chain"):
+            console.print(f"[yellow]No chain found for '{context}'.[/yellow]")
+            raise typer.Exit(0)
+
+        chain = chain_data["chain"]
+        console.print(f"\n[bold cyan]📚 Story Chain: {context}[/bold cyan]\n")
+        console.print(f"[bold]Total parts:[/bold] {len(chain)}\n")
+
+        # Create a tree view of the chain
+        tree = Tree("📖 [bold]Story Chain[/bold]")
+
+        for idx, part in enumerate(chain, 1):
+            label = " [dim](original)[/dim]" if idx == 1 else " [dim](latest)[/dim]" if idx == len(chain) else ""
+            filename = part.get("filename", "Unknown")
+            created = part.get("created_at", "N/A")
+
+            branch_text = f"[cyan]Part {idx}:[/cyan] {filename}{label}"
+            branch = tree.add(branch_text)
+
+            # Add metadata
+            if created != "N/A":
+                branch.add(f"[dim]Created: {created}[/dim]")
+            if part.get("prompt"):
+                prompt_preview = part["prompt"][:60] + "..." if len(part["prompt"]) > 60 else part["prompt"]
+                branch.add(f"[dim]Prompt: {prompt_preview}[/dim]")
+            if part.get("ending_type"):
+                branch.add(f"[dim]Ending: {part['ending_type']}[/dim]")
+
+        console.print(tree)
+        console.print()
+
+        # Show summary table
+        table = Table(show_header=True)
+        table.add_column("Part", style="bold")
+        table.add_column("Filename")
+        table.add_column("Created")
+        table.add_column("Ending Type")
+
+        for idx, part in enumerate(chain, 1):
+            table.add_row(
+                str(idx),
+                part.get("filename", "Unknown"),
+                part.get("created_at", "N/A"),
+                part.get("ending_type", "N/A"),
+            )
+
+        console.print(table)
+
+    except Exception as e:
+        display_error(e)
+        raise typer.Exit(1) from e
+
+
+# =============================================================================
 # EXPORT CHAIN COMMAND
 # =============================================================================
 
@@ -768,6 +1195,13 @@ if __name__ == "__main__":
             "continue",
             "extend",
             "export-chain",
+            "list",
+            "status",
+            "delete",
+            "refine",
+            "images",
+            "backends",
+            "chain",
         ]
     ):
         sys.argv.insert(1, "main")
@@ -788,6 +1222,13 @@ def cli_entry() -> None:
         "continue",
         "extend",
         "export-chain",
+        "list",
+        "status",
+        "delete",
+        "refine",
+        "images",
+        "backends",
+        "chain",
     ]:
         sys.argv.insert(1, "main")
     app()
