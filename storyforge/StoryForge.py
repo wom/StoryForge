@@ -16,7 +16,6 @@ from .client import display_error, display_success, get_client, poll_session_unt
 from .config import Config, ConfigError, load_config
 from .context import ContextManager
 from .phase_executor import PhaseExecutor
-from .prompt import Prompt
 from .schema.cli_integration import (
     generate_boolean_cli_option,
     generate_cli_option,
@@ -382,30 +381,82 @@ def main(
 )
 def continue_session():
     """Resume execution from a previous checkpoint session."""
+    from .client import get_client, run_sync
+    from .client.formatters import display_error, poll_session_until_complete
+
     try:
-        checkpoint_manager = CheckpointManager()
-        checkpoint_data = checkpoint_manager.prompt_checkpoint_selection()
+        client = get_client()
 
-        if checkpoint_data is None:
-            console.print("[yellow]No checkpoint selected. Exiting.[/yellow]")
+        # List recent sessions
+        console.print("\n[bold cyan]📋 Recent Sessions:[/bold cyan]\n")
+        sessions = run_sync(client.list_sessions())
+
+        if not sessions:
+            console.print("[yellow]No sessions found.[/yellow]")
             raise typer.Exit(0)
 
-        # Get the phase to resume from
-        resume_phase = checkpoint_manager.prompt_phase_selection(checkpoint_data)
-        if resume_phase is None:
-            console.print("[yellow]No phase selected. Exiting.[/yellow]")
+        # Display last 5 sessions
+        recent_sessions = sessions[:5]
+        for idx, session in enumerate(recent_sessions, 1):
+            session_id = session["session_id"]
+            status = session.get("status", "unknown")
+            phase = session.get("current_phase", "unknown")
+            created = session.get("created_at", "unknown")
+
+            console.print(f"[bold]{idx}.[/bold] {session_id}")
+            console.print(f"   Status: {status}")
+            console.print(f"   Phase: {phase}")
+            console.print(f"   Created: {created}")
+            if "prompt" in session:
+                prompt_preview = session["prompt"][:60]
+                console.print(f"   Prompt: {prompt_preview}...")
+            console.print()
+
+        # Get user selection
+        selection = typer.prompt(f"Select session (1-{len(recent_sessions)})", type=int)
+
+        if selection < 1 or selection > len(recent_sessions):
+            console.print("[red]Invalid selection[/red]")
+            raise typer.Exit(1)
+
+        selected_session = recent_sessions[selection - 1]
+        session_id = selected_session["session_id"]
+
+        # Get current status
+        status_info = run_sync(client.get_session_status(session_id))
+
+        # Show available phases to resume from
+        console.print(f"\n[bold cyan]Session: {session_id}[/bold cyan]")
+        console.print(f"Current status: {status_info.get('status')}")
+        console.print(f"Current phase: {status_info.get('current_phase')}")
+
+        # Ask for confirmation
+        if not typer.confirm("\nResume this session?"):
+            console.print("[yellow]Cancelled.[/yellow]")
             raise typer.Exit(0)
 
-        # Execute using phase executor
-        phase_executor = PhaseExecutor(checkpoint_manager)
-        phase_executor.execute_from_checkpoint(checkpoint_data, resume_phase)
+        # Continue the session
+        console.print(f"\n[bold green]Resuming session {session_id}...[/bold green]\n")
+        run_sync(client.continue_session(session_id))
+
+        # Poll for completion
+        final_status = poll_session_until_complete(session_id, client)
+
+        # Display result
+        if final_status["status"] == "completed":
+            console.print("\n[bold green]✅ Session resumed successfully![/bold green]")
+            if "output_directory" in final_status:
+                console.print(f"Output: {final_status['output_directory']}")
+        else:
+            console.print(f"\n[yellow]Session status: {final_status['status']}[/yellow]")
+
         raise typer.Exit(0)
 
     except typer.Exit:
         # Let typer.Exit propagate normally
         raise
     except Exception as e:
-        console.print(f"[red]Error handling checkpoint continuation:[/red] {e}", style="bold")
+        display_error(e)
         raise typer.Exit(1) from e
 
 
@@ -416,66 +467,49 @@ def extend_story(
     debug: Annotated[bool, typer.Option(help="Enable debug mode")] = False,
 ):
     """Extend an existing story from saved context files."""
+    from .client import get_client, run_sync
+    from .client.formatters import display_error, poll_session_until_complete
+
     try:
-        # Initialize context manager
-        context_mgr = ContextManager()
+        client = get_client()
 
         # List available stories
-        available_contexts = context_mgr.list_available_contexts()
+        console.print("\n[bold cyan]📚 Available Stories to Extend:[/bold cyan]\n")
+        stories = run_sync(client.list_extendable_stories())
 
-        if not available_contexts:
+        if not stories:
             console.print("[yellow]No saved stories found to extend.[/yellow]")
             console.print("Generate a story first with: [bold]sf generate --use-context[/bold]")
             console.print("Or save an existing story as context.")
             raise typer.Exit(1)
 
         # Display stories
-        console.print("\n[bold cyan]📚 Available Stories to Extend:[/bold cyan]\n")
-        for idx, ctx in enumerate(available_contexts, 1):
-            console.print(f"[bold]{idx}.[/bold] {ctx['filename']}")
-            console.print(f"   [dim]Generated: {ctx.get('timestamp', 'Unknown')}[/dim]")
-            if "characters" in ctx:
-                console.print(f"   Characters: {ctx['characters']}")
-            if "theme" in ctx:
-                console.print(f"   Theme: {ctx['theme']}")
-            if "preview" in ctx:
-                preview = ctx["preview"][:100]
+        for idx, story in enumerate(stories, 1):
+            console.print(f"[bold]{idx}.[/bold] {story['filename']}")
+            console.print(f"   [dim]Generated: {story.get('timestamp', 'Unknown')}[/dim]")
+            if "characters" in story:
+                console.print(f"   Characters: {story['characters']}")
+            if "theme" in story:
+                console.print(f"   Theme: {story['theme']}")
+            if "preview" in story:
+                preview = story["preview"][:100]
                 console.print(f"   [dim]Preview: {preview}...[/dim]")
             console.print()
 
         # Get user selection
-        selection = typer.prompt(f"Select story (1-{len(available_contexts)})", type=int)
+        selection = typer.prompt(f"Select story (1-{len(stories)})", type=int)
 
-        if selection < 1 or selection > len(available_contexts):
+        if selection < 1 or selection > len(stories):
             console.print("[red]Invalid selection[/red]")
             raise typer.Exit(1)
 
-        selected_context = available_contexts[selection - 1]
+        selected_story = stories[selection - 1]
+        context_file = selected_story["filepath"]
 
-        # Show the story chain
-        story_chain = context_mgr.get_story_chain(selected_context["filepath"])
-        if len(story_chain) > 1:
-            console.print("\n[bold cyan]📚 Story Chain:[/bold cyan]")
-            for idx, story in enumerate(story_chain, 1):
-                timestamp = story.get("timestamp", "Unknown")
-                prompt_text = story.get("prompt", "No prompt")[:50]
-                console.print(f"  {idx}. [dim]{story['filename']}[/dim]")
-                console.print(f"     {timestamp} - {prompt_text}...")
-            console.print()
-
-        # Load story content
-        story_content, metadata = context_mgr.load_context_for_extension(selected_context["filepath"])
-
-        # Show story viewer with expand option
+        # Show story preview
         console.print("\n[bold cyan]📖 Story Preview:[/bold cyan]")
-        # Extract just the story part, skip metadata
-        story_text = story_content
-        if "## Story" in story_content:
-            story_text = story_content.split("## Story", 1)[1]
-
-        # Show first 100 words as preview
-        preview_words = " ".join(story_text.split()[:100])
-        console.print(f"[dim]{preview_words}...[/dim]\n")
+        preview_text = selected_story.get("preview", "")[:200]
+        console.print(f"[dim]{preview_text}...[/dim]\n")
 
         # Ask if user wants to see the full story
         view_full = Confirm.ask("📜 View full story before extending?", default=False)
@@ -484,16 +518,17 @@ def extend_story(
             from rich.markdown import Markdown
             from rich.panel import Panel
 
-            console.print("\n")
-            # Create a formatted panel with the full story
-            full_story_panel = Panel(
-                Markdown(story_text.strip()),
-                title=f"[bold cyan]Complete Story: {selected_context['filename']}[/bold cyan]",
-                border_style="cyan",
-                padding=(1, 2),
-            )
-            console.print(full_story_panel)
-            console.print()
+            full_content = selected_story.get("content", "")
+            if full_content:
+                console.print("\n")
+                full_story_panel = Panel(
+                    Markdown(full_content.strip()),
+                    title=f"[bold cyan]Complete Story: {selected_story['filename']}[/bold cyan]",
+                    border_style="cyan",
+                    padding=(1, 2),
+                )
+                console.print(full_story_panel)
+                console.print()
 
         # Ask continuation preference
         console.print("[bold cyan]🎬 How should this story continue?[/bold cyan]")
@@ -509,33 +544,6 @@ def extend_story(
         ending_type_str = "wrap_up" if ending_choice == 1 else "cliffhanger"
         ending_type = cast(Literal["wrap_up", "cliffhanger"], ending_type_str)
 
-        # Parse characters from metadata (handle both list and string formats)
-        characters_value = metadata.get("characters", [])
-        if isinstance(characters_value, str):
-            # Split by comma if it's a string
-            characters = [c.strip() for c in characters_value.split(",") if c.strip()]
-        else:
-            characters = characters_value if characters_value else []
-
-        # Load configuration first to use as defaults
-        config = load_config(verbose=verbose)
-
-        # Create modified prompt for continuation
-        # Priority: metadata from original story > user's config file > Prompt defaults
-        prompt = Prompt(
-            prompt="",  # Not needed for continuation
-            characters=characters if characters else None,
-            theme=metadata.get("theme"),  # None is valid - will use default
-            age_range=metadata.get("age_group") or config.get_field_value("story", "age_range") or "preschool",
-            tone=metadata.get("tone") or config.get_field_value("story", "tone") or "heartwarming",
-            length=config.get_field_value("story", "length") or "short",
-            style=config.get_field_value("story", "style") or "adventure",
-            image_style=metadata.get("art_style") or config.get_field_value("story", "image_style") or "chibi",
-            context=story_content,
-            continuation_mode=True,
-            ending_type=ending_type,
-        )
-
         console.print(
             f"\n[bold green]✨ Generating continuation with {ending_type.replace('_', ' ')} ending...[/bold green]\n"
         )
@@ -543,59 +551,37 @@ def extend_story(
         # Generate output directory with _extended suffix
         output_dir = generate_default_output_dir(extended=True)
 
-        # Prepare CLI arguments for checkpoint (include prompt fields for summary display)
-        cli_arguments = {
-            "backend": backend,
-            "verbose": verbose,
-            "debug": debug,
-            "continuation_mode": True,
-            "ending_type": ending_type,
-            "output_dir": output_dir,
-            "age_range": prompt.age_range,
-            "length": prompt.length,
-            "style": prompt.style,
-            "tone": prompt.tone,
-            "image_style": prompt.image_style,
-            "theme": prompt.theme,
-            "characters": prompt.characters,
-        }
+        # Start extension
+        result = run_sync(
+            client.extend_story(context_file=context_file, ending_type=ending_type, output_directory=output_dir)
+        )
 
-        # Prepare resolved configuration
-        resolved_config = {
-            "backend": backend or config.get_field_value("system", "backend"),
-            "output_directory": output_dir,
-            "verbose": verbose,
-            "debug": debug,
-            "continuation_mode": True,
-            "ending_type": ending_type,
-            "age_range": prompt.age_range,
-            "length": prompt.length,
-            "style": prompt.style,
-            "tone": prompt.tone,
-            "image_style": prompt.image_style,
-            "source_context_file": str(selected_context["filepath"]),
-        }
+        session_id = result["session_id"]
 
-        # Execute via PhaseExecutor with checkpoint support
-        checkpoint_manager = CheckpointManager()
-        phase_executor = PhaseExecutor(checkpoint_manager)
+        # Poll for completion
+        final_status = poll_session_until_complete(session_id, client)
 
-        # Create a pseudo-prompt string for the checkpoint
-        extension_prompt = f"[EXTENSION] {selected_context['filename']}"
+        # Display result
+        if final_status["status"] == "completed":
+            console.print("\n[bold green]✅ Story extended successfully![/bold green]")
+            if "output_directory" in final_status:
+                console.print(f"Output: {final_status['output_directory']}")
+        else:
+            console.print(f"\n[yellow]Extension status: {final_status['status']}[/yellow]")
 
-        phase_executor.execute_new_session(extension_prompt, cli_arguments, resolved_config, prompt_obj=prompt)
-
-        console.print("\n[bold green]✅ Story extended successfully![/bold green]")
+        raise typer.Exit(0)
 
     except typer.Exit:
+        # Let typer.Exit propagate normally
         raise
     except Exception as e:
-        console.print(f"[bold red]Error:[/bold red] {e}")
-        if verbose:
-            import traceback
-
-            traceback.print_exc()
+        display_error(e)
         raise typer.Exit(1) from e
+
+
+# =============================================================================
+# EXPORT CHAIN COMMAND
+# =============================================================================
 
 
 @app.command()
