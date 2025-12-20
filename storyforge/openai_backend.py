@@ -53,7 +53,7 @@ class OpenAIBackend(LLMBackend):
             )
 
             response = self.client.chat.completions.create(
-                model="gpt-5",
+                model="gpt-4.1",
                 messages=[{"role": "user", "content": image_prompt_request}],
             )
 
@@ -147,7 +147,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.story
 
             response = self.client.chat.completions.create(
-                model="gpt-5", messages=[{"role": "user", "content": contents}], temperature=1
+                model="gpt-4.1", messages=[{"role": "user", "content": contents}], temperature=1
             )
 
             # Extract the story text from the response with proper null checking
@@ -200,7 +200,7 @@ class OpenAIBackend(LLMBackend):
                 )
 
                 compression_response = self.client.chat.completions.create(
-                    model="gpt-5",
+                    model="gpt-4.1",
                     messages=[{"role": "user", "content": compression_prompt}],
                 )
 
@@ -232,9 +232,10 @@ class OpenAIBackend(LLMBackend):
             return None, None
 
         except Exception as e:
-            # Print error for debugging
-            print(f"Error generating image: {e}")
-            # Return (None, None) if image generation fails
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error generating image with DALL-E: {e}")
             return None, None
 
     def generate_image_name(self, prompt: Prompt, story: str) -> str:
@@ -255,7 +256,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.image_name(story)
 
             response = self.client.chat.completions.create(
-                model="gpt-5", messages=[{"role": "user", "content": contents}], temperature=1
+                model="gpt-4.1", messages=[{"role": "user", "content": contents}], temperature=1
             )
 
             # Extract name with proper null checking

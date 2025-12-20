@@ -821,9 +821,18 @@ class PhaseExecutor:
                     progress.add_task("image", total=None)
 
                     # Generate image - backends return (image_object, image_bytes)
-                    image_object, image_bytes = self.llm_backend.generate_image(
-                        self.story_prompt, reference_image_bytes=None
-                    )
+                    try:
+                        image_object, image_bytes = self.llm_backend.generate_image(
+                            self.story_prompt, reference_image_bytes=None
+                        )
+                    except Exception as e:
+                        console.print(f"[red]Failed to generate image {i}: {e}[/red]")
+                        if self.checkpoint_data.resolved_config.get("verbose", False):
+                            import traceback
+
+                            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+                        image_bytes = None
+                        image_object = None
 
                     if image_bytes:
                         # Determine image format from the image object or default to png
@@ -857,7 +866,10 @@ class PhaseExecutor:
                             }
                         )
                     else:
-                        console.print(f"[red]Failed to generate image {i}[/red]")
+                        error_msg = f"[red]Failed to generate image {i}[/red]"
+                        if self.checkpoint_data.resolved_config.get("verbose", False):
+                            error_msg += " (backend returned None - check logs above for details)"
+                        console.print(error_msg)
 
         except Exception as e:
             # Sanitize the error message to prevent binary data corruption

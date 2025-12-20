@@ -1,115 +1,131 @@
-"""
-GeminiBackend: Implementation of LLMBackend using Google Gemini APIs.
-Provides methods to generate stories, images, and image filenames using Gemini models.
+"""Gemini backend for StoryForge.
+
+This implementation uses dynamic model discovery to automatically select
+the best available models for text and image generation. It caches the
+model list on first use. Image model can be overridden via `GEMINI_IMAGE_MODEL`
+env var, otherwise it auto-discovers the best available image generation model
+(typically `gemini-2.5-flash-image`).
 """
 
 import os
 from io import BytesIO
+from typing import Any, ClassVar
 
 from google import genai
 from google.genai import types
 from PIL import Image
 
 from .llm_backend import LLMBackend
+from .model_discovery import find_image_generation_model, find_text_generation_model, list_gemini_models
 from .prompt import Prompt
 
 
 class GeminiBackend(LLMBackend):
-    """
-    LLM backend implementation using Google Gemini APIs.
-    Requires GEMINI_API_KEY environment variable to be set.
-    """
-
     name = "gemini"
+    _cached_models: ClassVar[list[dict[str, Any]] | None] = None
+    _image_model: ClassVar[str | None] = None
+    _text_model: ClassVar[str | None] = None
+
+    def __init__(self) -> None:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        if not api_key:
+            raise RuntimeError("GEMINI_API_KEY environment variable not set.")
+        self.client = genai.Client(api_key=api_key)
+
+        # Discover and cache models on initialization
+        if GeminiBackend._cached_models is None:
+            try:
+                GeminiBackend._cached_models = list_gemini_models(api_key)
+            except Exception:
+                # If discovery fails, use None and fallback to defaults
+                GeminiBackend._cached_models = []
+
+        # Determine models to use
+        if GeminiBackend._image_model is None:
+            # Check environment variable override first
+            env_model = os.environ.get("GEMINI_IMAGE_MODEL")
+            if env_model:
+                GeminiBackend._image_model = env_model
+            else:
+                GeminiBackend._image_model = find_image_generation_model(GeminiBackend._cached_models)
+
+        if GeminiBackend._text_model is None:
+            GeminiBackend._text_model = find_text_generation_model(GeminiBackend._cached_models)
 
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
-        """
-        Return a list of image prompts by splitting the story into num_prompts chunks.
-        This is a stub implementation to satisfy the abstract base class.
-        """
-        # Simple fallback: split story into paragraphs, or repeat the story if not enough
         paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
-        prompts = []
+        prompts: list[str] = []
         for i in range(num_prompts):
-            if i < len(paragraphs):
-                base = paragraphs[i]
-            else:
-                base = story
+            base = paragraphs[i] if i < len(paragraphs) else story
             prompt = f"Create a detailed, child-friendly illustration for this part of the story: {base}"
             if context:
                 prompt += f"\nContext: {context}"
             prompts.append(prompt)
         return prompts
 
-    def __init__(self) -> None:
-        """
-        Initialize the Gemini client using the API key from environment variables.
-        Raises:
-            RuntimeError: If GEMINI_API_KEY is not set.
-        """
-        api_key = os.environ.get("GEMINI_API_KEY")
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY environment variable not set.")
-        self.client = genai.Client(api_key=api_key)
-
     def generate_story(self, prompt: Prompt) -> str:
-        """
-        Generate a story based on the given Prompt object using Gemini LLM.
-
-        Args:
-            prompt (Prompt): A Prompt object containing comprehensive story
-                generation parameters including context, style, tone, etc.
-
-        Returns:
-            str: The generated story, or an error message on failure.
-        """
         try:
-            # Use the Prompt's comprehensive prompt building
             contents = prompt.story
-
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                # model="gemini-2.5-pro",
-                contents=contents,
-            )
-            # Extract the story text from the response with proper null checking
-            if (
-                response.candidates
-                and response.candidates[0].content
-                and response.candidates[0].content.parts
-                and response.candidates[0].content.parts[0].text
-            ):
-                return response.candidates[0].content.parts[0].text.strip()
-            else:
-                return "[Error: No valid response from Gemini]"
+            model = self._text_model or "gemini-2.5-pro"
+            response = self.client.models.generate_content(model=model, contents=contents)
+            candidates = getattr(response, "candidates", None)
+            if candidates and len(candidates) > 0:
+                candidate = candidates[0]
+                content = getattr(candidate, "content", None)
+                if content:
+                    parts = getattr(content, "parts", None) or []
+                    if parts and getattr(parts[0], "text", None):
+                        text: str = parts[0].text
+                        return text.strip()
+            return "[Error: No valid response from Gemini]"
         except Exception:
-            # Return a generic error message if generation fails
             return "[Error generating story]"
+
+    def _extract_image_from_response(self, resp: Any) -> tuple[Image.Image | None, bytes | None]:
+        if not resp:
+            return None, None
+
+        # Common newer shape: resp.generated_images -> items with .image.image_bytes
+        try:
+            gen_images = getattr(resp, "generated_images", None)
+            if gen_images:
+                for gi in gen_images:
+                    imgobj = getattr(gi, "image", None)
+                    if imgobj and getattr(imgobj, "image_bytes", None):
+                        data = imgobj.image_bytes
+                        return Image.open(BytesIO(data)), data
+        except Exception:
+            pass
+
+        # Fallback: candidates[].content.parts[].inline_data.data (used in tests)
+        try:
+            candidates = getattr(resp, "candidates", None)
+            if candidates and len(candidates) > 0:
+                candidate = candidates[0]
+                content = getattr(candidate, "content", None)
+                if content:
+                    parts = getattr(content, "parts", None) or []
+                    for part in parts:
+                        inline = getattr(part, "inline_data", None)
+                        if inline and getattr(inline, "data", None):
+                            data = inline.data
+                            try:
+                                return Image.open(BytesIO(data)), data
+                            except Exception:
+                                continue
+        except Exception:
+            pass
+
+        return None, None
 
     def generate_image(
         self, prompt: Prompt, reference_image_bytes: bytes | None = None
-    ) -> tuple[object | None, bytes | None]:
-        """
-        Generate an illustration image for the given Prompt object using Gemini
-        image model, optionally using a reference image for consistency.
-
-        Args:
-            prompt (Prompt): A Prompt object containing comprehensive image
-                generation parameters including style, tone, setting, etc.
-            reference_image_bytes (Optional[bytes]): Reference image bytes to maintain
-                consistency with previous images.
-
-        Returns:
-            Tuple[Optional[Image.Image], Optional[bytes]]: The PIL Image object
-            and its raw bytes, or (None, None) on failure.
-        """
-        # Use the Prompt's comprehensive image prompt building
+    ) -> tuple[Image.Image | None, bytes | None]:
         text_prompt = prompt.image(1)[0]
 
-        # Build contents with optional reference image
+        contents: str | list[Any]
         if reference_image_bytes:
-            # For subsequent images, include reference image for consistency
-            contents: list | str = [
+            contents = [
                 types.Part(inline_data=types.Blob(mime_type="image/png", data=reference_image_bytes)),
                 (
                     "Create the next illustration in the same visual style, "
@@ -118,63 +134,35 @@ class GeminiBackend(LLMBackend):
                 ),
             ]
         else:
-            # First image - no reference needed
             contents = text_prompt
 
-        response = self.client.models.generate_content(
-            model="gemini-2.0-flash-preview-image-generation",
-            contents=contents,
-            config=types.GenerateContentConfig(response_modalities=["TEXT", "IMAGE"]),
-        )
-        # Iterate through response parts to find image data with proper null checking
-        if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
-            for part in response.candidates[0].content.parts:
-                if part.inline_data is not None and part.inline_data.data is not None:
-                    try:
-                        # Load image from bytes
-                        image = Image.open(BytesIO(part.inline_data.data))
-                        image_bytes = part.inline_data.data
-                        return image, image_bytes
-                    except Exception:
-                        # Skip parts that fail to decode as images
-                        continue
-        # Return (None, None) if no image found
-        return None, None
+        model = self._image_model or "gemini-2.5-flash-image"
+        try:
+            response = self.client.models.generate_content(model=model, contents=contents)
+        except Exception as e:
+            import logging
+
+            logger = logging.getLogger(__name__)
+            logger.error(f"Failed to generate image with model {model}: {e}")
+            return None, None
+
+        return self._extract_image_from_response(response)
 
     def generate_image_name(self, prompt: Prompt, story: str) -> str:
-        """
-        Generate a short, creative, and descriptive filename for an image
-        illustrating the story.
-
-        Args:
-            prompt (Prompt): A Prompt object containing the original parameters.
-            story (str): The generated story.
-
-        Returns:
-            str: A suggested filename (no spaces or special characters), or
-            'story_image' on failure.
-        """
         try:
-            # Use the Prompt's comprehensive image name prompt building
             contents = prompt.image_name(story)
-
-            response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=contents,
-            )
-            # Extract name with proper null checking
-            if (
-                response.candidates
-                and response.candidates[0].content
-                and response.candidates[0].content.parts
-                and response.candidates[0].content.parts[0].text
-            ):
-                name = response.candidates[0].content.parts[0].text.strip()
-                # Remove file extension if present
-                name = name.split(".")[0]
-                return name
-            else:
-                return "story_image"
+            model = self._text_model or "gemini-2.5-flash"
+            response = self.client.models.generate_content(model=model, contents=contents)
+            candidates = getattr(response, "candidates", None)
+            if candidates and len(candidates) > 0:
+                candidate = candidates[0]
+                content = getattr(candidate, "content", None)
+                if content:
+                    parts = getattr(content, "parts", None) or []
+                    if parts and getattr(parts[0], "text", None):
+                        text: str = parts[0].text
+                        name = text.strip()
+                        return name.split(".")[0]
+            return "story_image"
         except Exception:
-            # Fallback filename
             return "story_image"

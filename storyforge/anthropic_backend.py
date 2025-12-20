@@ -82,8 +82,10 @@ class AnthropicBackend(LLMBackend):
         Returns:
             Tuple[None, None]: Always returns None since Claude cannot generate images.
         """
-        # Claude cannot generate images, so we return None
-        # This allows the application to handle this gracefully or use a different backend
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.warning("Claude (Anthropic) does not support image generation. Use Gemini or OpenAI for images.")
         return None, None
 
     def generate_image_name(self, prompt: Prompt, story: str) -> str:
