@@ -43,12 +43,18 @@ try:
     # Print image models
     if image_models:
         print("\n📸 IMAGE GENERATION MODELS:")
-        print("-" * 80)
+        print("-" * 120)
+        print(f"  {'STATUS':12} {'MODEL NAME':50} {'INPUT TOKENS':>15} {'OUTPUT TOKENS':>15}")
+        print("-" * 120)
         for model in image_models:
             name = model.get("name", "").replace("models/", "")
             display_name = model.get("display_name", "")
             is_preview = "⚠️  PREVIEW" if "preview" in name.lower() else "✅ STABLE"
-            print(f"  {is_preview:12} {name:50} {display_name}")
+            input_limit = model.get("input_token_limit", "Unknown")
+            output_limit = model.get("output_token_limit", "Unknown")
+            input_str = f"{input_limit:,}" if isinstance(input_limit, int) else str(input_limit)
+            output_str = f"{output_limit:,}" if isinstance(output_limit, int) else str(output_limit)
+            print(f"  {is_preview:12} {name:50} {input_str:>15} {output_str:>15}")
     else:
         print("\n⚠️  NO IMAGE GENERATION MODELS FOUND")
         print("This might explain why image generation is failing.")
@@ -56,12 +62,18 @@ try:
     # Print text models
     if text_models:
         print("\n📝 TEXT GENERATION MODELS:")
-        print("-" * 80)
+        print("-" * 120)
+        print(f"  {'STATUS':12} {'MODEL NAME':50} {'INPUT TOKENS':>15} {'OUTPUT TOKENS':>15}")
+        print("-" * 120)
         for model in text_models[:10]:  # Limit to first 10
             name = model.get("name", "").replace("models/", "")
             display_name = model.get("display_name", "")
             is_preview = "⚠️  PREVIEW" if "preview" in name.lower() else "✅ STABLE"
-            print(f"  {is_preview:12} {name:50}")
+            input_limit = model.get("input_token_limit", "Unknown")
+            output_limit = model.get("output_token_limit", "Unknown")
+            input_str = f"{input_limit:,}" if isinstance(input_limit, int) else str(input_limit)
+            output_str = f"{output_limit:,}" if isinstance(output_limit, int) else str(output_limit)
+            print(f"  {is_preview:12} {name:50} {input_str:>15} {output_str:>15}")
         if len(text_models) > 10:
             print(f"  ... and {len(text_models) - 10} more text models")
     
