@@ -48,7 +48,7 @@ class TestOpenAIBackend:
 
         assert result == "A wonderful test story about friendship."
         mock_client_instance.chat.completions.create.assert_called_once_with(
-            model="gpt-5",
+            model="gpt-5.2",
             messages=[{"role": "user", "content": "Tell me a story about friendship"}],
             temperature=1,
         )
@@ -126,9 +126,9 @@ class TestOpenAIBackend:
             assert image_bytes == b"fake image data"
             mock_client_instance.images.generate.assert_called_once_with(
                 prompt="A beautiful test image prompt",
-                model="dall-e-3",
+                model="gpt-image-1.5",
                 size="1024x1024",
-                quality="standard",
+                quality="auto",
                 n=1,
             )
 
@@ -231,7 +231,7 @@ class TestOpenAIBackend:
 
         assert result == "friendship_adventure"
         mock_client_instance.chat.completions.create.assert_called_once_with(
-            model="gpt-5",
+            model="gpt-5.2",
             messages=[{"role": "user", "content": "Generate a name for this image"}],
             temperature=1,
         )

@@ -52,8 +52,8 @@ class TestPhaseExecutorPhases:
         self.phase_executor._phase_backend_init()
 
         assert self.phase_executor.llm_backend == mock_backend
-        # Check it was called with config_backend keyword arg
-        mock_get_backend.assert_called_once_with(config_backend="gemini")
+        # Check it was called with config_backend and config keyword args
+        mock_get_backend.assert_called_once_with(config_backend="gemini", config=self.phase_executor.config)
 
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.get_backend")
@@ -67,7 +67,7 @@ class TestPhaseExecutorPhases:
         self.phase_executor._phase_backend_init()
 
         # Should call with None to trigger auto-detection
-        mock_get_backend.assert_called_once_with(config_backend=None)
+        mock_get_backend.assert_called_once_with(config_backend=None, config=self.phase_executor.config)
 
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.get_backend")
