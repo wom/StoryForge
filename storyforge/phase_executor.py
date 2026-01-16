@@ -481,7 +481,7 @@ class PhaseExecutor:
 
         # Better error handling for backend initialization
         try:
-            self.llm_backend = get_backend(config_backend=backend_name)
+            self.llm_backend = get_backend(config_backend=backend_name, config=self.config)
         except Exception as e:
             raise RuntimeError(
                 f"Failed to initialize {backend_name or 'default'} backend. "
