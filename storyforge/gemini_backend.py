@@ -26,7 +26,12 @@ class GeminiBackend(LLMBackend):
     _image_model: ClassVar[str | None] = None
     _text_model: ClassVar[str | None] = None
 
-    def __init__(self) -> None:
+    def __init__(self, config: Any = None) -> None:
+        """Initialize Gemini backend.
+
+        Args:
+            config: Optional Config object (currently unused, for API consistency).
+        """
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY environment variable not set.")

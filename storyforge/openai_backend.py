@@ -3,8 +3,14 @@ OpenAIBackend: Implementation of LLMBackend using OpenAI APIs.
 Provides methods to generate stories, images, and image filenames using OpenAI models.
 """
 
+# TODO: Implement dynamic model discovery for OpenAI (similar to Gemini backend)
+# TODO: Add support for transparent backgrounds (background="transparent" parameter)
+# TODO: Add support for high input fidelity (input_fidelity="high" parameter)
+# TODO: Add support for multi-turn image editing via Responses API
+
 import os
 from io import BytesIO
+from typing import Any, Literal
 
 import openai
 from PIL import Image
@@ -17,9 +23,42 @@ class OpenAIBackend(LLMBackend):
     """
     LLM backend implementation using OpenAI APIs.
     Requires OPENAI_API_KEY environment variable to be set.
+
+    Uses configurable models for story and image generation:
+    - Story model: Defaults to gpt-5.2 (configurable via system.openai_story_model)
+    - Image model: Defaults to gpt-image-1.5 (configurable via system.openai_image_model)
     """
 
     name = "openai"
+
+    def __init__(self, config: Any = None) -> None:
+        """
+        Initialize the OpenAI client using the API key from environment variables.
+
+        Args:
+            config: Optional Config object for retrieving model settings.
+
+        Raises:
+            RuntimeError: If OPENAI_API_KEY is not set.
+        """
+        from typing import TYPE_CHECKING
+
+        if TYPE_CHECKING:
+            pass
+
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY environment variable not set.")
+        self.client = openai.OpenAI(api_key=api_key)
+
+        # Get model settings from config or use defaults
+        if config is not None:
+            self.story_model = config.get_field_value("system", "openai_story_model")
+            self.image_model = config.get_field_value("system", "openai_image_model")
+        else:
+            # Fallback to latest models if no config provided
+            self.story_model = "gpt-5.2"
+            self.image_model = "gpt-image-1.5"
 
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
         """
@@ -53,7 +92,7 @@ class OpenAIBackend(LLMBackend):
             )
 
             response = self.client.chat.completions.create(
-                model="gpt-4.1",
+                model=self.story_model,
                 messages=[{"role": "user", "content": image_prompt_request}],
             )
 
@@ -120,17 +159,6 @@ class OpenAIBackend(LLMBackend):
 
         return prompts
 
-    def __init__(self) -> None:
-        """
-        Initialize the OpenAI client using the API key from environment variables.
-        Raises:
-            RuntimeError: If OPENAI_API_KEY is not set.
-        """
-        api_key = os.environ.get("OPENAI_API_KEY")
-        if not api_key:
-            raise RuntimeError("OPENAI_API_KEY environment variable not set.")
-        self.client = openai.OpenAI(api_key=api_key)
-
     def generate_story(self, prompt: Prompt) -> str:
         """
         Generate a story based on the given Prompt object using OpenAI LLM.
@@ -147,7 +175,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.story
 
             response = self.client.chat.completions.create(
-                model="gpt-4.1", messages=[{"role": "user", "content": contents}], temperature=1
+                model=self.story_model, messages=[{"role": "user", "content": contents}], temperature=1
             )
 
             # Extract the story text from the response with proper null checking
@@ -200,7 +228,7 @@ class OpenAIBackend(LLMBackend):
                 )
 
                 compression_response = self.client.chat.completions.create(
-                    model="gpt-4.1",
+                    model=self.story_model,
                     messages=[{"role": "user", "content": compression_prompt}],
                 )
 
@@ -214,9 +242,15 @@ class OpenAIBackend(LLMBackend):
                     # Fallback to simple truncation if compression fails
                     text_prompt = text_prompt[:3900] + "..."
 
-            # Generate image using DALL-E 3
+            # Generate image using configured model (gpt-image-1.5 or dall-e-3)
+            # Use quality="auto" for gpt-image models, "standard" for dall-e models
+            quality: Literal["auto", "standard"] = "auto" if "gpt-image" in self.image_model else "standard"
             response = self.client.images.generate(
-                prompt=text_prompt, model="dall-e-3", size="1024x1024", quality="standard", n=1
+                prompt=text_prompt,
+                model=self.image_model,
+                size="1024x1024",
+                quality=quality,
+                n=1,
             )
 
             if response.data and len(response.data) > 0 and response.data[0].url:
@@ -256,7 +290,7 @@ class OpenAIBackend(LLMBackend):
             contents = prompt.image_name(story)
 
             response = self.client.chat.completions.create(
-                model="gpt-4.1", messages=[{"role": "user", "content": contents}], temperature=1
+                model=self.story_model, messages=[{"role": "user", "content": contents}], temperature=1
             )
 
             # Extract name with proper null checking
