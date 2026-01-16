@@ -229,6 +229,32 @@ def _create_system_section() -> ConfigSection:
 
     section.add_field(
         ConfigField(
+            name="openai_story_model",
+            field_type=FieldType.STRING,
+            default="gpt-5.2",
+            section="system",
+            description="OpenAI model to use for story generation",
+            cli_help="OpenAI story model (e.g., gpt-5.2, gpt-4o)",
+            example_values=["gpt-5.2", "gpt-4o"],
+            ini_comment="OpenAI model for story generation (default: gpt-5.2)",
+        )
+    )
+
+    section.add_field(
+        ConfigField(
+            name="openai_image_model",
+            field_type=FieldType.STRING,
+            default="gpt-image-1.5",
+            section="system",
+            description="OpenAI model to use for image generation",
+            cli_help="OpenAI image model (e.g., gpt-image-1.5, dall-e-3)",
+            example_values=["gpt-image-1.5", "dall-e-3"],
+            ini_comment="OpenAI model for image generation (default: gpt-image-1.5)",
+        )
+    )
+
+    section.add_field(
+        ConfigField(
             name="verbose",
             field_type=FieldType.BOOLEAN,
             default=False,
