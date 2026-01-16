@@ -108,6 +108,22 @@ class LLMBackend(ABC):
         """
         raise NotImplementedError("Subclass must implement generate_image_prompt method")
 
+    @staticmethod
+    def estimate_token_count(text: str) -> int:
+        """
+        Estimate the number of tokens in a text string.
+
+        Uses the standard heuristic of approximately 4 characters per token,
+        which works reasonably well across most languages and models.
+
+        Args:
+            text (str): The text to estimate token count for.
+
+        Returns:
+            int: Estimated number of tokens.
+        """
+        return len(text) // 4
+
 
 def get_backend(
     backend_name: str | None = None, config_backend: str | None = None, config: "Config | None" = None

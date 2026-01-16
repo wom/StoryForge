@@ -40,6 +40,8 @@ def list_gemini_models(api_key: str | None = None) -> list[dict[str, Any]]:
                 "display_name": getattr(model, "display_name", ""),
                 "supported_generation_methods": getattr(model, "supported_generation_methods", []),
                 "description": getattr(model, "description", ""),
+                "input_token_limit": getattr(model, "input_token_limit", None),
+                "output_token_limit": getattr(model, "output_token_limit", None),
             }
             models.append(model_info)
     except Exception:

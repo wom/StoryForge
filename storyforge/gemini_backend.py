@@ -26,12 +26,21 @@ class GeminiBackend(LLMBackend):
     _image_model: ClassVar[str | None] = None
     _text_model: ClassVar[str | None] = None
 
+    # Token limit configuration
+    DEFAULT_IMAGE_INPUT_LIMIT = 30000  # Conservative fallback for image models
+    DEFAULT_TEXT_INPUT_LIMIT = 1000000  # Conservative fallback for text models
+    COMPRESSION_TRIGGER_RATIO = 0.80  # Compress when prompt exceeds 80% of limit
+    COMPRESSION_TARGET_RATIO = 0.875  # Compress to 87.5% of limit (matches OpenAI)
+
     def __init__(self, config: Any = None) -> None:
         """Initialize Gemini backend.
 
         Args:
             config: Optional Config object (currently unused, for API consistency).
         """
+        import logging
+
+        self.logger = logging.getLogger(__name__)
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY environment variable not set.")
@@ -57,6 +66,96 @@ class GeminiBackend(LLMBackend):
         if GeminiBackend._text_model is None:
             GeminiBackend._text_model = find_text_generation_model(GeminiBackend._cached_models)
 
+        # Extract and cache token limits for the selected models
+        self._image_input_limit = self._get_model_input_limit(
+            GeminiBackend._image_model, self.DEFAULT_IMAGE_INPUT_LIMIT, "image"
+        )
+        self._text_input_limit = self._get_model_input_limit(
+            GeminiBackend._text_model, self.DEFAULT_TEXT_INPUT_LIMIT, "text"
+        )
+
+    def _get_model_input_limit(self, model_name: str | None, default_limit: int, model_type: str) -> int:
+        """Get input token limit for a model with fallback.
+
+        Args:
+            model_name: Name of the model to look up.
+            default_limit: Fallback limit if not found.
+            model_type: Type of model ('image' or 'text') for logging.
+
+        Returns:
+            int: Input token limit for the model.
+        """
+        if not model_name or not GeminiBackend._cached_models:
+            self.logger.warning(
+                f"⚠️  No model information available for {model_type} model, "
+                f"using fallback limit of {default_limit} tokens"
+            )
+            return default_limit
+
+        # Search for the model in cached models
+        for model_info in GeminiBackend._cached_models:
+            model_full_name = model_info.get("name", "")
+            if model_name in model_full_name:
+                limit = model_info.get("input_token_limit")
+                if limit is not None:
+                    self.logger.debug(f"Found input limit for {model_name}: {limit} tokens")
+                    return int(limit)
+                else:
+                    self.logger.warning(
+                        f"⚠️  No input_token_limit found for {model_name}, "
+                        f"using fallback limit of {default_limit} tokens"
+                    )
+                    return default_limit
+
+        # Model not found in cache
+        self.logger.warning(
+            f"⚠️  Model {model_name} not found in cache, using fallback limit of {default_limit} tokens"
+        )
+        return default_limit
+
+    def _compress_prompt(self, prompt_text: str, target_tokens: int) -> str:
+        """Compress a prompt to fit within token limits.
+
+        Args:
+            prompt_text: The original prompt text.
+            target_tokens: Target token count after compression.
+
+        Returns:
+            str: Compressed prompt text.
+        """
+        original_tokens = self.estimate_token_count(prompt_text)
+        self.logger.info(f"Compressing prompt: ~{original_tokens} tokens → target ~{target_tokens} tokens")
+
+        compression_prompt = (
+            f"Please create a concise, detailed prompt (maximum {target_tokens * 4} characters) "
+            f"from this longer description. Preserve all key visual details, character descriptions, "
+            f"and important story elements. Focus on concrete details like character appearance, "
+            f"setting, and actions.\n\nOriginal prompt:\n{prompt_text}"
+        )
+
+        try:
+            model = self._text_model or "gemini-2.5-flash"
+            response = self.client.models.generate_content(model=model, contents=compression_prompt)
+            candidates = getattr(response, "candidates", None)
+            if candidates and len(candidates) > 0:
+                candidate = candidates[0]
+                content = getattr(candidate, "content", None)
+                if content:
+                    parts = getattr(content, "parts", None) or []
+                    if parts and getattr(parts[0], "text", None):
+                        compressed = str(parts[0].text).strip()
+                        compressed_tokens = self.estimate_token_count(compressed)
+                        self.logger.info(f"Compression successful: ~{compressed_tokens} tokens")
+                        return compressed
+        except Exception as e:
+            self.logger.error(f"Prompt compression failed: {e}. Using truncation fallback.")
+
+        # Fallback: simple truncation
+        target_chars = target_tokens * 4
+        truncated = prompt_text[:target_chars]
+        self.logger.warning(f"Using truncated prompt ({len(truncated)} chars)")
+        return truncated
+
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
         paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
         prompts: list[str] = []
@@ -71,6 +170,15 @@ class GeminiBackend(LLMBackend):
     def generate_story(self, prompt: Prompt) -> str:
         try:
             contents = prompt.story
+
+            # Check if prompt needs compression
+            prompt_tokens = self.estimate_token_count(contents)
+            trigger_limit = int(self._text_input_limit * self.COMPRESSION_TRIGGER_RATIO)
+
+            if prompt_tokens > trigger_limit:
+                target_tokens = int(self._text_input_limit * self.COMPRESSION_TARGET_RATIO)
+                contents = self._compress_prompt(contents, target_tokens)
+
             model = self._text_model or "gemini-2.5-pro"
             response = self.client.models.generate_content(model=model, contents=contents)
             candidates = getattr(response, "candidates", None)
@@ -128,6 +236,14 @@ class GeminiBackend(LLMBackend):
     ) -> tuple[Image.Image | None, bytes | None]:
         text_prompt = prompt.image(1)[0]
 
+        # Check if prompt needs compression
+        prompt_tokens = self.estimate_token_count(text_prompt)
+        trigger_limit = int(self._image_input_limit * self.COMPRESSION_TRIGGER_RATIO)
+
+        if prompt_tokens > trigger_limit:
+            target_tokens = int(self._image_input_limit * self.COMPRESSION_TARGET_RATIO)
+            text_prompt = self._compress_prompt(text_prompt, target_tokens)
+
         contents: str | list[Any]
         if reference_image_bytes:
             contents = [
@@ -145,10 +261,7 @@ class GeminiBackend(LLMBackend):
         try:
             response = self.client.models.generate_content(model=model, contents=contents)
         except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to generate image with model {model}: {e}")
+            self.logger.error(f"Failed to generate image with model {model}: {e}")
             return None, None
 
         return self._extract_image_from_response(response)
