@@ -5,6 +5,7 @@ Note: Claude does not support image generation, so image-related methods return 
 """
 
 import os
+from typing import Any
 
 import anthropic
 
@@ -23,9 +24,12 @@ class AnthropicBackend(LLMBackend):
 
     name = "anthropic"
 
-    def __init__(self) -> None:
+    def __init__(self, config: Any = None) -> None:
         """
         Initialize the Anthropic client using the API key from environment variables.
+
+        Args:
+            config: Optional Config object (currently unused, for API consistency).
 
         Raises:
             RuntimeError: If ANTHROPIC_API_KEY is not set.

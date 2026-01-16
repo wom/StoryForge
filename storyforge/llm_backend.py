@@ -16,6 +16,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from .config import Config
     from .prompt import Prompt
 
 
@@ -108,7 +109,9 @@ class LLMBackend(ABC):
         raise NotImplementedError("Subclass must implement generate_image_prompt method")
 
 
-def get_backend(backend_name: str | None = None, config_backend: str | None = None) -> LLMBackend:
+def get_backend(
+    backend_name: str | None = None, config_backend: str | None = None, config: "Config | None" = None
+) -> LLMBackend:
     """
     Factory function to get an appropriate LLM backend instance.
 
@@ -116,6 +119,7 @@ def get_backend(backend_name: str | None = None, config_backend: str | None = No
         backend_name (Optional[str]): Specific backend to use ("gemini",
                                       "openai", etc.). Highest priority.
         config_backend (Optional[str]): Backend from configuration file.
+        config (Optional[Config]): Configuration object to pass to the backend.
 
     Returns:
         LLMBackend: An instance of the selected backend.
@@ -165,17 +169,17 @@ def get_backend(backend_name: str | None = None, config_backend: str | None = No
         if backend_name == "gemini":
             from .gemini_backend import GeminiBackend
 
-            return GeminiBackend()
+            return GeminiBackend(config=config)
 
         elif backend_name == "openai":
             from .openai_backend import OpenAIBackend
 
-            return OpenAIBackend()
+            return OpenAIBackend(config=config)
 
         elif backend_name == "anthropic":
             from .anthropic_backend import AnthropicBackend
 
-            return AnthropicBackend()
+            return AnthropicBackend(config=config)
 
         else:
             raise RuntimeError(
