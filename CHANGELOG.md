@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.0.6] - 2026-01-24
+
+### Added
+- Story chain tracking system automatically recording parent-child relationships across extended stories for lineage tracing. (commits: 6a101c9, 4567e11)
+- `export-chain` command combining multiple story parts into single readable files with chronological ordering and metadata. (commits: 6a101c9, 4567e11)
+- Full story preview display in extend command showing complete story chain before continuation. (commit: 6a101c9)
+- Dynamic Gemini model discovery with automatic selection of optimal text/image models from available API models. (commit: 209ef1c)
+- Token limit management for Gemini backend with dynamic detection from API and automatic prompt compression at 80% threshold. (commit: 4f80ea8)
+- OpenAI model configuration support via config file (`openai_story_model`, `openai_image_model`) allowing custom model selection. (commit: 64e675d)
+- `GEMINI_IMAGE_MODEL` environment variable for runtime image model override. (commit: 209ef1c)
+- Gemini model discovery CLI utility (`list_gemini_models.py`) for inspecting available models and capabilities. (commit: 35be24b)
+
+### Changed
+- Backend initialization now receives config object enabling model selection and configuration access. (commits: aa941a6, a5f5cc7)
+- Gemini backend refactored to use cached model discovery reducing API calls and improving reliability. (commit: 209ef1c)
+- Error handling improved across all backends with proper logging and user-friendly messages. (commit: 209ef1c)
+- Default OpenAI models updated: story generation to `gpt-5.2`, image generation to `gpt-image-1.5`. (commit: a81bd31)
+
+### Test
+- Comprehensive PhaseExecutor phase method test suite covering all phase transitions and error conditions. (commit: 93ce28b)
+- Token compression test suite validating prompt compression logic and token estimation accuracy. (commit: 4f80ea8)
+- Model discovery test suite ensuring correct Gemini API interaction and fallback handling. (commit: 35be24b)
+- Story chain tracking tests verifying parent tracking, lineage reconstruction, and export functionality. (commit: 4567e11)
+- OpenAI backend tests updated for configurable model defaults. (commit: a81bd31)
+- Extend command tests updated for new story preview functionality. (commit: 6a101c9)
+
+### Docs
+- Comprehensive story chain tracking documentation at `docs/STORY_CHAIN_TRACKING.md` with usage examples and implementation details. (commit: 4567e11)
+- README updated with export-chain command documentation and story chain tracking overview. (commit: fc6ddd5)
+- README updated with model configuration capabilities and environment variable reference. (this release)
+- Environment variables table expanded to include `GEMINI_IMAGE_MODEL` override option. (this release)
+
+### Chores
+- Added `storyforge_output*` pattern to `.gitignore` for excluding generated output directories from version control. (commit: e786bcd)
+- Removed trailing whitespace from backend docstrings for Ruff linting compliance. (commit: 4a9af25)
+
 ## [0.0.5] - 2025-10-26
 
 ### Added

@@ -24,6 +24,13 @@ StoryForge is a command-line tool that generates illustrated children's stories 
 
 For detailed configuration options, defaults, and examples see the full configuration reference: [Configuration Documentation](docs/CONFIGURATION.md)
 
+StoryForge supports model configuration for OpenAI backends via the config file:
+- `openai_story_model` (default: `gpt-5.2`) - Model for story generation
+- `openai_image_model` (default: `gpt-image-1.5`) - Model for image generation
+- `image_count` (default: `3`) - Number of images to generate per story (1-5)
+
+See the [Configuration Documentation](docs/CONFIGURATION.md) for all available options.
+
 ### Generate a default config file
 
 ```bash
@@ -148,6 +155,45 @@ The extended story will:
 - Be saved in a new timestamped output directory
 - Include the original story context for reference
 
+## Story Chain Tracking
+
+When you extend stories multiple times, StoryForge automatically tracks the complete "chain" of related stories. This makes it easy to see the full lineage and export complete story sagas.
+
+### View Story Chains
+
+```bash
+# When extending a story, StoryForge shows the full chain
+storyforge extend
+
+# Example output:
+# Story Chain (3 parts):
+#   1. "A wizard finds a mysterious artifact" (2025-11-05 10:00)
+#   2. "The artifact reveals its power" (2025-11-05 12:00)  
+#   3. "The final confrontation" (2025-11-05 14:00)  ← You are here
+```
+
+### Export Complete Story Chains
+
+Combine all parts of a story chain into a single readable file:
+
+```bash
+# Interactive selection from available chains
+storyforge export-chain
+
+# Export a specific chain by name match
+storyforge export-chain -c wizard_artifact
+
+# Specify custom output location
+storyforge export-chain -c wizard_story -o my_complete_saga.txt
+```
+
+The exported file will contain:
+- All story parts in chronological order
+- Clear section dividers between parts
+- Metadata about when each part was created
+
+For detailed information about story chain tracking, see: [Story Chain Tracking Documentation](docs/STORY_CHAIN_TRACKING.md)
+
 ## Installation
 
 ### Recommended: Using uv
@@ -212,6 +258,7 @@ export ANTHROPIC_API_KEY=your_api_key_here
 | Variable | Backend | Status | Description |
 |----------|---------|---------|-------------|
 | `GEMINI_API_KEY` | Google Gemini | ✅ Fully Supported | Required for Gemini backend |
+| `GEMINI_IMAGE_MODEL` | Google Gemini | 🔧 Optional | Override image model (e.g., `gemini-2.5-flash-image`) |
 | `OPENAI_API_KEY` | OpenAI | ✅ Fully Supported | Required for OpenAI backend |
 | `ANTHROPIC_API_KEY` | Anthropic | 🧪 Experimental | Required for Anthropic backend |
 | `LLM_BACKEND` | All | Optional | Force specific backend (`gemini`, `openai`, `anthropic`) |
@@ -277,7 +324,6 @@ storyforge "A brave mouse goes on an adventure" \
 - **Tone**: `gentle`, `exciting`, `silly`, `heartwarming`, `magical`, `random`
 - **Theme**: `courage`, `kindness`, `teamwork`, `problem_solving`, `creativity`, `random`
 - **Image Style**: `chibi`, `realistic`, `cartoon`, `watercolor`, `sketch`
-- **Image Count** (`-n`, `--num-images`): Number of images to generate (1-5, default: 3)
 
 ### All Available Commands
 
@@ -288,6 +334,9 @@ storyforge "Your story prompt here" [options]
 # Continue/extend an existing story
 storyforge extend
 
+# Export a complete story chain
+storyforge export-chain [-c CONTEXT_NAME] [-o OUTPUT_FILE]
+
 # Resume a previous session
 storyforge continue
 
@@ -297,6 +346,7 @@ storyforge config init [--force] [--path PATH]
 # Show help
 storyforge --help
 storyforge extend --help
+storyforge export-chain --help
 storyforge continue --help
 storyforge config --help
 ```
