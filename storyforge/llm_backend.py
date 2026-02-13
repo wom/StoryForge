@@ -109,6 +109,33 @@ class LLMBackend(ABC):
         """
         raise NotImplementedError("Subclass must implement generate_image_prompt method")
 
+    def _generate_fallback_image_prompts(self, story: str, context: str, num_prompts: int) -> list[str]:
+        """
+        Generate fallback image prompts when the LLM API fails.
+
+        Splits the story into paragraphs and creates simple illustration
+        prompts from them.
+
+        Args:
+            story: The story text.
+            context: Additional context.
+            num_prompts: Number of prompts needed.
+
+        Returns:
+            Simple fallback image prompts.
+        """
+        paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
+        prompts = []
+
+        for i in range(num_prompts):
+            base = paragraphs[i] if i < len(paragraphs) else story
+            prompt = f"Create a detailed, child-friendly illustration for this part of the story: {base}"
+            if context:
+                prompt += f"\nContext: {context}"
+            prompts.append(prompt)
+
+        return prompts
+
     @staticmethod
     def estimate_token_count(text: str) -> int:
         """
