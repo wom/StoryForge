@@ -399,31 +399,6 @@ class ContextManager:
         result = self._merge_summaries_and_pins(all_items, self.max_tokens)
         return result if result else None
 
-    def _resolve_context_path(self) -> Path | None:
-        """
-        Resolve the context file path.
-
-        Returns:
-            Path: The resolved path to the context file.
-
-        Future enhancements:
-        - Support environment variable overrides
-        - Search multiple default locations
-        - Support URL-based context loading
-        """
-        if self.context_file_path:
-            return Path(self.context_file_path)
-
-        # Use cross-platform user data directory for context files
-        # Normalized to lowercase 'storyforge' for consistent paths
-        context_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
-        context_dir.mkdir(parents=True, exist_ok=True)
-        default_path = context_dir / "family.md"
-        if default_path.exists():
-            return default_path
-
-        return None
-
     def extract_relevant_context(self, prompt: str) -> str | None:
         """
         Extract context relevant to the given prompt.

@@ -37,11 +37,6 @@ class OpenAIBackend(LLMBackend):
         Raises:
             RuntimeError: If OPENAI_API_KEY is not set.
         """
-        from typing import TYPE_CHECKING
-
-        if TYPE_CHECKING:
-            pass
-
         api_key = os.environ.get("OPENAI_API_KEY")
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY environment variable not set.")
