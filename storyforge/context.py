@@ -89,7 +89,7 @@ class ContextManager:
             import os
 
             # Allow tests to override the context directory via env var
-            test_context_dir = os.environ.get("STORYTIME_TEST_CONTEXT_DIR")
+            test_context_dir = os.environ.get("STORYFORGE_TEST_CONTEXT_DIR")
             if test_context_dir:
                 context_dir = Path(test_context_dir)
                 if context_dir.exists() and context_dir.is_dir():
@@ -336,7 +336,7 @@ class ContextManager:
         else:
             import os
 
-            test_context_dir = os.environ.get("STORYTIME_TEST_CONTEXT_DIR")
+            test_context_dir = os.environ.get("STORYFORGE_TEST_CONTEXT_DIR")
             if test_context_dir:
                 context_dir = Path(test_context_dir)
                 if context_dir.exists() and context_dir.is_dir():

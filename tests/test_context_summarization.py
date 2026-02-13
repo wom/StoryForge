@@ -340,7 +340,7 @@ class TestSummarizeContext:
 
     def test_summarize_basic_context(self, temp_context_dir):
         """Test basic context summarization."""
-        os.environ["STORYTIME_TEST_CONTEXT_DIR"] = str(temp_context_dir)
+        os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(temp_context_dir)
         try:
             cm = ContextManager(max_tokens=50)
             result = cm._summarize_context("Luna fox adventure")
@@ -350,23 +350,23 @@ class TestSummarizeContext:
             # Should mention Luna since it's in prompt
             assert "Luna" in result or "fox" in result
         finally:
-            del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+            del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
     def test_no_files_returns_none(self, tmp_path):
         """Test returns None when no context files found."""
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
-        os.environ["STORYTIME_TEST_CONTEXT_DIR"] = str(empty_dir)
+        os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(empty_dir)
         try:
             cm = ContextManager()
             result = cm._summarize_context("test prompt")
             assert result is None
         finally:
-            del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+            del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
     def test_respects_token_budget(self, temp_context_dir):
         """Test summarization respects token budget."""
-        os.environ["STORYTIME_TEST_CONTEXT_DIR"] = str(temp_context_dir)
+        os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(temp_context_dir)
         try:
             cm = ContextManager(max_tokens=20)
             result = cm._summarize_context("forest magic")
@@ -379,7 +379,7 @@ class TestSummarizeContext:
             # Summarized should be shorter than full
             assert len(result) < len(full_context) if full_context else True
         finally:
-            del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+            del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
 
 class TestExtractRelevantContext:
@@ -387,7 +387,7 @@ class TestExtractRelevantContext:
 
     def test_summarization_returns_compressed_content(self, temp_context_dir):
         """Test returns summarized context with token budget."""
-        os.environ["STORYTIME_TEST_CONTEXT_DIR"] = str(temp_context_dir)
+        os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(temp_context_dir)
         try:
             cm = ContextManager(max_tokens=30)
             result = cm.extract_relevant_context("Luna adventure")
@@ -399,11 +399,11 @@ class TestExtractRelevantContext:
             estimated_tokens = len(result) // 4
             assert estimated_tokens <= 35  # Allow some overhead
         finally:
-            del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+            del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
     def test_summarization_without_budget(self, temp_context_dir):
         """Test summarization works without token budget (returns all summaries)."""
-        os.environ["STORYTIME_TEST_CONTEXT_DIR"] = str(temp_context_dir)
+        os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(temp_context_dir)
         try:
             cm = ContextManager(max_tokens=None)
             result = cm.extract_relevant_context("Luna adventure")
@@ -412,19 +412,19 @@ class TestExtractRelevantContext:
             # Should contain content from both files
             assert "Luna" in result or "Enchanted Forest" in result
         finally:
-            del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+            del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
     def test_no_context_returns_none(self, tmp_path):
         """Test returns None when no context available."""
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
-        os.environ["STORYTIME_TEST_CONTEXT_DIR"] = str(empty_dir)
+        os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(empty_dir)
         try:
             cm = ContextManager()
             result = cm.extract_relevant_context("test")
             assert result is None
         finally:
-            del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+            del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
 
 class TestClearCache:
@@ -432,7 +432,7 @@ class TestClearCache:
 
     def test_clear_cache_clears_all(self, temp_context_dir):
         """Test clear_cache clears all caches."""
-        os.environ["STORYTIME_TEST_CONTEXT_DIR"] = str(temp_context_dir)
+        os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(temp_context_dir)
         try:
             cm = ContextManager()
             # Load context to populate cache
@@ -448,7 +448,7 @@ class TestClearCache:
             assert cm._cached_context is None
             assert cm._summary_cache == {}
         finally:
-            del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+            del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
 
 class TestBackwardsCompatibility:
@@ -456,7 +456,7 @@ class TestBackwardsCompatibility:
 
     def test_default_behavior_is_summarized(self, temp_context_dir):
         """Test that default behavior now uses summarization."""
-        os.environ["STORYTIME_TEST_CONTEXT_DIR"] = str(temp_context_dir)
+        os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(temp_context_dir)
         try:
             # Create with no summarization args (minimal API)
             cm = ContextManager()
@@ -467,7 +467,7 @@ class TestBackwardsCompatibility:
             # Should still contain relevant content
             assert len(result) > 0
         finally:
-            del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+            del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
     def test_original_context_file_path_still_works(self):
         """Test that context_file_path parameter still works."""
