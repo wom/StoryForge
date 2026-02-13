@@ -10,9 +10,10 @@ from typing import Any
 
 import anthropic
 
-logger = logging.getLogger(__name__)
 from .llm_backend import LLMBackend
 from .prompt import Prompt
+
+logger = logging.getLogger(__name__)
 
 
 class AnthropicBackend(LLMBackend):

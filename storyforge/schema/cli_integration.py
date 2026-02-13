@@ -2,7 +2,6 @@
 CLI integration utilities for automatic option generation from schema.
 """
 
-from typing import Any
 
 import typer
 

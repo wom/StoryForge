@@ -16,11 +16,11 @@ from google import genai
 from google.genai import types
 from PIL import Image
 
-logger = logging.getLogger(__name__)
-
 from .llm_backend import LLMBackend
 from .model_discovery import find_image_generation_model, find_text_generation_model, list_gemini_models
 from .prompt import Prompt
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiBackend(LLMBackend):
