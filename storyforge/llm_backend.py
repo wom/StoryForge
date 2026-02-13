@@ -8,7 +8,8 @@ This module provides:
 
 Supported backends:
 - Gemini (Google AI): requires GEMINI_API_KEY
-- Future: OpenAI, Anthropic, etc.
+- Anthropic Claude: requires ANTHROPIC_API_KEY
+- OpenAI: requires OPENAI_API_KEY
 """
 
 import os

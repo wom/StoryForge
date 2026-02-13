@@ -1,6 +1,6 @@
 """
 StoryForge: Simplified CLI for generating illustrated stories using multiple LLM backends.
-Supports Google Gemini and Anthropic Claude backends.
+Supports Google Gemini, Anthropic Claude, and OpenAI backends.
 """
 
 from datetime import datetime
