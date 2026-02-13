@@ -45,8 +45,7 @@ def list_gemini_models(api_key: str | None = None) -> list[dict[str, Any]]:
             }
             models.append(model_info)
     except Exception:
-        # If listing fails, return empty list
-        pass
+        logger.warning("Failed to list Gemini models", exc_info=True)
 
     return models
 
@@ -69,7 +68,7 @@ def find_image_generation_model(models: list[dict[str, Any]] | None = None) -> s
         try:
             models = list_gemini_models()
         except Exception:
-            # If we can't list models, use the known good default
+            logger.debug("Could not list models for image model discovery, using default")
             return "gemini-2.5-flash-image"
 
     # Priority order of model name patterns to search for
@@ -117,6 +116,7 @@ def find_text_generation_model(models: list[dict[str, Any]] | None = None) -> st
         try:
             models = list_gemini_models()
         except Exception:
+            logger.debug("Could not list models for text model discovery, using default")
             return "gemini-2.5-pro"
 
     # Priority order for text models

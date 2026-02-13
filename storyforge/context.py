@@ -8,6 +8,7 @@ Implements extractive summarize-and-merge strategy to compact context while
 preserving semantic content and respecting token budgets.
 """
 
+import logging
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -145,7 +146,7 @@ class ContextManager:
             try:
                 return int(self.tokenizer(text))
             except Exception:
-                pass
+                logging.getLogger(__name__).debug("Tokenizer failed, falling back to heuristic", exc_info=True)
         return max(1, int(len(text) / 4))
 
     def _read_and_normalize(self, file_path: Path) -> list[str]:
@@ -477,7 +478,7 @@ class ContextManager:
                 metadata = self.parse_context_metadata(md_file)
                 context_files.append(metadata)
             except Exception:
-                # Skip files that can't be parsed
+                logging.getLogger(__name__).debug("Skipping unparseable context file %s", md_file)
                 continue
 
         return context_files
@@ -647,7 +648,7 @@ class ContextManager:
                     # No parent reference, reached the original story
                     break
             except Exception:
-                # Error reading file, stop here
+                logging.getLogger(__name__).debug("Error reading story chain file, stopping", exc_info=True)
                 break
 
         return chain
