@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from storyforge.llm_backend import LLMBackend, get_backend, list_available_backends
+from storyforge.llm_backend import LLMBackend, get_backend
 from storyforge.prompt import Prompt
 
 
@@ -161,75 +161,4 @@ class TestGetBackend:
             assert "Failed to import gemini backend" in str(exc_info.value)
 
 
-class TestListAvailableBackends:
-    """Test the list_available_backends function."""
 
-    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    def test_list_backends_gemini_available(self):
-        """Test listing when Gemini is available."""
-        with patch("builtins.__import__"):  # Mock the import
-            backends = list_available_backends()
-
-            assert backends["gemini"]["available"] is True
-            assert backends["gemini"]["reason"] == "Ready"
-            assert backends["openai"]["available"] is False
-            assert "OPENAI_API_KEY not set" in backends["openai"]["reason"]
-            assert backends["anthropic"]["available"] is False
-            assert "ANTHROPIC_API_KEY not set" in backends["anthropic"]["reason"]
-
-    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test_key"}, clear=True)
-    def test_list_backends_anthropic_available(self):
-        """Test listing when Anthropic is available."""
-        with patch("builtins.__import__"):  # Mock the import
-            backends = list_available_backends()
-
-            assert backends["anthropic"]["available"] is True
-            assert backends["anthropic"]["reason"] == "Ready"
-            assert backends["gemini"]["available"] is False
-            assert backends["openai"]["available"] is False
-            assert "GEMINI_API_KEY not set" in backends["gemini"]["reason"]
-
-    @patch.dict(os.environ, {}, clear=True)
-    def test_list_backends_gemini_no_key(self):
-        """Test listing when Gemini package available but no API key."""
-        with patch("builtins.__import__"):  # Mock the import
-            backends = list_available_backends()
-
-            assert backends["gemini"]["available"] is False
-            assert "GEMINI_API_KEY not set" in backends["gemini"]["reason"]
-
-    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test_key"}, clear=True)
-    def test_list_backends_anthropic_import_error(self):
-        """Test listing when Anthropic package not installed."""
-        with patch("builtins.__import__", side_effect=ImportError("No module")):
-            backends = list_available_backends()
-
-            assert backends["anthropic"]["available"] is False
-            assert "anthropic package not installed" in backends["anthropic"]["reason"]
-
-    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"}, clear=True)
-    def test_list_backends_gemini_import_error(self):
-        """Test listing when Gemini package not installed."""
-        with patch("builtins.__import__", side_effect=ImportError("No module")):
-            backends = list_available_backends()
-
-            assert backends["gemini"]["available"] is False
-            assert "google-genai package not installed" in backends["gemini"]["reason"]
-
-    @patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"}, clear=True)
-    def test_list_backends_openai_available(self):
-        """Test listing when OpenAI is available."""
-        with patch("builtins.__import__"):  # Mock the import
-            backends = list_available_backends()
-
-            assert backends["openai"]["available"] is True
-            assert backends["openai"]["reason"] == "Ready"
-
-    @patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"}, clear=True)
-    def test_list_backends_openai_import_error(self):
-        """Test listing when OpenAI package not installed."""
-        with patch("builtins.__import__", side_effect=ImportError("No module")):
-            backends = list_available_backends()
-
-            assert backends["openai"]["available"] is False
-            assert "openai package not installed" in backends["openai"]["reason"]

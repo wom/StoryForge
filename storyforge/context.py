@@ -66,6 +66,36 @@ class ContextManager:
         # Structured cache metadata: store summaries keyed by context signature
         self._summary_cache: dict[str, str] = {}
 
+    def _discover_context_files(self) -> list[Path]:
+        """Discover context files from configured path, env override, or default locations.
+
+        Returns:
+            List of Path objects for discovered .md context files, sorted by mtime.
+        """
+        if self.context_file_path:
+            return [Path(self.context_file_path)]
+
+        import os
+
+        test_context_dir = os.environ.get("STORYFORGE_TEST_CONTEXT_DIR")
+        if test_context_dir:
+            context_dir = Path(test_context_dir)
+            if context_dir.exists() and context_dir.is_dir():
+                return sorted(context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+            return []
+
+        # Prefer ./context/ in the current working directory if it exists
+        local_context_dir = Path("context")
+        if local_context_dir.exists() and local_context_dir.is_dir():
+            return sorted(local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+
+        # Use lowercase 'storyforge' for normalized cross-platform paths
+        user_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
+        if user_dir.exists() and user_dir.is_dir():
+            return sorted(user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+
+        return []
+
     def load_context(self) -> str | None:
         """
         Load context from all markdown files in the context directory.
@@ -83,32 +113,7 @@ class ContextManager:
         if self._cached_context is not None:
             return self._cached_context
 
-        # If a specific file is set, use only that file
-        if self.context_file_path:
-            context_files = [Path(self.context_file_path)]
-        else:
-            import os
-
-            # Allow tests to override the context directory via env var
-            test_context_dir = os.environ.get("STORYFORGE_TEST_CONTEXT_DIR")
-            if test_context_dir:
-                context_dir = Path(test_context_dir)
-                if context_dir.exists() and context_dir.is_dir():
-                    context_files = sorted(context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
-                else:
-                    context_files = []
-            else:
-                # Prefer ./context/ in the current working directory if it exists
-                local_context_dir = Path("context")
-                if local_context_dir.exists() and local_context_dir.is_dir():
-                    context_files = sorted(local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
-                else:
-                    # Use lowercase 'storyforge' for normalized cross-platform paths
-                    user_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
-                    if user_dir.exists() and user_dir.is_dir():
-                        context_files = sorted(user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
-                    else:
-                        context_files = []
+        context_files = self._discover_context_files()
 
         if not context_files:
             return None
@@ -331,29 +336,8 @@ class ContextManager:
         Returns:
             Summarized context string, or None if no context files found.
         """
-        # Discover files using existing logic
-        if self.context_file_path:
-            context_files = [Path(self.context_file_path)]
-        else:
-            import os
-
-            test_context_dir = os.environ.get("STORYFORGE_TEST_CONTEXT_DIR")
-            if test_context_dir:
-                context_dir = Path(test_context_dir)
-                if context_dir.exists() and context_dir.is_dir():
-                    context_files = sorted(context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
-                else:
-                    context_files = []
-            else:
-                local_context_dir = Path("context")
-                if local_context_dir.exists() and local_context_dir.is_dir():
-                    context_files = sorted(local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
-                else:
-                    user_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
-                    if user_dir.exists() and user_dir.is_dir():
-                        context_files = sorted(user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
-                    else:
-                        context_files = []
+        # Discover files using shared helper
+        context_files = self._discover_context_files()
 
         if not context_files:
             return None

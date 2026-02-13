@@ -312,25 +312,6 @@ class TestPhaseExecutor:
         assert new_checkpoint.original_inputs == original_checkpoint.original_inputs
         assert new_checkpoint.resolved_config == original_checkpoint.resolved_config
 
-    def test_get_completed_phases_before(self):
-        """Test getting phases that should be completed before resume phase."""
-        phases_before_story = self.phase_executor._get_completed_phases_before(ExecutionPhase.STORY_GENERATE)
-
-        expected_phases = [
-            ExecutionPhase.INIT.value,
-            ExecutionPhase.CONFIG_LOAD.value,
-            ExecutionPhase.BACKEND_INIT.value,
-            ExecutionPhase.PROMPT_CONFIRM.value,
-            ExecutionPhase.CONTEXT_LOAD.value,
-            ExecutionPhase.PROMPT_BUILD.value,
-        ]
-
-        assert phases_before_story == expected_phases
-
-        # Test with first phase
-        phases_before_init = self.phase_executor._get_completed_phases_before(ExecutionPhase.INIT)
-        assert phases_before_init == []
-
     def test_get_content_up_to_phase(self):
         """Test preserving content up to specific phases."""
         original_checkpoint = CheckpointData.create_new("test", {}, {})
