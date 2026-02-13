@@ -621,11 +621,11 @@ class PhaseExecutor:
                 from .StoryForge import load_story_from_file
 
                 self.story = load_story_from_file("storyforge/test_story.txt")
-                console.print("[cyan][DEBUG] load_story_from_file was called and returned.[/cyan]")
+                console.print("[dim]Loaded debug story from test file.[/dim]")
             else:
                 self.story = self.llm_backend.generate_story(self.story_prompt)
                 if verbose:
-                    console.print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
+                    console.print("[dim]Story generation complete.[/dim]")
 
         if self.story is None or self.story == "[Error generating story]":
             raise RuntimeError("Failed to generate story. Please check your API key and try again.")
@@ -696,7 +696,7 @@ class PhaseExecutor:
 
                 if debug:
                     # In debug mode, show what would be sent but use test story
-                    console.print("[cyan][DEBUG] Refinement prompt would be sent to LLM[/cyan]")
+                    console.print("[dim]Debug mode: skipping LLM refinement, using test story.[/dim]")
                     console.print(f"[dim]{refinement_instruction[:200]}...[/dim]")
                     from .StoryForge import load_story_from_file
 
@@ -704,7 +704,7 @@ class PhaseExecutor:
                 else:
                     self.story = self.llm_backend.generate_story(self.story_prompt)
                     if verbose:
-                        console.print("[cyan][DEBUG] Refinement story generated.[/cyan]")
+                        console.print("[dim]Story refinement complete.[/dim]")
 
             # Restore original prompt
             if self.story_prompt:
