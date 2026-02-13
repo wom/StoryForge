@@ -10,6 +10,7 @@ from typing import Any
 
 import anthropic
 
+logger = logging.getLogger(__name__)
 from .llm_backend import LLMBackend
 from .prompt import Prompt
 
@@ -72,7 +73,7 @@ class AnthropicBackend(LLMBackend):
             return "[Error: No valid response from Claude]"
         except Exception as e:
             # Return a generic error message if generation fails
-            logging.getLogger(__name__).warning("Story generation failed: %s", e)
+            logger.warning("Story generation failed: %s", e)
             return f"[Error generating story: {str(e)}]"
 
     def generate_image(
@@ -88,9 +89,6 @@ class AnthropicBackend(LLMBackend):
         Returns:
             Tuple[None, None]: Always returns None since Claude cannot generate images.
         """
-        import logging
-
-        logger = logging.getLogger(__name__)
         logger.warning("Claude (Anthropic) does not support image generation. Use Gemini or OpenAI for images.")
         return None, None
 
@@ -131,7 +129,7 @@ class AnthropicBackend(LLMBackend):
 
             return "story_image"
         except Exception:
-            logging.getLogger(__name__).debug("Image name generation failed, using fallback", exc_info=True)
+            logger.debug("Image name generation failed, using fallback", exc_info=True)
             return "story_image"
 
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
@@ -206,7 +204,7 @@ class AnthropicBackend(LLMBackend):
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
         except Exception:
-            logging.getLogger(__name__).debug("Image prompt generation failed, using fallback", exc_info=True)
+            logger.debug("Image prompt generation failed, using fallback", exc_info=True)
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
 

@@ -11,6 +11,8 @@ from typing import Any, Literal
 import openai
 from PIL import Image
 
+logger = logging.getLogger(__name__)
+
 from .llm_backend import LLMBackend
 from .prompt import Prompt
 
@@ -119,7 +121,7 @@ class OpenAIBackend(LLMBackend):
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
         except Exception:
-            logging.getLogger(__name__).debug("Image prompt generation failed, using fallback", exc_info=True)
+            logger.debug("Image prompt generation failed, using fallback", exc_info=True)
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
 
@@ -149,7 +151,7 @@ class OpenAIBackend(LLMBackend):
                 return "[Error: No valid response from OpenAI]"
         except Exception as e:
             # Return a generic error message if generation fails
-            logging.getLogger(__name__).warning("Story generation failed: %s", e)
+            logger.warning("Story generation failed: %s", e)
             return f"[Error generating story: {str(e)}]"
 
     def generate_image(
@@ -231,10 +233,7 @@ class OpenAIBackend(LLMBackend):
             return None, None
 
         except Exception as e:
-            import logging
-
-            logger = logging.getLogger(__name__)
-            logger.error(f"Error generating image with DALL-E: {e}")
+            logger.error("Failed to generate image with DALL-E: %s", e)
             return None, None
 
     def generate_image_name(self, prompt: Prompt, story: str) -> str:
@@ -269,5 +268,5 @@ class OpenAIBackend(LLMBackend):
             else:
                 return "story_image"
         except Exception:
-            logging.getLogger(__name__).debug("Image name generation failed, using fallback", exc_info=True)
+            logger.debug("Image name generation failed, using fallback", exc_info=True)
             return "story_image"
