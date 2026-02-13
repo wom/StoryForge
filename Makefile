@@ -8,7 +8,7 @@ all: install
 
 
 venv:
-	test -d .venv || uv venv .venv
+	test -d .venv || uv venv .venv --python python3.12
 
 install: venv
 	uv pip install -e .[dev]
