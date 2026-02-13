@@ -13,6 +13,7 @@ Configuration file priority:
 4. Current directory: ./storyforge.ini
 """
 
+import logging
 import os
 from configparser import ConfigParser
 from pathlib import Path
@@ -202,7 +203,9 @@ class Config:
                 return raw_value if raw_value else field.default
 
         except Exception:
-            # Return schema default on any error
+            logging.getLogger(__name__).debug(
+                "Error reading config field %s.%s, using default", section_name, field_name, exc_info=True
+            )
             section = getattr(STORYFORGE_SCHEMA, section_name)
             field = section.fields.get(field_name)
             return field.default if field else None

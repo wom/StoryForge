@@ -4,6 +4,7 @@ Provides methods to generate stories and text-based content using Claude models.
 Note: Claude does not support image generation, so image-related methods return None.
 """
 
+import logging
 import os
 from typing import Any
 
@@ -71,6 +72,7 @@ class AnthropicBackend(LLMBackend):
             return "[Error: No valid response from Claude]"
         except Exception as e:
             # Return a generic error message if generation fails
+            logging.getLogger(__name__).warning("Story generation failed: %s", e)
             return f"[Error generating story: {str(e)}]"
 
     def generate_image(
@@ -129,7 +131,7 @@ class AnthropicBackend(LLMBackend):
 
             return "story_image"
         except Exception:
-            # Fallback filename
+            logging.getLogger(__name__).debug("Image name generation failed, using fallback", exc_info=True)
             return "story_image"
 
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
@@ -204,7 +206,7 @@ class AnthropicBackend(LLMBackend):
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
         except Exception:
-            # Fallback to simple story-based prompts
+            logging.getLogger(__name__).debug("Image prompt generation failed, using fallback", exc_info=True)
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
     def _generate_fallback_image_prompts(self, story: str, context: str, num_prompts: int) -> list[str]:

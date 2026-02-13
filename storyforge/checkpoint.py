@@ -8,6 +8,7 @@ StoryForge execution from any phase using the --continue CLI parameter.
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -275,6 +276,7 @@ class CheckpointManager:
             }
 
         except Exception:
+            logging.getLogger(__name__).debug("Error reading checkpoint %s", checkpoint_path, exc_info=True)
             return {
                 "path": checkpoint_path,
                 "session_id": checkpoint_path.stem,
@@ -328,6 +330,7 @@ class CheckpointManager:
                 dt = datetime.fromisoformat(info["created_at"].replace("Z", "+00:00"))
                 time_str = dt.strftime("%Y-%m-%d %H:%M")
             except Exception:
+                logging.getLogger(__name__).debug("Could not parse checkpoint date")
                 time_str = "Unknown time"
 
             console.print(
@@ -457,13 +460,13 @@ class CheckpointManager:
                     elif status == "active":
                         stats["active"] += 1
                 except Exception:
-                    # Skip files that can't be loaded
+                    logging.getLogger(__name__).debug("Skipping unreadable checkpoint %s", file_path)
                     continue
 
             return stats
 
         except Exception:
-            # Return empty stats if operation fails
+            logging.getLogger(__name__).debug("Failed to gather checkpoint stats", exc_info=True)
             return {"total": 0, "completed": 0, "failed": 0, "active": 0}
 
     def cleanup_failed_sessions(self) -> int:
@@ -485,12 +488,13 @@ class CheckpointManager:
                         deleted_count += 1
                         console.print(f"[dim]Removed failed session: {file_path.name}[/dim]")
                 except Exception:
-                    # Skip files that can't be processed
+                    logging.getLogger(__name__).debug("Skipping unprocessable checkpoint %s", file_path)
                     continue
 
             return deleted_count
 
         except Exception:
+            logging.getLogger(__name__).debug("Failed to cleanup failed sessions", exc_info=True)
             return 0
 
     def cleanup_stale_active_sessions(self, max_age_hours: int = 24) -> int:
@@ -521,11 +525,13 @@ class CheckpointManager:
                             stale_count += 1
                             console.print(f"[dim]Marked stale session as failed: {file_path.name}[/dim]")
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping checkpoint during stale cleanup %s", file_path)
                     continue
 
             return stale_count
 
         except Exception:
+            logging.getLogger(__name__).debug("Failed to cleanup stale sessions", exc_info=True)
             return 0
 
     def auto_cleanup_on_start(self) -> None:
@@ -557,8 +563,8 @@ class CheckpointManager:
                             file_path.unlink()
                             console.print(f"[dim]Auto-cleanup: removed old failed session {file_path.name}[/dim]")
                 except Exception:
+                    logging.getLogger(__name__).debug("Skipping checkpoint during auto-cleanup %s", file_path)
                     continue
 
         except Exception:
-            # Silent fail for cleanup operations
-            pass
+            logging.getLogger(__name__).debug("Auto-cleanup failed", exc_info=True)

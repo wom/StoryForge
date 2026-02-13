@@ -51,7 +51,7 @@ class GeminiBackend(LLMBackend):
             try:
                 GeminiBackend._cached_models = list_gemini_models(api_key)
             except Exception:
-                # If discovery fails, use None and fallback to defaults
+                self.logger.warning("Model discovery failed, using defaults", exc_info=True)
                 GeminiBackend._cached_models = []
 
         # Determine models to use
@@ -192,6 +192,7 @@ class GeminiBackend(LLMBackend):
                         return text.strip()
             return "[Error: No valid response from Gemini]"
         except Exception:
+            self.logger.warning("Story generation failed", exc_info=True)
             return "[Error generating story]"
 
     def _extract_image_from_response(self, resp: Any) -> tuple[Image.Image | None, bytes | None]:
@@ -208,7 +209,7 @@ class GeminiBackend(LLMBackend):
                         data = imgobj.image_bytes
                         return Image.open(BytesIO(data)), data
         except Exception:
-            pass
+            self.logger.debug("Could not extract image from generated_images", exc_info=True)
 
         # Fallback: candidates[].content.parts[].inline_data.data (used in tests)
         try:
@@ -225,9 +226,10 @@ class GeminiBackend(LLMBackend):
                             try:
                                 return Image.open(BytesIO(data)), data
                             except Exception:
+                                self.logger.debug("Could not open image from inline_data", exc_info=True)
                                 continue
         except Exception:
-            pass
+            self.logger.debug("Could not extract image from candidates", exc_info=True)
 
         return None, None
 
@@ -287,4 +289,5 @@ class GeminiBackend(LLMBackend):
                         return name if name else "story_image"
             return "story_image"
         except Exception:
+            self.logger.debug("Image name generation failed, using fallback", exc_info=True)
             return "story_image"

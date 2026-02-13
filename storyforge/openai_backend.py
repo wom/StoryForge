@@ -3,6 +3,7 @@ OpenAIBackend: Implementation of LLMBackend using OpenAI APIs.
 Provides methods to generate stories, images, and image filenames using OpenAI models.
 """
 
+import logging
 import os
 from io import BytesIO
 from typing import Any, Literal
@@ -123,7 +124,7 @@ class OpenAIBackend(LLMBackend):
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
         except Exception:
-            # Fallback to simple story-based prompts
+            logging.getLogger(__name__).debug("Image prompt generation failed, using fallback", exc_info=True)
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
     def _generate_fallback_image_prompts(self, story: str, context: str, num_prompts: int) -> list[str]:
@@ -180,6 +181,7 @@ class OpenAIBackend(LLMBackend):
                 return "[Error: No valid response from OpenAI]"
         except Exception as e:
             # Return a generic error message if generation fails
+            logging.getLogger(__name__).warning("Story generation failed: %s", e)
             return f"[Error generating story: {str(e)}]"
 
     def generate_image(
@@ -299,5 +301,5 @@ class OpenAIBackend(LLMBackend):
             else:
                 return "story_image"
         except Exception:
-            # Fallback filename
+            logging.getLogger(__name__).debug("Image name generation failed, using fallback", exc_info=True)
             return "story_image"
