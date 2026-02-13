@@ -1,8 +1,4 @@
-# Run tests with coverage and show report
-coverage: install
-	$(VENV_ACTIVATE) PYTHONPATH=. pytest --cov=storyforge --cov-report=xml
-	$(VENV_ACTIVATE) coverage report
-.PHONY: all test run install lint lint-check clean
+.PHONY: all test run install lint lint-check clean coverage debug console typecheck
 
 # Use .venv/bin/uv consistently
 VENV_ACTIVATE = . .venv/bin/activate &&
