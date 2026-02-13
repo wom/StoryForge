@@ -272,15 +272,22 @@ class Prompt:
             list[str]: A list of detailed image prompts, one for each image.
         """
         prompts = []
-        for _i in range(num_images):
+        for i in range(num_images):
             image_parts = []
 
             # Add context as a separate section if present
             if self.context:
                 image_parts.append(f"Context for illustration:\n{self.context}\n\n")
 
-            # Base instruction
-            image_parts.append("Create a detailed, beautiful, child-friendly illustration")
+            # Base instruction with scene differentiation for multi-image sets
+            if num_images > 1:
+                scene_labels = ["opening", "middle", "climactic", "closing", "epilogue"]
+                label = scene_labels[i] if i < len(scene_labels) else f"scene {i + 1}"
+                image_parts.append(
+                    f"Create a detailed, beautiful, child-friendly illustration for the {label} scene"
+                )
+            else:
+                image_parts.append("Create a detailed, beautiful, child-friendly illustration")
 
             # Add style guidance
             style_guidance = {
