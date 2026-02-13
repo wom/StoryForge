@@ -3,11 +3,6 @@ OpenAIBackend: Implementation of LLMBackend using OpenAI APIs.
 Provides methods to generate stories, images, and image filenames using OpenAI models.
 """
 
-# TODO: Implement dynamic model discovery for OpenAI (similar to Gemini backend)
-# TODO: Add support for transparent backgrounds (background="transparent" parameter)
-# TODO: Add support for high input fidelity (input_fidelity="high" parameter)
-# TODO: Add support for multi-turn image editing via Responses API
-
 import os
 from io import BytesIO
 from typing import Any, Literal
