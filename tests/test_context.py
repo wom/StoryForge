@@ -114,7 +114,7 @@ Description of character 2.
             import os
 
             try:
-                os.environ["STORYTIME_TEST_CONTEXT_DIR"] = tmpdir
+                os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = tmpdir
                 manager = ContextManager(None)
                 manager.clear_cache()
                 loaded = manager.load_context()
@@ -123,8 +123,8 @@ Description of character 2.
                 assert loaded == expected
             finally:
                 context_mod.user_data_dir = orig_user_data_dir
-                if "STORYTIME_TEST_CONTEXT_DIR" in os.environ:
-                    del os.environ["STORYTIME_TEST_CONTEXT_DIR"]
+                if "STORYFORGE_TEST_CONTEXT_DIR" in os.environ:
+                    del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
     def test_extract_relevant_context_basic(self):
         """Test basic context extraction (currently returns all context)."""
