@@ -122,33 +122,6 @@ class OpenAIBackend(LLMBackend):
             logging.getLogger(__name__).debug("Image prompt generation failed, using fallback", exc_info=True)
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
-    def _generate_fallback_image_prompts(self, story: str, context: str, num_prompts: int) -> list[str]:
-        """
-        Generate fallback image prompts when OpenAI API fails.
-
-        Args:
-            story (str): The story text.
-            context (str): Additional context.
-            num_prompts (int): Number of prompts needed.
-
-        Returns:
-            list[str]: Simple fallback image prompts.
-        """
-        # Simple fallback: split story into paragraphs, or repeat the story if not enough
-        paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
-        prompts = []
-
-        for i in range(num_prompts):
-            if i < len(paragraphs):
-                base = paragraphs[i]
-            else:
-                base = story
-            prompt = f"Create a detailed, child-friendly illustration for this part of the story: {base}"
-            if context:
-                prompt += f"\nContext: {context}"
-            prompts.append(prompt)
-
-        return prompts
 
     def generate_story(self, prompt: Prompt) -> str:
         """
