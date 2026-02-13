@@ -1,6 +1,7 @@
 # Coverage files
 .coverage
 coverage.xml
+htmlcov/
 __pycache__/
 *.py[cod]
 *.egg-info/
