@@ -280,7 +280,11 @@ class GeminiBackend(LLMBackend):
                     if parts and getattr(parts[0], "text", None):
                         text: str = parts[0].text
                         name = text.strip()
-                        return name.split(".")[0]
+                        # Remove file extension if present
+                        name = name.split(".")[0]
+                        # Clean up any unwanted characters (match Anthropic/OpenAI sanitization)
+                        name = "".join(c for c in name if c.isalnum() or c == "_")
+                        return name if name else "story_image"
             return "story_image"
         except Exception:
             return "story_image"
