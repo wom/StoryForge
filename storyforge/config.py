@@ -20,13 +20,12 @@ from pathlib import Path
 from typing import Any
 
 from platformdirs import user_config_dir
-from rich.console import Console
+
+from .console import console
 
 # Import schema-driven components
 from .schema.config_schema import STORYFORGE_SCHEMA
 from .schema.validation import SchemaValidator
-
-console = Console()
 
 
 def _generate_config_template_from_schema() -> str:

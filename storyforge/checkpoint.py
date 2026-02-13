@@ -14,10 +14,9 @@ from typing import Any
 
 import yaml
 from platformdirs import user_data_dir
-from rich.console import Console
 from rich.prompt import Confirm, IntPrompt
 
-console = Console()
+from .console import console
 
 
 class ExecutionPhase(Enum):
