@@ -589,22 +589,28 @@ class PhaseExecutor:
         debug = self.checkpoint_data.resolved_config.get("debug", False)
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
-        # Display the generated story
-        console.print("\n[bold green]Generated Story:[/bold green]")
-        prompt_preview = self.checkpoint_data.original_inputs.get("prompt", "")
-        console.print(f"[dim]Prompt:[/dim] {prompt_preview}")
-        if self.refinements:
-            console.print(f"[dim]Refinements:[/dim] {self.refinements}")
-        console.print()
-        console.print(self.story or "")
-        console.print()
+        while True:
+            # Display the generated story
+            console.print("\n[bold green]Generated Story:[/bold green]")
+            prompt_preview = self.checkpoint_data.original_inputs.get("prompt", "")
+            console.print(f"[dim]Prompt:[/dim] {prompt_preview}")
+            if self.refinements:
+                console.print(f"[dim]Refinements:[/dim] {self.refinements}")
+            console.print()
+            console.print(self.story or "")
+            console.print()
 
-        # Ask if user wants to refine
-        if Confirm.ask(
-            "[bold yellow]Would you like to refine the story?[/bold yellow]",
-            default=False,
-            show_default=True,
-        ):
+            # Ask if user wants to refine
+            if not Confirm.ask(
+                "[bold yellow]Would you like to refine the story?[/bold yellow]",
+                default=False,
+                show_default=True,
+            ):
+                # Story accepted
+                if self.checkpoint_data:
+                    self.checkpoint_data.user_decisions["story_accepted"] = True
+                break
+
             self.refinements = typer.prompt("Refinements:")
 
             # Build refinement prompt that includes the existing story
@@ -668,13 +674,6 @@ class PhaseExecutor:
                 self.checkpoint_data.completed_phases.remove(ExecutionPhase.STORY_GENERATE.value)
 
             self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-
-            # Recursively ask for more refinements
-            self._handle_story_refinement()
-        else:
-            # Story accepted
-            if self.checkpoint_data:
-                self.checkpoint_data.user_decisions["story_accepted"] = True
 
     def _phase_story_save(self) -> None:
         """Save story to file phase."""
