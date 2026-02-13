@@ -5,10 +5,10 @@ This module provides checkpoint functionality allowing users to resume
 StoryForge execution from any phase using the --continue CLI parameter.
 """
 
+import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum
-import logging
 from pathlib import Path
 from typing import Any
 
