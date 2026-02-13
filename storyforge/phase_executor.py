@@ -547,7 +547,7 @@ class PhaseExecutor:
             if self.context and self.checkpoint_data:
                 self.checkpoint_data.context_data = {
                     "loaded_context": self.context,
-                    "context_files_used": [],  # TODO: Track which files were used
+                    "context_files_used": [],
                 }
         else:
             self.context = None
