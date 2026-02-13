@@ -7,6 +7,7 @@ env var, otherwise it auto-discovers the best available image generation model
 (typically `gemini-2.5-flash-image`).
 """
 
+import logging
 import os
 from io import BytesIO
 from typing import Any, ClassVar
@@ -14,6 +15,8 @@ from typing import Any, ClassVar
 from google import genai
 from google.genai import types
 from PIL import Image
+
+logger = logging.getLogger(__name__)
 
 from .llm_backend import LLMBackend
 from .model_discovery import find_image_generation_model, find_text_generation_model, list_gemini_models
@@ -38,9 +41,6 @@ class GeminiBackend(LLMBackend):
         Args:
             config: Optional Config object (currently unused, for API consistency).
         """
-        import logging
-
-        self.logger = logging.getLogger(__name__)
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY environment variable not set.")
@@ -51,7 +51,7 @@ class GeminiBackend(LLMBackend):
             try:
                 GeminiBackend._cached_models = list_gemini_models(api_key)
             except Exception:
-                self.logger.warning("Model discovery failed, using defaults", exc_info=True)
+                logger.warning("Model discovery failed, using defaults", exc_info=True)
                 GeminiBackend._cached_models = []
 
         # Determine models to use
@@ -86,7 +86,7 @@ class GeminiBackend(LLMBackend):
             int: Input token limit for the model.
         """
         if not model_name or not GeminiBackend._cached_models:
-            self.logger.warning(
+            logger.warning(
                 f"⚠️  No model information available for {model_type} model, "
                 f"using fallback limit of {default_limit} tokens"
             )
@@ -98,17 +98,17 @@ class GeminiBackend(LLMBackend):
             if model_name in model_full_name:
                 limit = model_info.get("input_token_limit")
                 if limit is not None:
-                    self.logger.debug(f"Found input limit for {model_name}: {limit} tokens")
+                    logger.debug(f"Found input limit for {model_name}: {limit} tokens")
                     return int(limit)
                 else:
-                    self.logger.warning(
+                    logger.warning(
                         f"⚠️  No input_token_limit found for {model_name}, "
                         f"using fallback limit of {default_limit} tokens"
                     )
                     return default_limit
 
         # Model not found in cache
-        self.logger.warning(
+        logger.warning(
             f"⚠️  Model {model_name} not found in cache, using fallback limit of {default_limit} tokens"
         )
         return default_limit
@@ -124,7 +124,7 @@ class GeminiBackend(LLMBackend):
             str: Compressed prompt text.
         """
         original_tokens = self.estimate_token_count(prompt_text)
-        self.logger.info(f"Compressing prompt: ~{original_tokens} tokens → target ~{target_tokens} tokens")
+        logger.info(f"Compressing prompt: ~{original_tokens} tokens → target ~{target_tokens} tokens")
 
         compression_prompt = (
             f"Please create a concise, detailed prompt (maximum {target_tokens * 4} characters) "
@@ -145,15 +145,15 @@ class GeminiBackend(LLMBackend):
                     if parts and getattr(parts[0], "text", None):
                         compressed = str(parts[0].text).strip()
                         compressed_tokens = self.estimate_token_count(compressed)
-                        self.logger.info(f"Compression successful: ~{compressed_tokens} tokens")
+                        logger.info(f"Compression successful: ~{compressed_tokens} tokens")
                         return compressed
         except Exception as e:
-            self.logger.error(f"Prompt compression failed: {e}. Using truncation fallback.")
+            logger.error(f"Prompt compression failed: {e}. Using truncation fallback.")
 
         # Fallback: simple truncation
         target_chars = target_tokens * 4
         truncated = prompt_text[:target_chars]
-        self.logger.warning(f"Using truncated prompt ({len(truncated)} chars)")
+        logger.warning(f"Using truncated prompt ({len(truncated)} chars)")
         return truncated
 
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
@@ -191,9 +191,9 @@ class GeminiBackend(LLMBackend):
                         text: str = parts[0].text
                         return text.strip()
             return "[Error: No valid response from Gemini]"
-        except Exception:
-            self.logger.warning("Story generation failed", exc_info=True)
-            return "[Error generating story]"
+        except Exception as e:
+            logger.warning("Story generation failed: %s", e)
+            return f"[Error generating story: {e}]"
 
     def _extract_image_from_response(self, resp: Any) -> tuple[Image.Image | None, bytes | None]:
         if not resp:
@@ -209,7 +209,7 @@ class GeminiBackend(LLMBackend):
                         data = imgobj.image_bytes
                         return Image.open(BytesIO(data)), data
         except Exception:
-            self.logger.debug("Could not extract image from generated_images", exc_info=True)
+            logger.debug("Could not extract image from generated_images", exc_info=True)
 
         # Fallback: candidates[].content.parts[].inline_data.data (used in tests)
         try:
@@ -226,10 +226,10 @@ class GeminiBackend(LLMBackend):
                             try:
                                 return Image.open(BytesIO(data)), data
                             except Exception:
-                                self.logger.debug("Could not open image from inline_data", exc_info=True)
+                                logger.debug("Could not open image from inline_data", exc_info=True)
                                 continue
         except Exception:
-            self.logger.debug("Could not extract image from candidates", exc_info=True)
+            logger.debug("Could not extract image from candidates", exc_info=True)
 
         return None, None
 
@@ -263,7 +263,7 @@ class GeminiBackend(LLMBackend):
         try:
             response = self.client.models.generate_content(model=model, contents=contents)
         except Exception as e:
-            self.logger.error(f"Failed to generate image with model {model}: {e}")
+            logger.error(f"Failed to generate image with model {model}: {e}")
             return None, None
 
         return self._extract_image_from_response(response)
@@ -289,5 +289,5 @@ class GeminiBackend(LLMBackend):
                         return name if name else "story_image"
             return "story_image"
         except Exception:
-            self.logger.debug("Image name generation failed, using fallback", exc_info=True)
+            logger.debug("Image name generation failed, using fallback", exc_info=True)
             return "story_image"

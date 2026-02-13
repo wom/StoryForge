@@ -24,7 +24,7 @@ def test_generate_story_error(mock_client):
     backend.client.models.generate_content.side_effect = Exception("fail")
     prompt = Prompt(prompt="test prompt")
     result = backend.generate_story(prompt)
-    assert result == "[Error generating story]"
+    assert result == "[Error generating story: fail]"
 
 
 @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
