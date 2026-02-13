@@ -40,17 +40,24 @@ class PhaseExecutor:
         self.refinements: str | None = None
         self._initialized_phases: set[ExecutionPhase] = set()  # Track which phases have been initialized
 
+    def _print(self, *args: Any, **kwargs: Any) -> None:
+        """Print to console only if not in silent mode."""
+        if self.checkpoint_data and self.checkpoint_data.resolved_config.get("silent_mode", False):
+            return  # Skip printing in silent mode (MCP stdio transport)
+        console.print(*args, **kwargs)
+
     def execute_from_checkpoint(self, checkpoint_data: CheckpointData, resume_phase: ExecutionPhase) -> None:
         """Execute StoryForge starting from a checkpoint and specific phase."""
-        console.print(f"[bold cyan]Resuming from session:[/bold cyan] {checkpoint_data.session_id}")
-        console.print(f"[dim]Creating new session starting from phase:[/dim] {resume_phase.value}")
-
         try:
             # Validate checkpoint data before proceeding
             self._validate_checkpoint_data(checkpoint_data)
 
             # Create a new checkpoint session that inherits from the old one
             self.checkpoint_data = self._create_resumed_session(checkpoint_data, resume_phase)
+
+            # Now that checkpoint_data is set, we can print safely
+            self._print(f"[bold cyan]Resuming from session:[/bold cyan] {checkpoint_data.session_id}")
+            self._print(f"[dim]Creating new session starting from phase:[/dim] {resume_phase.value}")
 
             # Save the new session checkpoint
             self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
@@ -61,7 +68,7 @@ class PhaseExecutor:
             # Mark session as completed
             self.checkpoint_data.mark_completed()
             self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-            console.print("[bold green]✅ StoryForge session completed successfully![/bold green]")
+            self._print("[bold green]✅ StoryForge session completed successfully![/bold green]")
 
         except typer.Exit:
             # User cancelled - don't mark as failed
@@ -69,14 +76,14 @@ class PhaseExecutor:
         except KeyboardInterrupt:
             # User interrupted - save current state
             if self.checkpoint_data:
-                console.print("\n[yellow]Session interrupted by user. Progress saved.[/yellow]")
+                self._print("\n[yellow]Session interrupted by user. Progress saved.[/yellow]")
                 self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
             raise typer.Exit(130) from None  # Standard exit code for SIGINT
         except Exception as e:
             # Mark session as failed and save checkpoint
             current_phase = self.checkpoint_data.current_phase if self.checkpoint_data else "unknown"
             error_msg = f"Error in phase {current_phase}: {str(e)}"
-            console.print(f"[red]Session failed:[/red] {error_msg}")
+            self._print(f"[red]Session failed:[/red] {error_msg}")
 
             if self.checkpoint_data:
                 self.checkpoint_data.mark_failed(error_msg)
@@ -88,14 +95,14 @@ class PhaseExecutor:
                         else None
                     )
                     if resumed_from:
-                        console.print(
+                        self._print(
                             f"[dim]Failed resumed session saved as:[/dim] {self.checkpoint_data.session_id} "
                             f"[dim](resumed from {resumed_from})[/dim]"
                         )
                     else:
-                        console.print(f"[dim]Failed session saved as:[/dim] {self.checkpoint_data.session_id}")
+                        self._print(f"[dim]Failed session saved as:[/dim] {self.checkpoint_data.session_id}")
                 except Exception as save_error:
-                    console.print(f"[red]Could not save failed session:[/red] {save_error}")
+                    self._print(f"[red]Could not save failed session:[/red] {save_error}")
             raise
 
     def _create_resumed_session(
@@ -260,7 +267,7 @@ class PhaseExecutor:
         if prompt_obj:
             self.story_prompt = prompt_obj
 
-        console.print(f"[bold cyan]Starting new StoryForge session:[/bold cyan] {self.checkpoint_data.session_id}")
+        self._print(f"[bold cyan]Starting new StoryForge session:[/bold cyan] {self.checkpoint_data.session_id}")
 
         try:
             # Save initial checkpoint
@@ -272,7 +279,7 @@ class PhaseExecutor:
             # Mark session as completed
             self.checkpoint_data.mark_completed()
             self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-            console.print("[bold green]✅ StoryForge session completed successfully![/bold green]")
+            self._print("[bold green]✅ StoryForge session completed successfully![/bold green]")
 
         except typer.Exit:
             # User cancelled - don't mark as failed
@@ -280,22 +287,22 @@ class PhaseExecutor:
         except KeyboardInterrupt:
             # User interrupted - save current state
             if self.checkpoint_data:
-                console.print("\n[yellow]Session interrupted by user. Progress saved.[/yellow]")
+                self._print("\n[yellow]Session interrupted by user. Progress saved.[/yellow]")
                 self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
             raise typer.Exit(130) from None  # Standard exit code for SIGINT
         except Exception as e:
             # Mark session as failed and save checkpoint
             current_phase = self.checkpoint_data.current_phase if self.checkpoint_data else "unknown"
             error_msg = f"Error in phase {current_phase}: {str(e)}"
-            console.print(f"[red]Session failed:[/red] {error_msg}")
+            self._print(f"[red]Session failed:[/red] {error_msg}")
 
             if self.checkpoint_data:
                 self.checkpoint_data.mark_failed(error_msg)
                 try:
                     self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-                    console.print(f"[dim]Failed session saved as:[/dim] {self.checkpoint_data.session_id}")
+                    self._print(f"[dim]Failed session saved as:[/dim] {self.checkpoint_data.session_id}")
                 except Exception as save_error:
-                    console.print(f"[red]Could not save failed session:[/red] {save_error}")
+                    self._print(f"[red]Could not save failed session:[/red] {save_error}")
             raise
 
     def _clear_phases_from(self, start_phase: ExecutionPhase) -> None:
@@ -373,7 +380,7 @@ class PhaseExecutor:
 
             # Only execute if this phase is before our start phase and hasn't been initialized yet
             if phase_index < start_index and phase not in self._initialized_phases:
-                console.print(f"[dim]Initializing required phase:[/dim] {phase.value}")
+                self._print(f"[dim]Initializing required phase:[/dim] {phase.value}")
                 self._execute_phase(phase)
                 self._initialized_phases.add(phase)
                 # Don't add to checkpoint.completed_phases - these are initialization only
@@ -383,7 +390,7 @@ class PhaseExecutor:
             if self._should_skip_phase(phase):
                 continue
 
-            console.print(f"[dim]Executing phase:[/dim] {phase.value}")
+            self._print(f"[dim]Executing phase:[/dim] {phase.value}")
             self._execute_phase(phase)
 
             # Update checkpoint after each phase
@@ -399,7 +406,7 @@ class PhaseExecutor:
         # Simplified logic - only skip if completed in THIS session
         # Critical phases are handled by _execute_phase_sequence initialization
         if phase.value in self.checkpoint_data.completed_phases:
-            console.print(f"[dim]Skipping completed phase:[/dim] {phase.value}")
+            self._print(f"[dim]Skipping completed phase:[/dim] {phase.value}")
             return True
 
         return False
@@ -410,7 +417,7 @@ class PhaseExecutor:
             verbose = self.checkpoint_data and self.checkpoint_data.resolved_config.get("verbose", False)
 
             if verbose:
-                console.print(f"[dim]Starting phase: {phase.value}[/dim]")
+                self._print(f"[dim]Starting phase: {phase.value}[/dim]")
 
             if phase == ExecutionPhase.INIT:
                 self._phase_init()
@@ -438,7 +445,7 @@ class PhaseExecutor:
                 raise ValueError(f"Unknown execution phase: {phase}")
 
             if verbose:
-                console.print(f"[dim]Completed phase: {phase.value}[/dim]")
+                self._print(f"[dim]Completed phase: {phase.value}[/dim]")
 
         except typer.Exit:
             # User cancelled - propagate up
@@ -449,13 +456,13 @@ class PhaseExecutor:
         except Exception as e:
             # Add context to error message
             phase_error = f"Failed during {phase.value} phase: {str(e)}"
-            console.print(f"[red]Phase Error:[/red] {phase_error}")
+            self._print(f"[red]Phase Error:[/red] {phase_error}")
 
             # Log verbose error details if enabled
             if self.checkpoint_data and self.checkpoint_data.resolved_config.get("verbose", False):
                 import traceback
 
-                console.print(f"[dim]Traceback:[/dim] {traceback.format_exc()}")
+                self._print(f"[dim]Traceback:[/dim] {traceback.format_exc()}")
 
             raise RuntimeError(phase_error) from e
 
@@ -473,11 +480,19 @@ class PhaseExecutor:
     def _phase_backend_init(self) -> None:
         """Initialize LLM backend phase."""
         assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+
+        # Skip backend init in debug mode
+        debug = self.checkpoint_data.resolved_config.get("debug", False)
+        if debug:
+            if self.checkpoint_data.resolved_config.get("verbose", False):
+                self._print("[dim][DEBUG] Skipping backend initialization (debug mode)[/dim]")
+            return
+
         backend_name = self.checkpoint_data.resolved_config.get("backend")
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
         if verbose:
-            console.print("[dim]Initializing AI backend...[/dim]")
+            self._print("[dim]Initializing AI backend...[/dim]")
 
         # Better error handling for backend initialization
         try:
@@ -497,7 +512,7 @@ class PhaseExecutor:
             )
 
         if verbose and self.llm_backend:
-            console.print(f"[dim]Using {self.llm_backend.name} backend[/dim]")
+            self._print(f"[dim]Using {self.llm_backend.name} backend[/dim]")
 
     def _phase_prompt_confirm(self) -> None:
         """Prompt confirmation phase."""
@@ -506,7 +521,7 @@ class PhaseExecutor:
         # Check if auto-confirm is enabled (MCP mode or --yes flag)
         resolved_config = self.checkpoint_data.resolved_config
         if resolved_config.get("auto_confirm", False):
-            console.print("[dim]Auto-confirming story generation (MCP mode)[/dim]")
+            self._print("[dim]Auto-confirming story generation (MCP mode)[/dim]")
             return
 
         # Extract parameters from checkpoint
@@ -532,7 +547,7 @@ class PhaseExecutor:
             generation_type="story",
             backend_name=self.llm_backend.name if self.llm_backend else None,
         ):
-            console.print("[yellow]Story generation cancelled.[/yellow]")
+            self._print("[yellow]Story generation cancelled.[/yellow]")
             raise typer.Exit(0)
 
     def _phase_context_load(self) -> None:
@@ -545,9 +560,9 @@ class PhaseExecutor:
         if use_context:
             self.context = context_manager.load_context()
             if verbose and self.context:
-                console.print(f"[dim]Loaded context from {len(self.context.split())} words[/dim]")
+                self._print(f"[dim]Loaded context from {len(self.context.split())} words[/dim]")
             elif verbose:
-                console.print("[dim]No context files found[/dim]")
+                self._print("[dim]No context files found[/dim]")
 
             # Store context in checkpoint
             if self.context and self.checkpoint_data:
@@ -558,7 +573,7 @@ class PhaseExecutor:
         else:
             self.context = None
             if verbose:
-                console.print("[dim]Context loading skipped due to --no-use-context[/dim]")
+                self._print("[dim]Context loading skipped due to --no-use-context[/dim]")
 
     def _phase_build_prompt(self) -> None:
         """Build the story prompt from inputs."""
@@ -567,7 +582,7 @@ class PhaseExecutor:
         # If prompt is already built (e.g., from extend command), skip this phase
         if self.story_prompt is not None:
             if self.checkpoint_data.resolved_config.get("verbose"):
-                console.print("[dim]Using pre-built prompt object[/dim]")
+                self._print("[dim]Using pre-built prompt object[/dim]")
             return
 
         original_inputs = self.checkpoint_data.original_inputs
@@ -609,7 +624,7 @@ class PhaseExecutor:
         # then we need to apply refinements
         if existing_story and ExecutionPhase.STORY_GENERATE.value in self.checkpoint_data.completed_phases:
             self.story = str(existing_story)
-            console.print("[cyan]Using existing story from checkpoint[/cyan]")
+            self._print("[cyan]Using existing story from checkpoint[/cyan]")
             # Don't generate, just move to refinement
             self._handle_story_refinement()
             return
@@ -627,11 +642,11 @@ class PhaseExecutor:
                 from .StoryForge import load_story_from_file
 
                 self.story = load_story_from_file("storyforge/test_story.txt")
-                console.print("[cyan][DEBUG] load_story_from_file was called and returned.[/cyan]")
+                self._print("[cyan][DEBUG] load_story_from_file was called and returned.[/cyan]")
             else:
                 self.story = self.llm_backend.generate_story(self.story_prompt)
                 if verbose:
-                    console.print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
+                    self._print("[cyan][DEBUG] generate_story was called and returned.[/cyan]")
 
         if self.story is None or self.story == "[Error generating story]":
             raise RuntimeError("Failed to generate story. Please check your API key and try again.")
@@ -650,18 +665,18 @@ class PhaseExecutor:
         auto_confirm = self.checkpoint_data.resolved_config.get("auto_confirm", False)
 
         # Display the generated story
-        console.print("\n[bold green]Generated Story:[/bold green]")
+        self._print("\n[bold green]Generated Story:[/bold green]")
         prompt_preview = self.checkpoint_data.original_inputs.get("prompt", "")
-        console.print(f"[dim]Prompt:[/dim] {prompt_preview}")
+        self._print(f"[dim]Prompt:[/dim] {prompt_preview}")
         if self.refinements:
-            console.print(f"[dim]Refinements:[/dim] {self.refinements}")
-        console.print()
-        console.print(self.story or "")
-        console.print()
+            self._print(f"[dim]Refinements:[/dim] {self.refinements}")
+        self._print()
+        self._print(self.story or "")
+        self._print()
 
         # Skip refinement in auto-confirm mode (MCP)
         if auto_confirm:
-            console.print("[dim]Skipping refinement (MCP mode)[/dim]")
+            self._print("[dim]Skipping refinement (MCP mode)[/dim]")
             return
 
         # Ask if user wants to refine
@@ -708,15 +723,15 @@ class PhaseExecutor:
 
                 if debug:
                     # In debug mode, show what would be sent but use test story
-                    console.print("[cyan][DEBUG] Refinement prompt would be sent to LLM[/cyan]")
-                    console.print(f"[dim]{refinement_instruction[:200]}...[/dim]")
+                    self._print("[cyan][DEBUG] Refinement prompt would be sent to LLM[/cyan]")
+                    self._print(f"[dim]{refinement_instruction[:200]}...[/dim]")
                     from .StoryForge import load_story_from_file
 
                     self.story = load_story_from_file("storyforge/test_story.txt")
                 else:
                     self.story = self.llm_backend.generate_story(self.story_prompt)
                     if verbose:
-                        console.print("[cyan][DEBUG] Refinement story generated.[/cyan]")
+                        self._print("[cyan][DEBUG] Refinement story generated.[/cyan]")
 
             # Restore original prompt
             if self.story_prompt:
@@ -762,7 +777,7 @@ class PhaseExecutor:
             f.write(f"Story: {prompt_text}\n\n")
             f.write(self.story or "")
 
-        console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
+        self._print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
 
     def _phase_image_decision(self) -> None:
         """Image generation decision phase."""
@@ -777,7 +792,7 @@ class PhaseExecutor:
             # Auto-confirm: generate 3 images by default in MCP mode
             self.checkpoint_data.user_decisions["wants_images"] = True
             self.checkpoint_data.user_decisions["num_images_requested"] = 3
-            console.print("[dim]Auto-confirming image generation (3 images)[/dim]")
+            self._print("[dim]Auto-confirming image generation (3 images)[/dim]")
             return
 
         wants_images = Confirm.ask("Would you like to generate illustrations for the story?")
@@ -792,30 +807,30 @@ class PhaseExecutor:
         assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
         wants_images = self.checkpoint_data.user_decisions.get("wants_images", False)
         if not wants_images:
-            console.print("[yellow]Image generation skipped by user.[/yellow]")
+            self._print("[yellow]Image generation skipped by user.[/yellow]")
             return
 
         num_images = self.checkpoint_data.user_decisions.get("num_images_requested", 1)
         if num_images <= 0:
-            console.print("[yellow]No images will be generated.[/yellow]")
+            self._print("[yellow]No images will be generated.[/yellow]")
             return
 
         output_dir = self.checkpoint_data.resolved_config.get("output_directory")
         if not output_dir:
-            console.print("[yellow]No output directory specified for image generation.[/yellow]")
+            self._print("[yellow]No output directory specified for image generation.[/yellow]")
             return
 
         msg = f"Generating {num_images} image{'s' if num_images > 1 else ''}..."
-        console.print(f"[bold blue]{msg}[/bold blue]")
+        self._print(f"[bold blue]{msg}[/bold blue]")
 
         try:
             # Generate image prompts from story
             verbose = self.checkpoint_data.resolved_config.get("verbose", False)
             if verbose:
-                console.print("[dim]Generating image prompts...[/dim]")
+                self._print("[dim]Generating image prompts...[/dim]")
 
             if not self.llm_backend:
-                console.print("[red]No LLM backend available for image generation.[/red]")
+                self._print("[red]No LLM backend available for image generation.[/red]")
                 return
 
             image_prompts = self.llm_backend.generate_image_prompt(
@@ -825,13 +840,13 @@ class PhaseExecutor:
             )
 
             if not image_prompts:
-                console.print("[yellow]Failed to generate image prompts.[/yellow]")
+                self._print("[yellow]Failed to generate image prompts.[/yellow]")
                 return
 
             # Generate images for each prompt
             for i, image_prompt in enumerate(image_prompts[:num_images], 1):
                 if verbose:
-                    console.print(f"[dim]Generating image {i}: {image_prompt[:50]}...[/dim]")
+                    self._print(f"[dim]Generating image {i}: {image_prompt[:50]}...[/dim]")
 
                 with Progress(
                     SpinnerColumn(),
@@ -864,7 +879,7 @@ class PhaseExecutor:
                         with open(image_path, "wb") as f:
                             f.write(image_bytes)
 
-                        console.print(f"[bold green]✅ Image {i} saved:[/bold green] {image_path}")
+                        self._print(f"[bold green]✅ Image {i} saved:[/bold green] {image_path}")
 
                         # Store in checkpoint
                         if "generated_images" not in self.checkpoint_data.generated_content:
@@ -878,20 +893,20 @@ class PhaseExecutor:
                             }
                         )
                     else:
-                        console.print(f"[red]Failed to generate image {i}[/red]")
+                        self._print(f"[red]Failed to generate image {i}[/red]")
 
         except Exception as e:
             # Sanitize the error message to prevent binary data corruption
             error_msg = str(e)
             sanitized_error = "".join(c if c.isprintable() or c.isspace() else "?" for c in error_msg)
-            console.print(f"[red]Error during image generation:[/red] {sanitized_error}")
+            self._print(f"[red]Error during image generation:[/red] {sanitized_error}")
             if self.checkpoint_data.resolved_config.get("verbose", False):
                 import traceback
 
                 # Also sanitize traceback
                 tb = traceback.format_exc()
                 sanitized_tb = "".join(c if c.isprintable() or c.isspace() else "?" for c in tb)
-                console.print(f"[dim]Traceback:[/dim] {sanitized_tb}")
+                self._print(f"[dim]Traceback:[/dim] {sanitized_tb}")
 
     def _phase_context_save(self) -> None:
         """Context saving phase."""
@@ -905,7 +920,7 @@ class PhaseExecutor:
         if auto_confirm:
             # Auto-save context in MCP mode
             self.checkpoint_data.user_decisions["save_as_context"] = True
-            console.print("[dim]Auto-saving as context (MCP mode)[/dim]")
+            self._print("[dim]Auto-saving as context (MCP mode)[/dim]")
         else:
             save_as_context = Confirm.ask(
                 "[bold blue]Save this story as future context for character development?[/bold blue]"
@@ -963,14 +978,14 @@ class PhaseExecutor:
                 with open(context_path, "w", encoding="utf-8") as f:
                     f.write(context_content)
 
-                console.print(f"[bold green]✅ Story saved as context:[/bold green] {context_path}")
+                self._print(f"[bold green]✅ Story saved as context:[/bold green] {context_path}")
 
                 # Store in checkpoint
                 self.checkpoint_data.generated_content["context_file"] = str(context_path)
 
             except Exception as e:
-                console.print(f"[red]Error saving story as context:[/red] {e}")
+                self._print(f"[red]Error saving story as context:[/red] {e}")
                 if self.checkpoint_data.resolved_config.get("verbose", False):
                     import traceback
 
-                    console.print(traceback.format_exc())
+                    self._print(traceback.format_exc())

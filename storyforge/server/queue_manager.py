@@ -42,6 +42,7 @@ class QueueManager:
         self._queue_status_cache: dict[str, Any] | None = None
         self._queue_status_cache_time: float = 0.0
         self._cache_ttl = 0.5  # 500ms cache TTL
+        self._active_futures: dict[str, asyncio.Future] = {}  # Track active generation tasks for polling
 
     async def enqueue(
         self,

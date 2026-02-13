@@ -325,11 +325,33 @@ def main(
                 image_style=image_style or "chibi",
                 output_directory=output_dir,
                 use_context=use_context,
+                debug=debug or False,  # Pass debug flag to MCP server (default False)
             )
         )
 
+        # Handle error responses (string) vs success responses (dict)
+        if isinstance(result, str):
+            # This is an error message from the MCP server
+            console.print("\n[red]✗ Story generation failed:[/red]")
+            console.print(result, markup=False)  # Print without markup to avoid bracket interpretation
+            return  # Early return to avoid raising through exception handler
+
         session_id = result.get("session_id")
         status = result.get("status")
+
+        # If status is "pending", poll until complete
+        if status == "pending" and session_id:
+            console.print(f"\n[bold yellow]⏳ Story generation queued (Session: {session_id})[/bold yellow]")
+            try:
+                result = poll_session_until_complete(session_id, client)
+                status = result.get("status")
+            except Exception as poll_error:
+                console.print(f"\n[red]✗ Polling failed:[/red] {poll_error}")
+                if verbose:
+                    import traceback
+
+                    traceback.print_exc()
+                return
 
         # Display results
         if status == "completed":

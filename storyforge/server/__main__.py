@@ -1,8 +1,6 @@
-"""MCP server entry point for StoryForge."""
+"""MCP server entry point for StoryForge (FastMCP)."""
 
-from .mcp_server import main
+from .fastmcp_server import main
 
 if __name__ == "__main__":
-    import asyncio
-
-    asyncio.run(main())
+    main()

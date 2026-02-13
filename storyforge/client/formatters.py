@@ -37,6 +37,12 @@ def poll_session_until_complete(session_id: str, client: MCPClient) -> dict[str,
         while True:
             status = run_sync(client.get_session_status(session_id))
 
+            # Debug: check what we got
+            if not isinstance(status, dict):
+                raise Exception(f"get_session_status returned non-dict: {type(status)} = {repr(status)}")
+            if "status" not in status:
+                raise Exception(f"get_session_status returned dict without 'status' key: {status}")
+
             # Check if complete or failed
             if status["status"] == "completed":
                 progress.update(task, description="[bold green]✅ Generation complete!", completed=100)
@@ -61,7 +67,7 @@ def poll_session_until_complete(session_id: str, client: MCPClient) -> dict[str,
             # Sleep before next poll
             time.sleep(3)
 
-    return status  # type: ignore[no-any-return]
+    return status
 
 
 def format_session_list(sessions: list[dict[str, Any]]) -> Table:

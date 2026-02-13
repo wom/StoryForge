@@ -232,16 +232,16 @@ class CheckpointManager:
             return CheckpointData(**data_dict)
 
         except FileNotFoundError:
-            console.print(f"[red]Checkpoint file not found:[/red] {checkpoint_path}")
+            # Let the exception propagate - MCP layer will handle it
             raise
-        except yaml.YAMLError as e:
-            console.print(f"[red]Invalid YAML in checkpoint file {checkpoint_path}:[/red] {e}")
+        except yaml.YAMLError:
+            # Let the exception propagate - MCP layer will handle it
             raise
-        except (ValueError, TypeError) as e:
-            console.print(f"[red]Invalid checkpoint data in {checkpoint_path}:[/red] {e}")
+        except (ValueError, TypeError):
+            # Let the exception propagate - MCP layer will handle it
             raise
-        except Exception as e:
-            console.print(f"[red]Unexpected error loading checkpoint {checkpoint_path}:[/red] {e}")
+        except Exception:
+            # Let the exception propagate - MCP layer will handle it
             raise
 
     def find_recent_checkpoints(self, limit: int = 5) -> list[Path]:
