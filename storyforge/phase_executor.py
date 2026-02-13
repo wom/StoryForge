@@ -12,17 +12,15 @@ from typing import Any
 
 import typer
 from platformdirs import user_data_dir
-from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 
 from .checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
 from .config import Config, load_config
+from .console import console
 from .context import ContextManager
 from .llm_backend import get_backend
 from .prompt import Prompt
-
-console = Console()
 
 
 class PhaseExecutor:

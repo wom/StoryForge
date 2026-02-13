@@ -8,11 +8,11 @@ from pathlib import Path
 from typing import Annotated, Any, Literal, cast
 
 import typer
-from rich.console import Console
 from rich.prompt import Confirm
 
 from .checkpoint import CheckpointManager
 from .config import Config, ConfigError, load_config
+from .console import console
 from .context import ContextManager
 from .phase_executor import PhaseExecutor
 from .prompt import Prompt
@@ -22,8 +22,6 @@ from .schema.cli_integration import (
     generate_multi_option,
     validate_cli_arguments,
 )
-
-console = Console()
 
 # Create Typer app instance for entrypoint
 app = typer.Typer(
