@@ -105,7 +105,7 @@ def load_story_from_file(rel_path: str) -> str | None:
     """
     story_file = Path(rel_path)
     if not story_file.exists():
-        print(f"[yellow]Warning:[/yellow] Story file {story_file} does not exist.")
+        console.print(f"[yellow]Warning:[/yellow] Story file {story_file} does not exist.")
         return None
     with open(story_file, encoding="utf-8") as f:
         story = f.read().strip()
