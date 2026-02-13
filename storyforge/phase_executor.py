@@ -466,13 +466,15 @@ class PhaseExecutor:
 
     def _phase_config_load(self) -> None:
         """Load configuration phase."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
         self.config = load_config(verbose=verbose)
 
     def _phase_backend_init(self) -> None:
         """Initialize LLM backend phase."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         backend_name = self.checkpoint_data.resolved_config.get("backend")
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
@@ -501,7 +503,8 @@ class PhaseExecutor:
 
     def _phase_prompt_confirm(self) -> None:
         """Prompt confirmation phase."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         # Extract parameters from checkpoint
         original_inputs = self.checkpoint_data.original_inputs
         resolved_config = self.checkpoint_data.resolved_config
@@ -531,7 +534,8 @@ class PhaseExecutor:
 
     def _phase_context_load(self) -> None:
         """Load context files phase."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         use_context = self.checkpoint_data.resolved_config.get("use_context", True)
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
@@ -556,7 +560,8 @@ class PhaseExecutor:
 
     def _phase_build_prompt(self) -> None:
         """Build the story prompt from inputs."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
 
         # If prompt is already built (e.g., from extend command), skip this phase
         if self.story_prompt is not None:
@@ -592,7 +597,8 @@ class PhaseExecutor:
 
     def _phase_story_generate(self) -> None:
         """Story generation and refinement phase."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         debug = self.checkpoint_data.resolved_config.get("debug", False)
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
@@ -638,7 +644,8 @@ class PhaseExecutor:
 
     def _handle_story_refinement(self) -> None:
         """Handle story refinement loop."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         debug = self.checkpoint_data.resolved_config.get("debug", False)
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
@@ -731,7 +738,8 @@ class PhaseExecutor:
 
     def _phase_story_save(self) -> None:
         """Save story to file phase."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         output_dir = self.checkpoint_data.resolved_config.get("output_directory")
         if not output_dir:
             from .StoryForge import generate_default_output_dir
@@ -754,7 +762,8 @@ class PhaseExecutor:
 
     def _phase_image_decision(self) -> None:
         """Image generation decision phase."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         # Check if decision already made
         if self.checkpoint_data.user_decisions.get("wants_images") is not None:
             return
@@ -768,7 +777,8 @@ class PhaseExecutor:
 
     def _phase_image_generate(self) -> None:
         """Image generation phase."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         wants_images = self.checkpoint_data.user_decisions.get("wants_images", False)
         if not wants_images:
             console.print("[yellow]Image generation skipped by user.[/yellow]")
@@ -886,7 +896,8 @@ class PhaseExecutor:
 
     def _phase_context_save(self) -> None:
         """Context saving phase."""
-        assert self.checkpoint_data is not None, "Checkpoint data must be initialized"
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         # Check if decision already made
         if self.checkpoint_data.user_decisions.get("save_as_context") is not None:
             return
