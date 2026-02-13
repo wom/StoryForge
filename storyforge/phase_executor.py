@@ -166,28 +166,6 @@ class PhaseExecutor:
         # Update checkpoint with only valid phases
         checkpoint_data.completed_phases = valid_completed_phases
 
-    def _get_completed_phases_before(self, resume_phase: ExecutionPhase) -> list[str]:
-        """Get list of phases that should be marked as completed before the resume phase."""
-        phase_order = [
-            ExecutionPhase.INIT,
-            ExecutionPhase.CONFIG_LOAD,
-            ExecutionPhase.BACKEND_INIT,
-            ExecutionPhase.PROMPT_CONFIRM,
-            ExecutionPhase.CONTEXT_LOAD,
-            ExecutionPhase.PROMPT_BUILD,
-            ExecutionPhase.STORY_GENERATE,
-            ExecutionPhase.STORY_SAVE,
-            ExecutionPhase.IMAGE_DECISION,
-            ExecutionPhase.IMAGE_GENERATE,
-            ExecutionPhase.CONTEXT_SAVE,
-        ]
-
-        try:
-            resume_index = phase_order.index(resume_phase)
-            return [phase.value for phase in phase_order[:resume_index]]
-        except ValueError:
-            return []
-
     def _get_content_up_to_phase(
         self, original_checkpoint: CheckpointData, resume_phase: ExecutionPhase
     ) -> dict[str, Any]:
@@ -297,44 +275,6 @@ class PhaseExecutor:
                 except Exception as save_error:
                     console.print(f"[red]Could not save failed session:[/red] {save_error}")
             raise
-
-    def _clear_phases_from(self, start_phase: ExecutionPhase) -> None:
-        """Clear completion status for all phases starting from the given phase."""
-        if not self.checkpoint_data:
-            return
-
-        # Define the phase execution order
-        phase_order = [
-            ExecutionPhase.INIT,
-            ExecutionPhase.CONFIG_LOAD,
-            ExecutionPhase.BACKEND_INIT,
-            ExecutionPhase.PROMPT_CONFIRM,
-            ExecutionPhase.CONTEXT_LOAD,
-            ExecutionPhase.PROMPT_BUILD,
-            ExecutionPhase.STORY_GENERATE,
-            ExecutionPhase.STORY_SAVE,
-            ExecutionPhase.IMAGE_DECISION,
-            ExecutionPhase.IMAGE_GENERATE,
-            ExecutionPhase.CONTEXT_SAVE,
-        ]
-
-        # Find the starting index
-        try:
-            start_index = phase_order.index(start_phase)
-        except ValueError:
-            return
-
-        # Remove completion status for phases from start_phase onwards
-        phases_to_clear = [phase.value for phase in phase_order[start_index:]]
-
-        # Filter out phases that shouldn't be cleared
-        self.checkpoint_data.completed_phases = [
-            phase for phase in self.checkpoint_data.completed_phases if phase not in phases_to_clear
-        ]
-
-        # Update current phase
-        self.checkpoint_data.current_phase = start_phase.value
-        self.checkpoint_data.updated_at = datetime.now().isoformat() + "Z"
 
     def _execute_phase_sequence(self, start_phase: ExecutionPhase) -> None:
         """Execute the phase sequence starting from the specified phase."""
