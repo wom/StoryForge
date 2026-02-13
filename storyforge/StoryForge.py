@@ -30,6 +30,10 @@ app = typer.Typer(
     help="StoryForge: Generate illustrated stories using AI language models.\n\n"
     "Configuration: Use 'storyforge config init' to create a config file with default values.\n"
     "Environment: Set STORYFORGE_CONFIG to use a custom config file location.\n\n"
+    "API Keys: Set one of GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY.\n"
+    "  Get keys at: https://aistudio.google.com/apikey (Gemini),\n"
+    "  https://platform.openai.com/api-keys (OpenAI),\n"
+    "  https://console.anthropic.com/ (Anthropic)\n\n"
     "Checkpoint System: StoryForge automatically saves progress during execution.\n"
     "Use --continue to resume from previous sessions or retry from any completed phase.\n"
     "Checkpoint files are stored in ~/.local/share/StoryForge/checkpoints/",
