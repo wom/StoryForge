@@ -159,6 +159,3 @@ class TestGetBackend:
                 get_backend("gemini")
 
             assert "Failed to import gemini backend" in str(exc_info.value)
-
-
-

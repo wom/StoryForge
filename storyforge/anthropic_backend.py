@@ -78,7 +78,10 @@ class AnthropicBackend(LLMBackend):
             return f"[Error generating story: {str(e)}]"
 
     def generate_image(
-        self, prompt: Prompt, reference_image_bytes: bytes | None = None
+        self,
+        prompt: Prompt,
+        reference_image_bytes: bytes | None = None,
+        override_prompt: str | None = None,
     ) -> tuple[object | None, bytes | None]:
         """
         Claude does not support image generation, so this method returns None.
@@ -86,6 +89,7 @@ class AnthropicBackend(LLMBackend):
         Args:
             prompt (Prompt): A Prompt object containing image generation parameters.
             reference_image_bytes (Optional[bytes]): Reference image bytes (unused).
+            override_prompt (Optional[str]): Override prompt text (unused).
 
         Returns:
             Tuple[None, None]: Always returns None since Claude cannot generate images.
@@ -207,5 +211,3 @@ class AnthropicBackend(LLMBackend):
         except Exception:
             logger.debug("Image prompt generation failed, using fallback", exc_info=True)
             return self._generate_fallback_image_prompts(story, context, num_prompts)
-
-
