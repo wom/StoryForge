@@ -124,7 +124,6 @@ class OpenAIBackend(LLMBackend):
             logger.debug("Image prompt generation failed, using fallback", exc_info=True)
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
-
     def generate_story(self, prompt: Prompt) -> str:
         """
         Generate a story based on the given Prompt object using OpenAI LLM.
@@ -155,7 +154,10 @@ class OpenAIBackend(LLMBackend):
             return f"[Error generating story: {str(e)}]"
 
     def generate_image(
-        self, prompt: Prompt, reference_image_bytes: bytes | None = None
+        self,
+        prompt: Prompt,
+        reference_image_bytes: bytes | None = None,
+        override_prompt: str | None = None,
     ) -> tuple[object | None, bytes | None]:
         """
         Generate an illustration image for the given Prompt object using OpenAI
@@ -166,14 +168,16 @@ class OpenAIBackend(LLMBackend):
                 generation parameters including style, tone, setting, etc.
             reference_image_bytes (Optional[bytes]): Reference image bytes to maintain
                 consistency with previous images (currently not used by DALL-E).
+            override_prompt (Optional[str]): If provided, use this text prompt
+                instead of building one from the Prompt object.
 
         Returns:
             Tuple[Optional[Image.Image], Optional[bytes]]: The PIL Image object
             and its raw bytes, or (None, None) on failure.
         """
         try:
-            # Use the Prompt's comprehensive image prompt building
-            text_prompt = prompt.image(1)[0]
+            # Use override prompt if provided, otherwise build from Prompt object
+            text_prompt = override_prompt if override_prompt else prompt.image(1)[0]
 
             # Note: DALL-E doesn't support reference images like Gemini does
             # We'll include a style consistency note if reference_image_bytes is provided
@@ -220,13 +224,23 @@ class OpenAIBackend(LLMBackend):
                 n=1,
             )
 
-            if response.data and len(response.data) > 0 and response.data[0].url:
-                # Download the image from the URL
-                import requests
+            if response.data and len(response.data) > 0:
+                item = response.data[0]
+                if item.url:
+                    # Download the image from the URL (dall-e models)
+                    import requests
 
-                img_response = requests.get(response.data[0].url, timeout=30)
-                if img_response.status_code == 200:
-                    image_bytes = img_response.content
+                    img_response = requests.get(item.url, timeout=30)
+                    if img_response.status_code == 200:
+                        image_bytes = img_response.content
+                        image = Image.open(BytesIO(image_bytes))
+                        return image, image_bytes
+                elif getattr(item, "b64_json", None):
+                    # Decode base64 image data (gpt-image models)
+                    import base64
+
+                    b64_data: str = item.b64_json  # type: ignore[assignment]
+                    image_bytes = base64.b64decode(b64_data)
                     image = Image.open(BytesIO(image_bytes))
                     return image, image_bytes
 

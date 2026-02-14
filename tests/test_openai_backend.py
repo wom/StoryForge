@@ -194,6 +194,75 @@ class TestOpenAIBackend:
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
     @patch("openai.OpenAI")
+    def test_generate_image_b64_json(self, mock_openai_client):
+        """Test image generation with b64_json response (gpt-image models)."""
+        import base64
+
+        # Create fake image data
+        fake_image_bytes = b"fake png image data"
+        encoded = base64.b64encode(fake_image_bytes).decode("utf-8")
+
+        mock_image_response = Mock()
+        mock_item = Mock()
+        mock_item.url = None
+        mock_item.b64_json = encoded
+        mock_image_response.data = [mock_item]
+
+        mock_client_instance = Mock()
+        mock_client_instance.images.generate.return_value = mock_image_response
+        mock_openai_client.return_value = mock_client_instance
+
+        with patch("PIL.Image.open") as mock_image_open:
+            mock_image = Mock()
+            mock_image_open.return_value = mock_image
+
+            backend = OpenAIBackend()
+            prompt = Mock(spec=Prompt)
+            prompt.image.return_value = ["A test image prompt"]
+
+            image, image_bytes_result = backend.generate_image(prompt)
+
+            assert image == mock_image
+            assert image_bytes_result == fake_image_bytes
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    @patch("openai.OpenAI")
+    def test_generate_image_with_override_prompt(self, mock_openai_client):
+        """Test image generation with override_prompt parameter."""
+        import base64
+
+        fake_image_bytes = b"fake image"
+        encoded = base64.b64encode(fake_image_bytes).decode("utf-8")
+
+        mock_image_response = Mock()
+        mock_item = Mock()
+        mock_item.url = None
+        mock_item.b64_json = encoded
+        mock_image_response.data = [mock_item]
+
+        mock_client_instance = Mock()
+        mock_client_instance.images.generate.return_value = mock_image_response
+        mock_openai_client.return_value = mock_client_instance
+
+        with patch("PIL.Image.open") as mock_image_open:
+            mock_image = Mock()
+            mock_image_open.return_value = mock_image
+
+            backend = OpenAIBackend()
+            prompt = Mock(spec=Prompt)
+            override = "A specific scene prompt for the fox"
+
+            image, image_bytes_result = backend.generate_image(prompt, override_prompt=override)
+
+            assert image == mock_image
+            # Verify the override prompt was used
+            call_kwargs = mock_client_instance.images.generate.call_args
+            assert call_kwargs[1]["prompt"] == override
+            # prompt.image should NOT have been called
+            prompt.image.assert_not_called()
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    @patch("openai.OpenAI")
     def test_generate_image_exception(self, mock_openai_client):
         """Test image generation with exception."""
         mock_client_instance = Mock()

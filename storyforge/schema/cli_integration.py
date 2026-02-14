@@ -2,7 +2,6 @@
 CLI integration utilities for automatic option generation from schema.
 """
 
-
 import typer
 
 from .config_schema import STORYFORGE_SCHEMA

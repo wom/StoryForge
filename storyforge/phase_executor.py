@@ -770,7 +770,9 @@ class PhaseExecutor:
                     # Generate image - backends return (image_object, image_bytes)
                     try:
                         image_object, image_bytes = self.llm_backend.generate_image(
-                            self.story_prompt, reference_image_bytes=None
+                            self.story_prompt,
+                            reference_image_bytes=None,
+                            override_prompt=image_prompt,
                         )
                     except Exception as e:
                         console.print(f"[red]Failed to generate image {i}: {e}[/red]")

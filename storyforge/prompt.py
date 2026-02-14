@@ -283,9 +283,7 @@ class Prompt:
             if num_images > 1:
                 scene_labels = ["opening", "middle", "climactic", "closing", "epilogue"]
                 label = scene_labels[i] if i < len(scene_labels) else f"scene {i + 1}"
-                image_parts.append(
-                    f"Create a detailed, beautiful, child-friendly illustration for the {label} scene"
-                )
+                image_parts.append(f"Create a detailed, beautiful, child-friendly illustration for the {label} scene")
             else:
                 image_parts.append("Create a detailed, beautiful, child-friendly illustration")
 

@@ -50,7 +50,10 @@ class LLMBackend(ABC):
 
     @abstractmethod
     def generate_image(
-        self, prompt: "Prompt", reference_image_bytes: bytes | None = None
+        self,
+        prompt: "Prompt",
+        reference_image_bytes: bytes | None = None,
+        override_prompt: str | None = None,
     ) -> tuple[object | None, bytes | None]:
         """
         Generate an image based on the given Prompt object.
@@ -60,6 +63,9 @@ class LLMBackend(ABC):
                 for image generation including style, tone, setting, etc.
             reference_image_bytes (Optional[bytes]): Reference image bytes to maintain
                 consistency with previous images.
+            override_prompt (Optional[str]): If provided, use this text prompt
+                instead of building one from the Prompt object. Useful for
+                passing scene-specific prompts from generate_image_prompt().
 
         Returns:
             Tuple[Optional[object], Optional[bytes]]: A tuple containing:

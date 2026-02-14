@@ -108,9 +108,7 @@ class GeminiBackend(LLMBackend):
                     return default_limit
 
         # Model not found in cache
-        logger.warning(
-            f"⚠️  Model {model_name} not found in cache, using fallback limit of {default_limit} tokens"
-        )
+        logger.warning(f"⚠️  Model {model_name} not found in cache, using fallback limit of {default_limit} tokens")
         return default_limit
 
     def _compress_prompt(self, prompt_text: str, target_tokens: int) -> str:
@@ -231,12 +229,33 @@ class GeminiBackend(LLMBackend):
         except Exception:
             logger.debug("Could not extract image from candidates", exc_info=True)
 
+        # Log diagnostic info when no image was found
+        logger.warning(
+            "No image data found in API response. generated_images=%s, candidates=%s",
+            bool(getattr(resp, "generated_images", None)),
+            bool(getattr(resp, "candidates", None)),
+        )
+        # Log any text content returned instead of an image
+        try:
+            candidates = getattr(resp, "candidates", None)
+            if candidates and len(candidates) > 0:
+                parts = getattr(candidates[0].content, "parts", None) or []
+                for part in parts:
+                    text = getattr(part, "text", None)
+                    if text:
+                        logger.warning("API returned text instead of image: %s", text[:200])
+        except Exception:
+            pass
+
         return None, None
 
     def generate_image(
-        self, prompt: Prompt, reference_image_bytes: bytes | None = None
+        self,
+        prompt: Prompt,
+        reference_image_bytes: bytes | None = None,
+        override_prompt: str | None = None,
     ) -> tuple[Image.Image | None, bytes | None]:
-        text_prompt = prompt.image(1)[0]
+        text_prompt = override_prompt if override_prompt else prompt.image(1)[0]
 
         # Check if prompt needs compression
         prompt_tokens = self.estimate_token_count(text_prompt)
@@ -261,7 +280,13 @@ class GeminiBackend(LLMBackend):
 
         model = self._image_model or "gemini-2.5-flash-image"
         try:
-            response = self.client.models.generate_content(model=model, contents=contents)
+            response = self.client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
         except Exception as e:
             logger.error(f"Failed to generate image with model {model}: {e}")
             return None, None
