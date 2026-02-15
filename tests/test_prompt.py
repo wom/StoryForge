@@ -532,6 +532,55 @@ class TestContextManagerIntegration:
         assert context1 == context3
 
 
+class TestCallbackInstruction:
+    """Test has_old_context callback prompt instruction."""
+
+    def test_callback_instruction_present_when_old_context(self):
+        """Test callback instruction is added when has_old_context=True."""
+        prompt = Prompt(
+            prompt="A wizard's quest",
+            context="Some previous story context",
+            has_old_context=True,
+        )
+        story = prompt.story
+        assert "callbacks" in story.lower() or "reminisce" in story.lower()
+
+    def test_callback_instruction_absent_when_no_old_context(self):
+        """Test callback instruction is NOT added when has_old_context=False."""
+        prompt = Prompt(
+            prompt="A wizard's quest",
+            context="Some previous story context",
+            has_old_context=False,
+        )
+        story = prompt.story
+        assert "reminisce" not in story.lower()
+
+    def test_callback_instruction_absent_without_context(self):
+        """Test callback instruction is NOT added when no context."""
+        prompt = Prompt(
+            prompt="A wizard's quest",
+            has_old_context=True,
+        )
+        story = prompt.story
+        assert "reminisce" not in story.lower()
+
+    def test_callback_instruction_absent_in_continuation_mode(self):
+        """Test callback instruction is NOT added in continuation mode."""
+        prompt = Prompt(
+            prompt="A wizard's quest",
+            context="Some previous story context",
+            has_old_context=True,
+            continuation_mode=True,
+        )
+        story = prompt.story
+        assert "reminisce" not in story.lower()
+
+    def test_has_old_context_default_false(self):
+        """Test has_old_context defaults to False."""
+        prompt = Prompt(prompt="test")
+        assert prompt.has_old_context is False
+
+
 class TestTechnicalDebtCleanup:
     """Test that technical debt cleanup was successful."""
 

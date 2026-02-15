@@ -451,6 +451,222 @@ class TestClearCache:
             del os.environ["STORYFORGE_TEST_CONTEXT_DIR"]
 
 
+class TestSelectContextFiles:
+    """Test temporal stratified sampling for file selection."""
+
+    def _make_files(self, tmp_path, count):
+        """Create numbered files with ascending mtimes."""
+        files = []
+        for i in range(count):
+            f = tmp_path / f"story_{i:03d}.md"
+            f.write_text(f"Story {i}")
+            # Set distinct mtimes
+            os.utime(f, (1000000 + i, 1000000 + i))
+            files.append(f)
+        return sorted(files, key=lambda p: p.stat().st_mtime)
+
+    def test_small_pool_returns_all(self, tmp_path):
+        """Test small file pools (<= threshold) return all files."""
+        cm = ContextManager()
+        files = self._make_files(tmp_path, cm.STRATIFIED_THRESHOLD)
+        result = cm._select_context_files(files)
+        assert result == files
+        assert not cm._has_old_context
+
+    def test_large_pool_stratified(self, tmp_path):
+        """Test large pool uses stratified sampling."""
+        cm = ContextManager()
+        files = self._make_files(tmp_path, 30)
+        result = cm._select_context_files(files)
+
+        # Should include recent files
+        recent = files[-cm.RECENT_FILE_COUNT :]
+        for f in recent:
+            assert f in result
+
+        # Should have sampled from old eras
+        assert cm._has_old_context
+
+        # Total should be <= RECENT_FILE_COUNT + NUM_ERAS * SAMPLES_PER_ERA
+        max_expected = cm.RECENT_FILE_COUNT + cm.NUM_ERAS * cm.SAMPLES_PER_ERA
+        assert len(result) <= max_expected
+
+    def test_result_sorted_by_mtime(self, tmp_path):
+        """Test result is sorted oldest-first."""
+        cm = ContextManager()
+        files = self._make_files(tmp_path, 25)
+        result = cm._select_context_files(files)
+        mtimes = [f.stat().st_mtime for f in result]
+        assert mtimes == sorted(mtimes)
+
+
+class TestDivideIntoEras:
+    """Test _divide_into_eras static method."""
+
+    def test_empty_files(self):
+        """Test empty list returns empty."""
+        assert ContextManager._divide_into_eras([], 5) == []
+
+    def test_zero_eras(self):
+        """Test zero eras returns empty."""
+        from pathlib import Path
+
+        assert ContextManager._divide_into_eras([Path("a")], 0) == []
+
+    def test_even_division(self, tmp_path):
+        """Test even division into eras."""
+        files = [tmp_path / f"{i}.md" for i in range(10)]
+        eras = ContextManager._divide_into_eras(files, 5)
+        assert len(eras) == 5
+        assert all(len(era) == 2 for era in eras)
+
+    def test_uneven_division(self, tmp_path):
+        """Test uneven files are distributed across eras."""
+        files = [tmp_path / f"{i}.md" for i in range(7)]
+        eras = ContextManager._divide_into_eras(files, 3)
+        # ceil(7/3) = 3 per chunk -> 3, 3, 1
+        total = sum(len(era) for era in eras)
+        assert total == 7
+
+    def test_more_eras_than_files(self, tmp_path):
+        """Test more eras than files produces one per era."""
+        files = [tmp_path / f"{i}.md" for i in range(3)]
+        eras = ContextManager._divide_into_eras(files, 10)
+        total = sum(len(era) for era in eras)
+        assert total == 3
+
+
+class TestDeduplicateSentences:
+    """Test sentence deduplication."""
+
+    def test_no_duplicates(self):
+        """Test text without duplicates is unchanged."""
+        cm = ContextManager()
+        text = "First sentence. Second sentence. Third sentence."
+        result = cm._deduplicate_sentences(text)
+        assert result == text
+
+    def test_removes_exact_duplicates(self):
+        """Test exact duplicate sentences are removed."""
+        cm = ContextManager()
+        text = "Luna is brave. Max is wise. Luna is brave. The end."
+        result = cm._deduplicate_sentences(text)
+        assert result.count("Luna is brave") == 1
+        assert "Max is wise" in result
+        assert "The end" in result
+
+    def test_case_insensitive_dedup(self):
+        """Test deduplication is case-insensitive."""
+        cm = ContextManager()
+        text = "Hello world. HELLO WORLD. Something else."
+        result = cm._deduplicate_sentences(text)
+        # Should keep only the first occurrence
+        assert "Hello world" in result
+        assert "HELLO WORLD" not in result
+        assert "Something else" in result
+
+    def test_empty_text(self):
+        """Test empty text returns empty."""
+        cm = ContextManager()
+        assert cm._deduplicate_sentences("") == ""
+
+    def test_single_sentence(self):
+        """Test single sentence is unchanged."""
+        cm = ContextManager()
+        text = "Just one sentence."
+        result = cm._deduplicate_sentences(text)
+        assert result == text
+
+    def test_preserves_trailing_period(self):
+        """Test trailing period is preserved."""
+        cm = ContextManager()
+        text = "First. Second. First."
+        result = cm._deduplicate_sentences(text)
+        assert result.rstrip().endswith(".")
+
+
+class TestScoreChunkCharacterBonus:
+    """Test character bonus scoring in _score_chunk."""
+
+    def test_character_bonus_applied(self):
+        """Test character bonus is added when known character appears in both."""
+        cm = ContextManager()
+        cm._known_characters = {"Luna", "Max"}
+        chunk = "Luna explored the forest near the river"
+        prompt = "Luna goes on an adventure"
+        score = cm._score_chunk(chunk, prompt)
+        # Base score + CHARACTER_SCORE_BONUS for Luna
+        assert score >= cm.CHARACTER_SCORE_BONUS
+
+    def test_no_bonus_without_known_characters(self):
+        """Test no bonus when _known_characters is empty."""
+        cm = ContextManager()
+        cm._known_characters = set()
+        chunk = "Luna explored"
+        prompt = "Luna adventure"
+        score = cm._score_chunk(chunk, prompt)
+        # Only base keyword scoring
+        assert score == 1  # Only "Luna" matches (as keyword)
+
+    def test_multiple_character_bonuses(self):
+        """Test multiple characters each add a bonus."""
+        cm = ContextManager()
+        cm._known_characters = {"Luna", "Max"}
+        chunk = "Luna and Max ran through the meadow"
+        prompt = "Luna and Max go on a trip"
+        score = cm._score_chunk(chunk, prompt)
+        # Should include bonuses for both Luna and Max
+        assert score >= 2 * cm.CHARACTER_SCORE_BONUS
+
+    def test_no_bonus_character_only_in_chunk(self):
+        """Test no bonus when character only in chunk, not prompt."""
+        cm = ContextManager()
+        cm._known_characters = {"Luna"}
+        chunk = "Luna ran fast"
+        prompt = "the forest was dark"
+        score = cm._score_chunk(chunk, prompt)
+        assert score < cm.CHARACTER_SCORE_BONUS
+
+
+class TestMergeSummariesDeduplicates:
+    """Test that _merge_summaries_and_pins applies deduplication."""
+
+    def test_dedup_applied_to_merged_output(self):
+        """Test duplicate sentences are removed from merged output."""
+        cm = ContextManager()
+        items = [
+            {"summary": "Luna is brave. Max is wise.", "score": 5, "summary_tokens": 10, "is_pinned": False},
+            {"summary": "Luna is brave. The forest glows.", "score": 3, "summary_tokens": 10, "is_pinned": False},
+        ]
+        result = cm._merge_summaries_and_pins(items, max_tokens=None)
+        # "Luna is brave" should appear only once
+        assert result.count("Luna is brave") == 1
+        assert "Max is wise" in result
+        assert "The forest glows" in result
+
+
+class TestHasOldContext:
+    """Test has_old_context property."""
+
+    def test_default_false(self):
+        """Test default is False."""
+        cm = ContextManager()
+        assert cm.has_old_context is False
+
+    def test_set_by_select(self, tmp_path):
+        """Test set to True when old files are sampled."""
+        cm = ContextManager()
+        files = []
+        for i in range(25):
+            f = tmp_path / f"story_{i:03d}.md"
+            f.write_text(f"Story {i}")
+            os.utime(f, (1000000 + i, 1000000 + i))
+            files.append(f)
+        files = sorted(files, key=lambda p: p.stat().st_mtime)
+        cm._select_context_files(files)
+        assert cm.has_old_context is True
+
+
 class TestBackwardsCompatibility:
     """Test that core ContextManager behavior is maintained."""
 
