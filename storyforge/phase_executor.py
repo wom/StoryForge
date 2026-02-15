@@ -5,6 +5,7 @@ This module provides a structured way to execute StoryForge phases with
 automatic checkpointing and recovery capabilities.
 """
 
+import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -529,6 +530,7 @@ class PhaseExecutor:
                 "context_files_used": [],
                 "summarized": bool(prompt_text),
                 "max_tokens": max_tokens,
+                "has_old_context": context_manager.has_old_context,
             }
 
     def _phase_build_prompt(self) -> None:
@@ -566,6 +568,11 @@ class PhaseExecutor:
             image_style=str(cli_args.get("image_style") or resolved_config.get("image_style") or ""),
             continuation_mode=continuation_mode,
             ending_type=ending_type,
+            has_old_context=bool(
+                self.checkpoint_data.context_data.get("has_old_context")
+                if self.checkpoint_data.context_data
+                else False
+            ),
         )
 
     def _phase_story_generate(self) -> None:
@@ -1067,6 +1074,16 @@ class PhaseExecutor:
                     f.write(context_content)
 
                 console.print(f"[bold green]✅ Story saved as context:[/bold green] {context_path}")
+
+                # Update character registry with new story
+                try:
+                    registry_cm = ContextManager()
+                    registry_metadata: dict[str, Any] = {}
+                    if cli_args and cli_args.get("characters"):
+                        registry_metadata["characters"] = ", ".join(cli_args["characters"])
+                    registry_cm.update_character_registry(context_content, registry_metadata, context_path.stem)
+                except Exception:
+                    logging.getLogger(__name__).warning("Character registry update failed", exc_info=True)
 
                 # Store in checkpoint
                 self.checkpoint_data.generated_content["context_file"] = str(context_path)

@@ -65,6 +65,7 @@ class Prompt:
     image_style: str = "chibi"
     continuation_mode: bool = False
     ending_type: Literal["wrap_up", "cliffhanger"] = "wrap_up"
+    has_old_context: bool = False
 
     def __post_init__(self) -> None:
         """Resolve random parameters and validate after initialization."""
@@ -201,6 +202,13 @@ class Prompt:
         # Add context if provided
         if self.context:
             prompt_parts.append(f"Context for story generation:\n{self.context}\n")
+            if self.has_old_context and not self.continuation_mode:
+                prompt_parts.append(
+                    "If you notice characters or events from older stories in the context above, "
+                    "feel free to include natural callbacks — have characters reminisce about "
+                    "past adventures or reference earlier events. This creates a richer, "
+                    "connected story world.\n\n"
+                )
             if not self.continuation_mode:
                 prompt_parts.append("Based on the above context, ")
 

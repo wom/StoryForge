@@ -385,10 +385,11 @@ class TestPhaseExecutorPhases:
         # Images list should be unchanged
         assert self.checkpoint_data.generated_content.get("images", []) == initial_images
 
+    @patch("storyforge.phase_executor.ContextManager")
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.Confirm.ask")
     @patch("storyforge.phase_executor.Path")
-    def test_phase_context_save_with_parent_tracking(self, mock_path_class, mock_confirm, mock_console):
+    def test_phase_context_save_with_parent_tracking(self, mock_path_class, mock_confirm, mock_console, mock_cm_class):
         """Test _phase_context_save adds Extended From metadata for chains."""
         mock_confirm.return_value = True
         self.phase_executor.story = "Test story content"
@@ -423,10 +424,11 @@ class TestPhaseExecutorPhases:
         assert "**Extended From:**" in written_content
         assert "context_file" in self.checkpoint_data.generated_content
 
+    @patch("storyforge.phase_executor.ContextManager")
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.Confirm.ask")
     @patch("storyforge.phase_executor.Path")
-    def test_phase_context_save_without_parent(self, mock_path_class, mock_confirm, mock_console):
+    def test_phase_context_save_without_parent(self, mock_path_class, mock_confirm, mock_console, mock_cm_class):
         """Test _phase_context_save without parent tracking (original story)."""
         mock_confirm.return_value = True
         self.phase_executor.story = "Original story content"
@@ -675,3 +677,92 @@ class TestDumpSessionContext:
         # Should not raise
         self.phase_executor._dump_session_context(str(tmp_path))
         assert not (tmp_path / "context_dump.md").exists()
+
+
+class TestContextIntelligenceWiring:
+    """Test has_old_context propagation and registry update wiring."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.checkpoint_manager = MagicMock(spec=CheckpointManager)
+        self.phase_executor = PhaseExecutor(self.checkpoint_manager)
+        self.checkpoint_data = CheckpointData.create_new(
+            "Test story prompt",
+            {"style": "adventure", "age_range": "preschool"},
+            {"backend": "gemini", "verbose": False, "debug": False},
+        )
+        self.phase_executor.checkpoint_data = self.checkpoint_data
+
+    @patch("storyforge.phase_executor.ContextManager")
+    def test_has_old_context_stored_in_checkpoint(self, mock_context_mgr_class):
+        """Test has_old_context is stored in checkpoint context_data."""
+        mock_context_mgr = MagicMock()
+        mock_context_mgr.extract_relevant_context.return_value = "Context"
+        mock_context_mgr.has_old_context = True
+        mock_context_mgr_class.return_value = mock_context_mgr
+
+        self.checkpoint_data.resolved_config["use_context"] = True
+        self.checkpoint_data.context_data = {}
+        self.checkpoint_data.original_inputs["prompt"] = "Test prompt"
+
+        mock_backend = MagicMock()
+        mock_backend.get_context_token_budget.return_value = 50000
+        mock_backend.CONTEXT_BUDGET_RATIO = 0.50
+        mock_backend.text_input_limit = 100000
+        self.phase_executor.llm_backend = mock_backend
+
+        self.phase_executor._phase_context_load()
+
+        assert self.checkpoint_data.context_data["has_old_context"] is True
+
+    @patch("storyforge.phase_executor.Prompt")
+    def test_has_old_context_passed_to_prompt(self, mock_prompt_class):
+        """Test has_old_context is forwarded to Prompt constructor."""
+        mock_prompt_class.return_value = MagicMock()
+
+        self.checkpoint_data.original_inputs["prompt"] = "A quest"
+        self.checkpoint_data.original_inputs["cli_arguments"] = {"age_range": "preschool"}
+        self.checkpoint_data.context_data = {"has_old_context": True}
+        self.phase_executor.context = "Previous context"
+
+        self.phase_executor._phase_build_prompt()
+
+        call_kwargs = mock_prompt_class.call_args[1]
+        assert call_kwargs["has_old_context"] is True
+
+    @patch("storyforge.phase_executor.Prompt")
+    def test_has_old_context_false_when_no_context_data(self, mock_prompt_class):
+        """Test has_old_context defaults to False when context_data is None."""
+        mock_prompt_class.return_value = MagicMock()
+
+        self.checkpoint_data.original_inputs["prompt"] = "A quest"
+        self.checkpoint_data.original_inputs["cli_arguments"] = {"age_range": "preschool"}
+        self.checkpoint_data.context_data = None
+        self.phase_executor.context = None
+
+        self.phase_executor._phase_build_prompt()
+
+        call_kwargs = mock_prompt_class.call_args[1]
+        assert call_kwargs["has_old_context"] is False
+
+    @patch("storyforge.phase_executor.ContextManager")
+    @patch("storyforge.phase_executor.Confirm")
+    @patch("storyforge.phase_executor.console")
+    def test_registry_update_on_context_save(self, mock_console, mock_confirm, mock_cm_class):
+        """Test update_character_registry is called after saving context."""
+        mock_confirm.ask.return_value = True
+        mock_cm = MagicMock()
+        mock_cm_class.return_value = mock_cm
+
+        self.checkpoint_data.original_inputs["prompt"] = "test story"
+        self.checkpoint_data.original_inputs["cli_arguments"] = {"characters": ["Luna", "Max"]}
+        self.checkpoint_data.user_decisions = {}
+        self.phase_executor.story = "A wonderful story about Luna and Max."
+        self.phase_executor.refinements = None
+
+        self.phase_executor._phase_context_save()
+
+        mock_cm.update_character_registry.assert_called_once()
+        call_args = mock_cm.update_character_registry.call_args
+        # Check metadata contains characters
+        assert "characters" in call_args[0][1]
