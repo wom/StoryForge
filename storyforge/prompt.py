@@ -44,6 +44,9 @@ class Prompt:
         learning_focus (str, optional): Educational element to emphasize
         image_style (str): Visual art style for illustrations - "chibi", "realistic",
             "cartoon", "watercolor", "sketch"
+        continuation_mode (bool): Whether this is a continuation of a previous story
+        ending_type (str): How to end the story - "wrap_up" or "cliffhanger"
+        has_old_context (bool): Whether old-era context was included via temporal sampling
 
     Usage:
         prompt = Prompt("A brave little mouse goes on an adventure")

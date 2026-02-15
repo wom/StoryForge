@@ -369,6 +369,8 @@ class TestSummarizeContext:
         os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(temp_context_dir)
         try:
             cm = ContextManager(max_tokens=20)
+            # Isolate from any real user registry on disk
+            cm.format_registry_for_prompt = lambda: ""  # type: ignore[assignment]
             result = cm._summarize_context("forest magic")
 
             assert result is not None
@@ -390,6 +392,8 @@ class TestExtractRelevantContext:
         os.environ["STORYFORGE_TEST_CONTEXT_DIR"] = str(temp_context_dir)
         try:
             cm = ContextManager(max_tokens=30)
+            # Isolate from any real user registry on disk
+            cm.format_registry_for_prompt = lambda: ""  # type: ignore[assignment]
             result = cm.extract_relevant_context("Luna adventure")
 
             assert result is not None
