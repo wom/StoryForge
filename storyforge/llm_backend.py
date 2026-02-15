@@ -31,6 +31,64 @@ class LLMBackend(ABC):
 
     name: str
 
+    # Token budget configuration (shared across all backends)
+    CONTEXT_BUDGET_RATIO = 0.50  # Reserve 50% of context window for context
+    COMPRESSION_TRIGGER_RATIO = 0.80  # Warn/truncate when prompt exceeds 80% of limit
+
+    @property
+    def text_input_limit(self) -> int:
+        """Maximum input token limit for the text generation model.
+
+        Subclasses should override this to return model-specific limits.
+        Falls back to a conservative default of 8192 tokens.
+
+        Returns:
+            int: Maximum number of input tokens the model accepts.
+        """
+        return getattr(self, "_text_input_limit", 8192)
+
+    def get_context_token_budget(self) -> int:
+        """Calculate the token budget available for context.
+
+        Uses CONTEXT_BUDGET_RATIO of the model's text_input_limit.
+
+        Returns:
+            int: Number of tokens to allocate for context.
+        """
+        return int(self.text_input_limit * self.CONTEXT_BUDGET_RATIO)
+
+    def _check_and_truncate_prompt(self, contents: str) -> str:
+        """Check prompt size against model limits and truncate if necessary.
+
+        Logs a warning if the prompt exceeds 80% of the model's input limit
+        and truncates to 80% as a safety measure.
+
+        Args:
+            contents: The full prompt text to check.
+
+        Returns:
+            str: The original or truncated prompt text.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+        prompt_tokens = self.estimate_token_count(contents)
+        trigger_limit = int(self.text_input_limit * self.COMPRESSION_TRIGGER_RATIO)
+
+        if prompt_tokens > trigger_limit:
+            target_chars = trigger_limit * 4
+            logger.warning(
+                "Prompt (~%d tokens) exceeds %d%% of %s model limit (%d tokens). Truncating to ~%d tokens.",
+                prompt_tokens,
+                int(self.COMPRESSION_TRIGGER_RATIO * 100),
+                self.name,
+                self.text_input_limit,
+                trigger_limit,
+            )
+            contents = contents[:target_chars]
+
+        return contents
+
     @abstractmethod
     def generate_story(self, prompt: "Prompt") -> str:
         """

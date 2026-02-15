@@ -27,6 +27,18 @@ class AnthropicBackend(LLMBackend):
 
     name = "anthropic"
 
+    # Claude model context window sizes
+    MODEL_TOKEN_LIMITS: dict[str, int] = {
+        "claude-3-5-sonnet": 200000,
+        "claude-3-5-haiku": 200000,
+        "claude-3-opus": 200000,
+        "claude-3-sonnet": 200000,
+        "claude-3-haiku": 200000,
+        "claude-4-sonnet": 200000,
+        "claude-4-opus": 200000,
+    }
+    DEFAULT_TEXT_INPUT_LIMIT = 200000
+
     def __init__(self, config: Any = None) -> None:
         """
         Initialize the Anthropic client using the API key from environment variables.
@@ -42,6 +54,9 @@ class AnthropicBackend(LLMBackend):
             raise RuntimeError("ANTHROPIC_API_KEY environment variable not set.")
         self.client = anthropic.Anthropic(api_key=api_key)
 
+        # Set text input limit (Claude models all have 200K context)
+        self._text_input_limit = self.DEFAULT_TEXT_INPUT_LIMIT
+
     def generate_story(self, prompt: Prompt) -> str:
         """
         Generate a story based on the given Prompt object using Claude.
@@ -56,6 +71,9 @@ class AnthropicBackend(LLMBackend):
         try:
             # Use the Prompt's comprehensive prompt building
             story_prompt = prompt.story
+
+            # Safety check: truncate if prompt exceeds model limits
+            story_prompt = self._check_and_truncate_prompt(story_prompt)
 
             response = self.client.messages.create(
                 model="claude-3-5-sonnet-20241022",
