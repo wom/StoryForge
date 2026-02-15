@@ -29,6 +29,26 @@ class OpenAIBackend(LLMBackend):
 
     name = "openai"
 
+    # Known context window sizes for OpenAI models
+    MODEL_TOKEN_LIMITS: dict[str, int] = {
+        "gpt-4": 8192,
+        "gpt-4-32k": 32768,
+        "gpt-4-turbo": 128000,
+        "gpt-4o": 128000,
+        "gpt-4o-mini": 128000,
+        "gpt-4.1": 1047576,
+        "gpt-4.1-mini": 1047576,
+        "gpt-4.1-nano": 1047576,
+        "gpt-5": 128000,
+        "gpt-5.2": 128000,
+        "o1": 200000,
+        "o1-mini": 128000,
+        "o3": 200000,
+        "o3-mini": 200000,
+        "o4-mini": 200000,
+    }
+    DEFAULT_TEXT_INPUT_LIMIT = 128000
+
     def __init__(self, config: Any = None) -> None:
         """
         Initialize the OpenAI client using the API key from environment variables.
@@ -52,6 +72,37 @@ class OpenAIBackend(LLMBackend):
             # Fallback to latest models if no config provided
             self.story_model = "gpt-5.2"
             self.image_model = "gpt-image-1.5"
+
+        # Set text input limit based on model
+        self._text_input_limit = self._get_model_limit(self.story_model)
+
+    def _get_model_limit(self, model_name: str) -> int:
+        """Get the token limit for a given model name.
+
+        Looks up the exact model name first, then tries prefix matching
+        for versioned model names. Falls back to DEFAULT_TEXT_INPUT_LIMIT.
+
+        Args:
+            model_name: The model name to look up.
+
+        Returns:
+            int: The token limit for the model.
+        """
+        # Exact match first
+        if model_name in self.MODEL_TOKEN_LIMITS:
+            return self.MODEL_TOKEN_LIMITS[model_name]
+
+        # Prefix match for versioned models (e.g., "gpt-4o-2024-05-13")
+        for prefix, limit in self.MODEL_TOKEN_LIMITS.items():
+            if model_name.startswith(prefix):
+                return limit
+
+        logger.warning(
+            "Unknown OpenAI model '%s', using default limit of %d tokens",
+            model_name,
+            self.DEFAULT_TEXT_INPUT_LIMIT,
+        )
+        return self.DEFAULT_TEXT_INPUT_LIMIT
 
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
         """
@@ -138,6 +189,9 @@ class OpenAIBackend(LLMBackend):
         try:
             # Use the Prompt's comprehensive prompt building
             contents = prompt.story
+
+            # Safety check: truncate if prompt exceeds model limits
+            contents = self._check_and_truncate_prompt(contents)
 
             response = self.client.chat.completions.create(
                 model=self.story_model, messages=[{"role": "user", "content": contents}], temperature=1

@@ -8,6 +8,8 @@ from storyforge.prompt import Prompt
 
 
 class DummyBackend(LLMBackend):
+    name = "dummy"
+
     def generate_story(self, prompt: Prompt) -> str:
         raise NotImplementedError("Test implementation")
 
@@ -41,6 +43,58 @@ def test_generate_image_name_not_implemented():
     prompt = Prompt(prompt="test prompt")
     with pytest.raises(NotImplementedError):
         backend.generate_image_name(prompt, "story")
+
+
+class TestTextInputLimit:
+    """Test text_input_limit property and context budget."""
+
+    def test_default_text_input_limit(self):
+        """Test default text_input_limit when _text_input_limit is not set."""
+        backend = DummyBackend()
+        assert backend.text_input_limit == 8192
+
+    def test_custom_text_input_limit(self):
+        """Test text_input_limit reads from _text_input_limit."""
+        backend = DummyBackend()
+        backend._text_input_limit = 200000
+        assert backend.text_input_limit == 200000
+
+    def test_get_context_token_budget(self):
+        """Test context budget is 50% of text_input_limit."""
+        backend = DummyBackend()
+        backend._text_input_limit = 128000
+        assert backend.get_context_token_budget() == 64000
+
+    def test_get_context_token_budget_default(self):
+        """Test context budget with default limit."""
+        backend = DummyBackend()
+        # Default is 8192, budget is 50% = 4096
+        assert backend.get_context_token_budget() == 4096
+
+    def test_context_budget_ratio(self):
+        """Test CONTEXT_BUDGET_RATIO is 0.50."""
+        assert LLMBackend.CONTEXT_BUDGET_RATIO == 0.50
+
+    def test_compression_trigger_ratio(self):
+        """Test COMPRESSION_TRIGGER_RATIO is 0.80."""
+        assert LLMBackend.COMPRESSION_TRIGGER_RATIO == 0.80
+
+    def test_check_and_truncate_prompt_under_limit(self):
+        """Test that prompts under limit are returned unchanged."""
+        backend = DummyBackend()
+        backend._text_input_limit = 100000
+        short_prompt = "A short prompt"
+        result = backend._check_and_truncate_prompt(short_prompt)
+        assert result == short_prompt
+
+    def test_check_and_truncate_prompt_over_limit(self):
+        """Test that prompts over 80% of limit are truncated."""
+        backend = DummyBackend()
+        backend._text_input_limit = 100  # 100 tokens = 400 chars
+        # 80% trigger = 80 tokens = 320 chars
+        long_prompt = "x" * 400  # 100 tokens, over 80% trigger
+        result = backend._check_and_truncate_prompt(long_prompt)
+        assert len(result) == 320  # 80 tokens * 4 chars
 
 
 # Factory function tests

@@ -471,30 +471,65 @@ class PhaseExecutor:
             raise typer.Exit(0)
 
     def _phase_context_load(self) -> None:
-        """Load context files phase."""
+        """Load context files phase.
+
+        Uses extractive summarization to compress context to fit within
+        the backend's token budget (50% of model context window).
+        Falls back to raw concatenation if no prompt is available.
+        """
         if self.checkpoint_data is None:
             raise RuntimeError("Checkpoint data must be initialized")
         use_context = self.checkpoint_data.resolved_config.get("use_context", True)
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
-        context_manager = ContextManager()
-        if use_context:
-            self.context = context_manager.load_context()
-            if verbose and self.context:
-                console.print(f"[dim]Loaded context from {len(self.context.split())} words[/dim]")
-            elif verbose:
-                console.print("[dim]No context files found[/dim]")
-
-            # Store context in checkpoint
-            if self.context and self.checkpoint_data:
-                self.checkpoint_data.context_data = {
-                    "loaded_context": self.context,
-                    "context_files_used": [],
-                }
-        else:
+        if not use_context:
             self.context = None
             if verbose:
                 console.print("[dim]Context loading skipped due to --no-use-context[/dim]")
+            return
+
+        # Determine token budget from backend (if available)
+        max_tokens: int | None = None
+        if self.llm_backend is not None:
+            max_tokens = self.llm_backend.get_context_token_budget()
+            if verbose:
+                console.print(
+                    f"[dim]Context token budget: {max_tokens} tokens "
+                    f"({int(self.llm_backend.CONTEXT_BUDGET_RATIO * 100)}% of "
+                    f"{self.llm_backend.text_input_limit} model limit)[/dim]"
+                )
+
+        context_manager = ContextManager(max_tokens=max_tokens)
+
+        # Use extractive summarization when we have a prompt for relevance scoring
+        prompt_text = self.checkpoint_data.original_inputs.get("prompt", "")
+        if prompt_text:
+            self.context = context_manager.extract_relevant_context(prompt=str(prompt_text))
+            if verbose and self.context:
+                raw_context = context_manager.load_context()
+                raw_words = len(raw_context.split()) if raw_context else 0
+                summarized_words = len(self.context.split())
+                console.print(
+                    f"[dim]Context summarized: {raw_words} words → {summarized_words} words "
+                    f"({int(summarized_words / raw_words * 100) if raw_words else 0}% of original)[/dim]"
+                )
+        else:
+            self.context = context_manager.load_context()
+            if verbose and self.context:
+                word_count = len(self.context.split())
+                console.print(f"[dim]Loaded raw context: {word_count} words (no prompt for scoring)[/dim]")
+
+        if verbose and not self.context:
+            console.print("[dim]No context files found[/dim]")
+
+        # Store context in checkpoint
+        if self.context and self.checkpoint_data:
+            self.checkpoint_data.context_data = {
+                "loaded_context": self.context,
+                "context_files_used": [],
+                "summarized": bool(prompt_text),
+                "max_tokens": max_tokens,
+            }
 
     def _phase_build_prompt(self) -> None:
         """Build the story prompt from inputs."""
@@ -696,6 +731,140 @@ class PhaseExecutor:
             f.write(self.story or "")
 
         console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
+
+        # Dump all context and session info when --verbose or --debug is set
+        verbose = self.checkpoint_data.resolved_config.get("verbose", False)
+        debug = self.checkpoint_data.resolved_config.get("debug", False)
+        if verbose or debug:
+            self._dump_session_context(output_dir)
+
+    def _dump_session_context(self, output_dir: str) -> None:
+        """Dump all context, prompt details, and config to the output directory.
+
+        Creates a human-readable context_dump.md file containing everything
+        that went into generating the story. Triggered by --verbose or --debug.
+
+        Args:
+            output_dir: The story output directory path.
+        """
+        if self.checkpoint_data is None:
+            return
+
+        dump_path = os.path.join(output_dir, "context_dump.md")
+        resolved_config = self.checkpoint_data.resolved_config
+        original_inputs = self.checkpoint_data.original_inputs
+        cli_args = original_inputs.get("cli_arguments", {})
+
+        sections: list[str] = []
+
+        # Header
+        sections.append("# StoryForge Session Context Dump\n\n")
+        sections.append(f"**Session ID:** {self.checkpoint_data.session_id}\n")
+        sections.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        if self.llm_backend:
+            sections.append(f"**Backend:** {self.llm_backend.name}\n")
+        sections.append("\n")
+
+        # Original Inputs
+        sections.append("## Original Inputs\n\n")
+        sections.append(f"**Prompt:** {original_inputs.get('prompt', 'N/A')}\n\n")
+
+        # Resolved Configuration
+        sections.append("## Resolved Configuration\n\n")
+        sections.append("| Parameter | Value | Source |\n")
+        sections.append("|-----------|-------|--------|\n")
+        config_keys = [
+            "backend",
+            "length",
+            "age_range",
+            "style",
+            "tone",
+            "theme",
+            "setting",
+            "learning_focus",
+            "image_style",
+            "use_context",
+            "continuation_mode",
+            "ending_type",
+            "debug",
+            "verbose",
+        ]
+        for key in config_keys:
+            cli_val = cli_args.get(key) if isinstance(cli_args, dict) else None
+            cfg_val = resolved_config.get(key)
+            value = cli_val if cli_val is not None else cfg_val
+            if value is not None:
+                source = "cli" if cli_val is not None else "config"
+                sections.append(f"| {key} | {value} | {source} |\n")
+
+        characters = cli_args.get("characters") if isinstance(cli_args, dict) else None
+        if characters:
+            sections.append(f"| characters | {', '.join(characters)} | cli |\n")
+        sections.append("\n")
+
+        # Prompt Object Details (after random resolution)
+        if self.story_prompt:
+            prompt = self.story_prompt
+            sections.append("## Prompt Object (after random resolution)\n\n")
+            sections.append(f"- **prompt:** {prompt.prompt}\n")
+            sections.append(f"- **length:** {prompt.length}\n")
+            sections.append(f"- **age_range:** {prompt.age_range}\n")
+            sections.append(f"- **style:** {prompt.style}\n")
+            sections.append(f"- **tone:** {prompt.tone}\n")
+            sections.append(f"- **theme:** {prompt.theme}\n")
+            sections.append(f"- **image_style:** {prompt.image_style}\n")
+            if prompt.setting:
+                sections.append(f"- **setting:** {prompt.setting}\n")
+            if prompt.characters:
+                sections.append(f"- **characters:** {', '.join(prompt.characters)}\n")
+            if prompt.learning_focus:
+                sections.append(f"- **learning_focus:** {prompt.learning_focus}\n")
+            sections.append(f"- **continuation_mode:** {prompt.continuation_mode}\n")
+            if prompt.continuation_mode:
+                sections.append(f"- **ending_type:** {prompt.ending_type}\n")
+            sections.append("\n")
+
+        # Full Story Prompt Sent to LLM
+        if self.story_prompt:
+            sections.append("## Full Story Prompt (sent to LLM)\n\n")
+            sections.append("```text\n")
+            sections.append(self.story_prompt.story)
+            sections.append("\n```\n\n")
+
+        # Context Used
+        sections.append("## Context\n\n")
+        if self.context:
+            word_count = len(self.context.split())
+            sections.append(f"**Length:** {len(self.context)} chars, ~{word_count} words\n\n")
+            sections.append("### Full Context\n\n")
+            sections.append(self.context)
+            sections.append("\n\n")
+        else:
+            sections.append("*No context was loaded for this session.*\n\n")
+
+        # Config file details
+        if self.config:
+            sections.append("## Config File\n\n")
+            config_path = resolved_config.get("config_path")
+            if config_path:
+                sections.append(f"**Loaded from:** `{config_path}`\n\n")
+            try:
+                config_dict = self.config.to_dict()
+                for section_name, section_values in config_dict.items():
+                    sections.append(f"### [{section_name}]\n\n")
+                    if isinstance(section_values, dict):
+                        for k, v in section_values.items():
+                            sections.append(f"- {k} = {v}\n")
+                    sections.append("\n")
+            except Exception:
+                sections.append("*Could not serialize config.*\n\n")
+
+        try:
+            with open(dump_path, "w", encoding="utf-8") as f:
+                f.write("".join(sections))
+            console.print(f"[dim]📋 Context dump saved: {dump_path}[/dim]")
+        except Exception as e:
+            console.print(f"[dim]Warning: Could not save context dump: {e}[/dim]")
 
     def _phase_image_decision(self) -> None:
         """Image generation decision phase."""

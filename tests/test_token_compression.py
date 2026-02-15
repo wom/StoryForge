@@ -4,8 +4,10 @@ These tests verify the token counting heuristics and compression thresholds
 used to prevent exceeding model token limits.
 """
 
+from storyforge.anthropic_backend import AnthropicBackend
 from storyforge.gemini_backend import GeminiBackend
 from storyforge.llm_backend import LLMBackend
+from storyforge.openai_backend import OpenAIBackend
 
 
 class TestTokenEstimation:
@@ -175,3 +177,63 @@ class TestCompressionRatioMatchesOpenAI:
         # Verify our ratio matches OpenAI's
         assert GeminiBackend.COMPRESSION_TARGET_RATIO == 0.875
         assert abs(openai_ratio - 0.875) < 0.001  # Floating point tolerance
+
+
+class TestOpenAITokenLimits:
+    """Test OpenAI backend token limit awareness."""
+
+    def test_default_text_input_limit(self):
+        """Test OpenAI default text input limit."""
+        assert OpenAIBackend.DEFAULT_TEXT_INPUT_LIMIT == 128000
+
+    def test_model_token_limits_defined(self):
+        """Test that known models have token limits defined."""
+        assert "gpt-4o" in OpenAIBackend.MODEL_TOKEN_LIMITS
+        assert "gpt-5.2" in OpenAIBackend.MODEL_TOKEN_LIMITS
+        assert "gpt-4" in OpenAIBackend.MODEL_TOKEN_LIMITS
+
+    def test_gpt4_has_correct_limit(self):
+        """Test GPT-4 has the well-known 8K limit."""
+        assert OpenAIBackend.MODEL_TOKEN_LIMITS["gpt-4"] == 8192
+
+    def test_gpt4o_has_correct_limit(self):
+        """Test GPT-4o has 128K limit."""
+        assert OpenAIBackend.MODEL_TOKEN_LIMITS["gpt-4o"] == 128000
+
+    def test_context_budget_with_default_model(self):
+        """Test that context budget is 50% of model limit."""
+        limit = OpenAIBackend.DEFAULT_TEXT_INPUT_LIMIT
+        expected_budget = int(limit * LLMBackend.CONTEXT_BUDGET_RATIO)
+        assert expected_budget == 64000
+
+
+class TestAnthropicTokenLimits:
+    """Test Anthropic backend token limit awareness."""
+
+    def test_default_text_input_limit(self):
+        """Test Anthropic default text input limit is 200K."""
+        assert AnthropicBackend.DEFAULT_TEXT_INPUT_LIMIT == 200000
+
+    def test_model_token_limits_defined(self):
+        """Test that Claude models have token limits defined."""
+        assert "claude-3-5-sonnet" in AnthropicBackend.MODEL_TOKEN_LIMITS
+        assert "claude-3-opus" in AnthropicBackend.MODEL_TOKEN_LIMITS
+
+    def test_context_budget_with_default_model(self):
+        """Test that context budget is 50% of model limit."""
+        limit = AnthropicBackend.DEFAULT_TEXT_INPUT_LIMIT
+        expected_budget = int(limit * LLMBackend.CONTEXT_BUDGET_RATIO)
+        assert expected_budget == 100000
+
+
+class TestAllBackendsShareCompressionBehavior:
+    """Verify all backends share the same COMPRESSION_TRIGGER_RATIO from base class."""
+
+    def test_gemini_inherits_trigger_ratio(self):
+        """Test Gemini uses the base class trigger ratio."""
+        # Gemini has its own COMPRESSION_TRIGGER_RATIO which should match
+        assert GeminiBackend.COMPRESSION_TRIGGER_RATIO == 0.80
+
+    def test_base_class_trigger_ratio(self):
+        """Test base class defines the trigger ratio."""
+        assert LLMBackend.COMPRESSION_TRIGGER_RATIO == 0.80
