@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Interactive TUI story picker for story extension with split-pane layout, full story preview, and keyboard navigation. (commit: 777d307)
+- Character registry system tracking character appearances across stories and injecting visual descriptions into image prompts for consistent illustrations. (commit: 8832736)
+- Temporal context sampling with era-based stratified file selection and sentence deduplication for smarter context summarization. (commit: 8832736)
+- Token limit awareness with automatic prompt size detection and truncation to stay within model limits. (commit: 66e8d91)
+- `override_prompt` parameter for image generation allowing per-image scene-specific prompts. (commit: a89bdbb)
+- `setting` and `characters` prompt fields configurable via CLI flags (`--setting`, `--character`) and config file. (commit: 54ab1e0)
+
+### Changed
+- Standardized image prompt generation across all backends (Gemini, OpenAI, Anthropic) using shared LLM-based scene description with story progression labels (opening, rising action, climax, resolution). (commit: 4aa356e)
+- Gemini backend now uses LLM-based image prompt generation instead of naive paragraph splitting, matching OpenAI/Anthropic quality. (commit: 4aa356e)
+- Image prompts now include character visual descriptions from the character registry for consistent character depiction across illustrations. (commit: 4aa356e)
+- Fallback image prompts improved with story segmentation and scene labels instead of raw paragraph extraction. (commit: 4aa356e)
+
+### Test
+- Comprehensive test suites for TUI story picker, shared image prompt helpers (21 new tests), and character context integration. (commits: 777d307, 4aa356e)
+
+### Docs
+- CONFIGURATION.md updated with `image_count`, `openai_story_model`, `openai_image_model` fields.
+- README.md updated with character registry, intelligent image prompts, token safety, setting/characters options, and TUI story picker features.
+- Context intelligence implementation plan documented at `docs/CONTEXT_INTELLIGENCE_PLAN.md`.
+
 ## [0.0.6] - 2026-01-24
 
 ### Added

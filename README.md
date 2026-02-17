@@ -12,13 +12,16 @@ StoryForge is a command-line tool that generates illustrated children's stories 
 
 - 📖 Generate custom children's stories from simple prompts
 - 🎨 Create AI illustrations with multiple art styles (chibi, realistic, cartoon, watercolor, sketch)
-- ⚙️ Flexible story customization (age range, length, tone, theme, learning focus)
+- ⚙️ Flexible story customization (age range, length, tone, theme, learning focus, setting, characters)
 - 💾 Save stories and images with organized output directories
 - 🖥️ Interactive terminal interface or direct CLI usage
 - 📚 Context system for character consistency across stories
+- 👤 **Character registry** - Tracks character appearances and injects visual descriptions into image prompts
+- 🖼️ **Intelligent image prompts** - LLM-generated scene descriptions with story progression and character context
 - ⏯️ **Checkpoint system** for resuming interrupted sessions
-- 📝 **Story extension** - Continue existing stories with wrap-up or cliffhanger endings
-- 🔄 **Intelligent context summarization** for efficient token usage with large context files
+- 📝 **Story extension** with interactive TUI story picker for browsing and selecting stories
+- 🔄 **Intelligent context summarization** with temporal sampling and sentence deduplication
+- 🔒 **Token safety** - Automatic prompt size detection and truncation to stay within model limits
 
 ## Configuration
 
@@ -312,6 +315,9 @@ storyforge "A brave mouse goes on an adventure" \
   --length short \
   --tone exciting \
   --image-style cartoon \
+  --setting "enchanted forest" \
+  --character "Luna the wise owl" \
+  --character "Max the brave mouse" \
   --output-dir my_story \
   -n 3
 ```
@@ -324,6 +330,8 @@ storyforge "A brave mouse goes on an adventure" \
 - **Tone**: `gentle`, `exciting`, `silly`, `heartwarming`, `magical`, `random`
 - **Theme**: `courage`, `kindness`, `teamwork`, `problem_solving`, `creativity`, `random`
 - **Image Style**: `chibi`, `realistic`, `cartoon`, `watercolor`, `sketch`
+- **Setting**: Free text (e.g., `enchanted forest`, `space station`)
+- **Characters**: Repeatable flag (e.g., `--character "Luna the owl" --character "Max the mouse"`)
 
 ### All Available Commands
 
