@@ -483,6 +483,13 @@ class PhaseExecutor:
         use_context = self.checkpoint_data.resolved_config.get("use_context", True)
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
+        # Skip context loading for extensions — the pre-built prompt already
+        # carries the full chain content as its context field.
+        if self.story_prompt is not None:
+            if verbose:
+                console.print("[dim]Context loading skipped (using pre-built prompt context)[/dim]")
+            return
+
         if not use_context:
             self.context = None
             if verbose:

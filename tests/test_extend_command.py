@@ -227,13 +227,19 @@ class TestExtendCommandIntegration:
         assert exc_info.value.exit_code == 1
 
     @patch("storyforge.StoryForge.ContextManager")
-    @patch("storyforge.StoryForge.Confirm.ask")
     @patch("storyforge.StoryForge.PhaseExecutor")
     @patch("storyforge.StoryForge.load_config")
     @patch("storyforge.StoryForge.CheckpointManager")
+    @patch("storyforge.StoryForge.pick_story")
     @patch("typer.prompt")
     def test_extend_command_wrap_up(
-        self, mock_prompt, mock_checkpoint_mgr, mock_load_config, mock_executor, mock_confirm, mock_context_mgr
+        self,
+        mock_prompt,
+        mock_pick_story,
+        mock_checkpoint_mgr,
+        mock_load_config,
+        mock_executor,
+        mock_context_mgr,
     ):
         """Test extend command with wrap-up ending."""
         # Mock context manager
@@ -252,6 +258,10 @@ class TestExtendCommandIntegration:
             "# Story\nFull story content...",
             {"characters": "Alice", "theme": "courage"},  # Valid theme
         )
+        mock_mgr.load_chain_for_extension.return_value = (
+            "# Story\nFull story content...",
+            {"characters": "Alice", "theme": "courage"},  # Valid theme
+        )
         # Mock get_story_chain to return a single-story chain
         mock_mgr.get_story_chain.return_value = [
             {
@@ -263,9 +273,9 @@ class TestExtendCommandIntegration:
         ]
         mock_context_mgr.return_value = mock_mgr
 
-        # Mock user input
-        mock_prompt.side_effect = [1, 1]  # Select story 1, wrap-up ending
-        mock_confirm.return_value = False  # Don't view full story
+        # Mock user input: pick_story returns 0-based index, typer.prompt for ending choice
+        mock_pick_story.return_value = 0
+        mock_prompt.return_value = 1  # wrap-up ending
 
         # Mock config
         mock_config = Mock()
@@ -298,9 +308,9 @@ class TestExtendCommandIntegration:
         assert "Full story content" in prompt_obj.context
 
     @patch("storyforge.StoryForge.ContextManager")
-    @patch("typer.prompt")
-    def test_extend_command_invalid_selection(self, mock_prompt, mock_context_mgr):
-        """Test extend command with invalid story selection."""
+    @patch("storyforge.StoryForge.pick_story")
+    def test_extend_command_cancelled(self, mock_pick_story, mock_context_mgr):
+        """Test extend command when user cancels the picker."""
         # Mock context manager
         mock_mgr = Mock()
         mock_mgr.list_available_contexts.return_value = [
@@ -312,8 +322,8 @@ class TestExtendCommandIntegration:
         ]
         mock_context_mgr.return_value = mock_mgr
 
-        # Mock user selecting invalid option
-        mock_prompt.return_value = 5  # Invalid selection
+        # Mock picker returning None (cancelled)
+        mock_pick_story.return_value = None
 
         from click.exceptions import Exit
 
@@ -322,7 +332,7 @@ class TestExtendCommandIntegration:
         with pytest.raises(Exit) as exc_info:
             extend_story(backend=None, verbose=False, debug=False)
 
-        assert exc_info.value.exit_code == 1
+        assert exc_info.value.exit_code == 0
 
 
 class TestOutputDirectoryNaming:
