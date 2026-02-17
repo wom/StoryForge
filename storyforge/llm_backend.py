@@ -12,9 +12,13 @@ Supported backends:
 - OpenAI: requires OPENAI_API_KEY
 """
 
+import logging
 import os
+import re
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .config import Config
@@ -69,9 +73,6 @@ class LLMBackend(ABC):
         Returns:
             str: The original or truncated prompt text.
         """
-        import logging
-
-        logger = logging.getLogger(__name__)
         prompt_tokens = self.estimate_token_count(contents)
         trigger_limit = int(self.text_input_limit * self.COMPRESSION_TRIGGER_RATIO)
 
@@ -173,27 +174,210 @@ class LLMBackend(ABC):
         """
         raise NotImplementedError("Subclass must implement generate_image_prompt method")
 
-    def _generate_fallback_image_prompts(self, story: str, context: str, num_prompts: int) -> list[str]:
-        """
-        Generate fallback image prompts when the LLM API fails.
+    def _build_image_prompt_request(
+        self, story: str, context: str, num_prompts: int, character_descriptions: str = ""
+    ) -> str:
+        """Build a standardized LLM instruction for generating image prompts.
 
-        Splits the story into paragraphs and creates simple illustration
-        prompts from them.
+        Constructs a detailed instruction asking the LLM to break the story into
+        visually distinct, progressive image prompts with character context and
+        scene differentiation.
+
+        Args:
+            story: The generated story text.
+            context: Additional story context.
+            num_prompts: Number of image prompts to generate.
+            character_descriptions: Formatted character visual descriptions.
+
+        Returns:
+            The instruction text to send to the LLM.
+        """
+        scene_labels = self._get_scene_labels(num_prompts)
+        scene_guidance = "\n".join(f"  - Image {i + 1}: {label}" for i, label in enumerate(scene_labels))
+
+        parts = [
+            f"Break this story into exactly {num_prompts} detailed, progressive image prompts "
+            f"for generating illustrations. Each prompt must describe a DIFFERENT moment in the story, "
+            f"progressing from beginning to end.\n",
+        ]
+
+        if character_descriptions:
+            parts.append(
+                "\n=== CHARACTER VISUAL DESCRIPTIONS ===\n"
+                "Use these descriptions to ensure characters look consistent across ALL images. "
+                "Include these visual details in every prompt where the character appears:\n"
+                f"{character_descriptions}\n"
+            )
+
+        parts.append(f"\n=== STORY ===\n{story}\n")
+
+        if context:
+            parts.append(f"\n=== CONTEXT ===\n{context}\n")
+
+        parts.append(
+            "\n=== INSTRUCTIONS ===\n"
+            f"Create {num_prompts} image prompts following this progression:\n"
+            f"{scene_guidance}\n\n"
+            "Each prompt MUST:\n"
+            "- Depict a distinct narrative moment (different scene, setting, action)\n"
+            "- Include detailed character appearances (hair color, clothing, glasses, etc.)\n"
+            "- Describe the setting, lighting, colors, and mood\n"
+            "- Vary composition and framing between images\n"
+            "- Be child-friendly and suitable for AI image generation\n\n"
+            f"Return exactly {num_prompts} prompts, each on a new line, numbered 1-{num_prompts}. "
+            "Do not include any other text, headers, or explanations."
+        )
+
+        return "".join(parts)
+
+    @staticmethod
+    def _get_scene_labels(num_prompts: int) -> list[str]:
+        """Get descriptive scene labels for progressive image prompts.
+
+        Args:
+            num_prompts: Number of images being generated.
+
+        Returns:
+            List of scene label strings, one per image.
+        """
+        if num_prompts == 1:
+            return ["The key moment of the story — capture the essence of the narrative"]
+        if num_prompts == 2:
+            return [
+                "Opening scene — establish characters, setting, and the beginning of the story",
+                "Climactic or closing scene — the turning point or resolution",
+            ]
+        if num_prompts == 3:
+            return [
+                "Opening scene — establish characters and setting",
+                "Mid-story turning point — rising action or key conflict",
+                "Climactic or closing scene — resolution or emotional peak",
+            ]
+        if num_prompts == 4:
+            return [
+                "Opening scene — introduce characters and setting",
+                "Rising action — the adventure or conflict develops",
+                "Climactic moment — the peak of tension or excitement",
+                "Resolution — the ending or aftermath",
+            ]
+        # 5+
+        labels = [
+            "Opening scene — introduce characters and setting",
+            "Early development — the journey or conflict begins",
+            "Mid-story turning point — a key moment of change",
+            "Climactic moment — the peak of the story",
+            "Resolution or epilogue — the ending",
+        ]
+        while len(labels) < num_prompts:
+            labels.insert(-1, f"Scene {len(labels)} — a distinct moment in the story")
+        return labels[:num_prompts]
+
+    @staticmethod
+    def _parse_numbered_prompts(text: str, num_prompts: int) -> list[str] | None:
+        """Parse numbered prompts from an LLM response.
+
+        Handles common formats: '1. ', '1) ', '1: ', '**1.** ', '**1)** '.
+        Joins multi-line prompts (lines that don't start with a number are
+        appended to the previous prompt). Accepts >= num_prompts results
+        and truncates.
+
+        Args:
+            text: Raw LLM response text.
+            num_prompts: Expected number of prompts.
+
+        Returns:
+            List of prompt strings if parsing succeeded, None otherwise.
+        """
+        # Pattern matches: optional bold markers, digit(s), separator, optional bold markers
+        numbered_line_pattern = re.compile(r"^\s*\*{0,2}\s*(\d+)\s*[\.\)\:]\s*\*{0,2}\s*(.+)")
+        prompts: list[str] = []
+
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            match = numbered_line_pattern.match(line)
+            if match:
+                prompt_text = match.group(2).strip()
+                if prompt_text:
+                    prompts.append(prompt_text)
+            elif prompts:
+                # Non-numbered line — append to previous prompt (multi-line support)
+                prompts[-1] += " " + line
+
+        if len(prompts) >= num_prompts:
+            return prompts[:num_prompts]
+
+        logger.debug(
+            "Parsed %d prompts but expected %d, falling back",
+            len(prompts),
+            num_prompts,
+        )
+        return None
+
+    @staticmethod
+    def _segment_story(story: str, num_segments: int) -> list[str]:
+        """Divide a story into roughly equal narrative segments.
+
+        Splits by paragraphs and groups them into the requested number of
+        segments. Used by the fallback prompt generator to assign distinct
+        story portions to each image.
+
+        Args:
+            story: The full story text.
+            num_segments: Number of segments to create.
+
+        Returns:
+            List of story segment strings.
+        """
+        paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
+        if not paragraphs:
+            return [story] * num_segments
+
+        if len(paragraphs) <= num_segments:
+            # Fewer paragraphs than segments — pad with the last paragraph
+            padded = list(paragraphs)
+            while len(padded) < num_segments:
+                padded.append(paragraphs[-1])
+            return padded
+
+        # Distribute paragraphs evenly across segments
+        segments: list[str] = []
+        chunk_size = len(paragraphs) / num_segments
+        for i in range(num_segments):
+            start = int(i * chunk_size)
+            end = int((i + 1) * chunk_size)
+            segment = "\n".join(paragraphs[start:end])
+            segments.append(segment)
+
+        return segments
+
+    def _generate_fallback_image_prompts(self, story: str, context: str, num_prompts: int) -> list[str]:
+        """Generate fallback image prompts when the LLM API fails.
+
+        Splits the story into segments and creates scene-labeled illustration
+        prompts with character context. Used as a reliable mechanical fallback
+        when the LLM-based approach is unavailable.
 
         Args:
             story: The story text.
-            context: Additional context.
+            context: Additional context (may include character descriptions).
             num_prompts: Number of prompts needed.
 
         Returns:
-            Simple fallback image prompts.
+            Simple fallback image prompts with scene labels and context.
         """
-        paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
+        segments = self._segment_story(story, num_prompts)
+        scene_labels = self._get_scene_labels(num_prompts)
         prompts = []
 
         for i in range(num_prompts):
-            base = paragraphs[i] if i < len(paragraphs) else story
-            prompt = f"Create a detailed, child-friendly illustration for this part of the story: {base}"
+            label = scene_labels[i]
+            segment = segments[i]
+            prompt = (
+                f"Create a detailed, child-friendly illustration for the {label.split('—')[0].strip()} "
+                f"of the story:\n{segment}"
+            )
             if context:
                 prompt += f"\nContext: {context}"
             prompts.append(prompt)

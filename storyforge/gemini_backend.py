@@ -155,15 +155,39 @@ class GeminiBackend(LLMBackend):
         return truncated
 
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
-        paragraphs = [p.strip() for p in story.split("\n") if p.strip()]
-        prompts: list[str] = []
-        for i in range(num_prompts):
-            base = paragraphs[i] if i < len(paragraphs) else story
-            prompt = f"Create a detailed, child-friendly illustration for this part of the story: {base}"
-            if context:
-                prompt += f"\nContext: {context}"
-            prompts.append(prompt)
-        return prompts
+        """Break the story into detailed image prompts using Gemini's text model.
+
+        Uses the shared LLM-based approach: builds a standardized instruction,
+        sends it to the Gemini text model, and parses numbered prompts from the
+        response. Falls back to mechanical paragraph splitting on failure.
+
+        Args:
+            story: The generated story text.
+            context: Additional context (may include character descriptions).
+            num_prompts: Number of image prompts to generate.
+
+        Returns:
+            List of detailed image prompts, one per requested image.
+        """
+        try:
+            image_prompt_request = self._build_image_prompt_request(story, context, num_prompts)
+            model = self._text_model or "gemini-2.5-flash"
+            response = self.client.models.generate_content(model=model, contents=image_prompt_request)
+            candidates = getattr(response, "candidates", None)
+            if candidates and len(candidates) > 0:
+                candidate = candidates[0]
+                content = getattr(candidate, "content", None)
+                if content:
+                    parts = getattr(content, "parts", None) or []
+                    if parts and getattr(parts[0], "text", None):
+                        text: str = parts[0].text.strip()
+                        parsed = self._parse_numbered_prompts(text, num_prompts)
+                        if parsed:
+                            return parsed
+            return self._generate_fallback_image_prompts(story, context, num_prompts)
+        except Exception:
+            logger.debug("Image prompt generation failed, using fallback", exc_info=True)
+            return self._generate_fallback_image_prompts(story, context, num_prompts)
 
     def generate_story(self, prompt: Prompt) -> str:
         try:

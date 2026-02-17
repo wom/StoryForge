@@ -105,70 +105,35 @@ class OpenAIBackend(LLMBackend):
         return self.DEFAULT_TEXT_INPUT_LIMIT
 
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
-        """
-        Break the given story into detailed image prompts using OpenAI's understanding.
-        Each prompt will be incredibly detailed for use with DALL-E image generation.
+        """Break the story into detailed image prompts using OpenAI's text model.
+
+        Uses the shared LLM-based approach: builds a standardized instruction,
+        sends it to the configured story model, and parses numbered prompts from
+        the response. Falls back to mechanical paragraph splitting on failure.
 
         Args:
-            story (str): The generated story to break into image prompts.
-            context (str): Additional context for the story.
-            num_prompts (int): The number of image prompts to return.
+            story: The generated story text.
+            context: Additional context (may include character descriptions).
+            num_prompts: Number of image prompts to generate.
 
         Returns:
-            list[str]: A list of detailed image prompts describing scenes from the story.
+            List of detailed image prompts, one per requested image.
         """
         try:
-            # Create a comprehensive prompt for GPT to generate image descriptions
-            image_prompt_request = (
-                f"Please break this story into {num_prompts} detailed, progressive image prompts "
-                f"that would be perfect for generating illustrations with DALL-E. Each prompt should be "
-                f"incredibly detailed, focusing on visual elements like character appearance, "
-                f"setting details, colors, lighting, and mood.\n\n"
-                f"Story: {story}\n\n"
-            )
-
-            if context:
-                image_prompt_request += f"Context: {context}\n\n"
-
-            image_prompt_request += (
-                f"Return exactly {num_prompts} image prompts, each on a new line, numbered 1-{num_prompts}. "
-                f"Each should be child-friendly, detailed, and suitable for AI image generation."
-            )
+            image_prompt_request = self._build_image_prompt_request(story, context, num_prompts)
 
             response = self.client.chat.completions.create(
                 model=self.story_model,
                 messages=[{"role": "user", "content": image_prompt_request}],
+                temperature=0.5,
             )
 
-            # Extract and parse the prompts
             if response.choices and response.choices[0].message and response.choices[0].message.content:
                 text = response.choices[0].message.content.strip()
-                # Parse numbered prompts from GPT's response
-                lines = text.split("\n")
-                prompts: list[str] = []
+                parsed = self._parse_numbered_prompts(text, num_prompts)
+                if parsed:
+                    return parsed
 
-                for line in lines:
-                    line = line.strip()
-                    # Look for numbered lines like "1. " or "1) "
-                    if line and (line[0].isdigit() or line.startswith(str(len(prompts) + 1))):
-                        # Remove the number and clean up
-                        cleaned = line
-                        for prefix in [
-                            f"{len(prompts) + 1}. ",
-                            f"{len(prompts) + 1}) ",
-                            f"{len(prompts) + 1}: ",
-                        ]:
-                            if cleaned.startswith(prefix):
-                                cleaned = cleaned[len(prefix) :]
-                                break
-                        if cleaned:
-                            prompts.append(cleaned)
-
-                # If we got the right number of prompts, return them
-                if len(prompts) == num_prompts:
-                    return prompts
-
-            # Fallback: Simple story-based prompts
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
         except Exception:

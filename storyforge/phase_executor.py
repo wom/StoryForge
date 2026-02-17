@@ -927,9 +927,22 @@ class PhaseExecutor:
                 console.print("[red]No LLM backend available for image generation.[/red]")
                 return
 
+            # Enrich context with character visual descriptions for consistent depiction
+            image_context = self.context or ""
+            try:
+                max_tokens = self.llm_backend.get_context_token_budget()
+                ctx_mgr = ContextManager(max_tokens=max_tokens)
+                char_descriptions = ctx_mgr.format_registry_for_image_prompt()
+                if char_descriptions:
+                    image_context = f"Character Appearances:\n{char_descriptions}\n\n{image_context}".strip()
+                    if verbose:
+                        console.print("[dim]Injected character descriptions into image prompts[/dim]")
+            except Exception:
+                logging.getLogger(__name__).debug("Could not load character descriptions for images", exc_info=True)
+
             image_prompts = self.llm_backend.generate_image_prompt(
                 story=self.story or "",
-                context=self.context or "",
+                context=image_context,
                 num_prompts=num_images,
             )
 

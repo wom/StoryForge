@@ -334,11 +334,17 @@ class TestPhaseExecutorPhases:
         # Still asks in continuation mode, just doesn't force generation
         assert self.checkpoint_data.user_decisions["wants_images"] is False
 
+    @patch("storyforge.phase_executor.ContextManager")
     @patch("storyforge.phase_executor.Progress")
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.Path")
-    def test_phase_image_generate(self, mock_path_class, mock_console, mock_progress):
+    def test_phase_image_generate(self, mock_path_class, mock_console, mock_progress, mock_cm_class):
         """Test _phase_image_generate generates images."""
+        # Mock ContextManager for character descriptions
+        mock_cm = MagicMock()
+        mock_cm.format_registry_for_image_prompt.return_value = "- Mouse: brown fur, round ears"
+        mock_cm_class.return_value = mock_cm
+
         # Mock Progress context manager
         mock_progress_instance = MagicMock()
         mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
