@@ -45,8 +45,8 @@ class TestStoryPickerApp:
         """
         app = StoryPicker(SAMPLE_STORIES)
         async with app.run_test() as pilot:
-            await pilot.press("enter")   # open full story view
-            await pilot.press("enter")   # confirm selection
+            await pilot.press("enter")  # open full story view
+            await pilot.press("enter")  # confirm selection
         assert app.return_value == 0
 
     @pytest.mark.asyncio
@@ -140,13 +140,12 @@ class TestStoryPickerApp:
             assert option_list.option_count == 3
             await pilot.press("escape")
 
-
     @pytest.mark.asyncio
     async def test_full_story_view_escape_returns_to_picker(self):
         """Test that Escape from full-story view returns to the picker."""
         app = StoryPicker(SAMPLE_STORIES)
         async with app.run_test() as pilot:
-            await pilot.press("enter")   # open full story view
+            await pilot.press("enter")  # open full story view
             await pilot.press("escape")  # back to picker
             # Now press escape again to cancel entirely
             await pilot.press("escape")
@@ -157,11 +156,11 @@ class TestStoryPickerApp:
         """Test going back from full-story view and selecting a different story."""
         app = StoryPicker(SAMPLE_STORIES)
         async with app.run_test() as pilot:
-            await pilot.press("enter")   # full story of item 0
+            await pilot.press("enter")  # full story of item 0
             await pilot.press("escape")  # back to picker
-            await pilot.press("down")    # move to item 1
-            await pilot.press("enter")   # full story of item 1
-            await pilot.press("enter")   # confirm item 1
+            await pilot.press("down")  # move to item 1
+            await pilot.press("enter")  # full story of item 1
+            await pilot.press("enter")  # confirm item 1
         assert app.return_value == 1
 
     @pytest.mark.asyncio
@@ -186,7 +185,7 @@ class TestStoryPickerApp:
         app = StoryPicker(SAMPLE_STORIES)
         async with app.run_test() as pilot:
             await pilot.press("enter")  # full story view
-            await pilot.press("q")      # quit entirely
+            await pilot.press("q")  # quit entirely
         assert app.return_value is None
 
     @pytest.mark.asyncio

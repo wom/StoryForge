@@ -862,6 +862,124 @@ class ContextManager:
 
         return result
 
+    # Visual appearance keywords for filtering traits toward image prompts
+    _VISUAL_KEYWORDS: tuple[str, ...] = (
+        "wear",
+        "wore",
+        "glasses",
+        "hair",
+        "eyes",
+        "tall",
+        "short",
+        "big",
+        "small",
+        "long",
+        "round",
+        "curly",
+        "straight",
+        "red",
+        "blue",
+        "green",
+        "brown",
+        "black",
+        "white",
+        "golden",
+        "silver",
+        "blond",
+        "fur",
+        "feathers",
+        "tail",
+        "wings",
+        "hat",
+        "coat",
+        "jacket",
+        "dress",
+        "shirt",
+        "boots",
+        "scarf",
+        "cape",
+        "crown",
+        "spots",
+        "stripes",
+        "freckles",
+        "beard",
+        "moustache",
+        "mustache",
+        "tiny",
+        "large",
+        "plump",
+        "thin",
+        "fluffy",
+        "color",
+        "colour",
+        "bright",
+        "dark",
+        "pale",
+        "little",
+        "old",
+        "young",
+        "looked",
+        "appearance",
+    )
+
+    def format_registry_for_image_prompt(self) -> str:
+        """Format the character registry for image prompt injection.
+
+        Focuses on visual/physical traits (appearance, clothing, accessories)
+        to ensure consistent character depiction across generated images.
+        Characters are sorted by appearance frequency.
+
+        Returns:
+            Formatted character descriptions emphasizing visual details,
+            or empty string if no characters exist.
+        """
+        registry = self._load_registry()
+        characters = registry.get("characters", {})
+        if not characters:
+            return ""
+
+        sorted_chars = sorted(
+            characters.items(),
+            key=lambda x: len(x[1].get("appearances", [])),
+            reverse=True,
+        )
+
+        lines: list[str] = []
+        for name, data in sorted_chars:
+            traits = data.get("traits", [])
+            if not traits:
+                lines.append(f"- {name}: (no visual details available)")
+                continue
+
+            # Prefer traits with visual/appearance keywords
+            visual_traits: list[str] = []
+            other_traits: list[str] = []
+            for trait in traits:
+                trait_lower = trait.lower()
+                if any(kw in trait_lower for kw in self._VISUAL_KEYWORDS):
+                    visual_traits.append(trait.rstrip("."))
+                else:
+                    other_traits.append(trait.rstrip("."))
+
+            # Use visual traits if available, otherwise use all traits
+            selected = visual_traits if visual_traits else other_traits[:2]
+            if selected:
+                lines.append(f"- {name}: {'; '.join(selected)}")
+            else:
+                lines.append(f"- {name}: (no visual details available)")
+
+        if not lines:
+            return ""
+
+        result = "\n".join(lines)
+
+        # Trim to budget
+        while self._estimate_tokens(result) > self.MAX_REGISTRY_TOKENS and len(lines) > 1:
+            lines.pop()
+            result = "\n".join(lines)
+
+        return result
+
     def _populate_known_characters(self) -> None:
         """Populate the set of known character names for scoring bonuses.
 

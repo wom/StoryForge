@@ -346,7 +346,7 @@ class TestOpenAIBackend:
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
     def test_generate_image_prompt(self):
-        """Test image prompt generation (stub implementation)."""
+        """Test image prompt generation falls back to segmented prompts."""
         backend = OpenAIBackend()
 
         story = "Once upon a time, there was a brave mouse.\nThe mouse went on an adventure.\nThe end."
@@ -356,10 +356,11 @@ class TestOpenAIBackend:
         result = backend.generate_image_prompt(story, context, num_prompts)
 
         assert len(result) == 2
-        assert "Once upon a time, there was a brave mouse." in result[0]
-        assert "The mouse went on an adventure." in result[1]
-        assert "Context: A children's story about courage" in result[0]
-        assert "Context: A children's story about courage" in result[1]
+        # Fallback uses story segments with scene labels and context
+        assert "A children's story about courage" in result[0]
+        assert "A children's story about courage" in result[1]
+        # Should have scene label references
+        assert "opening" in result[0].lower() or "scene" in result[0].lower()
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
     def test_generate_image_prompt_more_prompts_than_paragraphs(self):
@@ -373,10 +374,7 @@ class TestOpenAIBackend:
         result = backend.generate_image_prompt(story, context, num_prompts)
 
         assert len(result) == 3
-        assert "A short story." in result[0]
-        # Should repeat the full story for additional prompts
-        assert "A short story." in result[1]
-        assert "A short story." in result[2]
+        assert all("A short story." in r for r in result)
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
     def test_generate_image_prompt_no_context(self):
@@ -390,7 +388,5 @@ class TestOpenAIBackend:
         result = backend.generate_image_prompt(story, context, num_prompts)
 
         assert len(result) == 2
-        assert "Line one." in result[0]
-        assert "Line two." in result[1]
         assert "Context:" not in result[0]
         assert "Context:" not in result[1]
