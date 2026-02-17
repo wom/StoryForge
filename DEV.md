@@ -66,19 +66,31 @@ storyforge "Any prompt here" --debug
 ```
 storyforge/
 ├── __init__.py
-├── StoryForge.py      # Main CLI application
+├── StoryForge.py        # Main CLI application (Typer)
 ├── anthropic_backend.py # Anthropic Claude API integration
-├── context.py         # Context management
-├── gemini_backend.py  # Gemini API integration
-├── llm_backend.py     # LLM backend interface
-├── openai_backend.py  # OpenAI API integration (GPT + DALL-E)
-├── prompt.py          # Prompt handling and validation
-└── test_story.txt     # Test story for debug mode
+├── checkpoint.py        # Session persistence and resume
+├── config.py            # Configuration loading and validation
+├── console.py           # Shared Rich console instance
+├── context.py           # Context management, character registry, summarization
+├── gemini_backend.py    # Gemini API integration
+├── llm_backend.py       # LLM backend interface and shared helpers
+├── model_discovery.py   # Dynamic Gemini model discovery
+├── openai_backend.py    # OpenAI API integration (GPT + image models)
+├── phase_executor.py    # Phase-based execution engine
+├── prompt.py            # Prompt handling and validation
+├── story_picker.py      # Interactive TUI story picker (Textual)
+├── test_story.txt       # Test story for debug mode
+└── schema/              # Validation schema and CLI integration
+    ├── __init__.py
+    ├── cli_integration.py
+    ├── config_schema.py
+    └── core.py
 
-tests/                 # Test suite
-Makefile              # Development automation
-pyproject.toml        # Project configuration
-.pre-commit-config.yaml # Pre-commit hooks
+tests/                   # Test suite (pytest)
+docs/                    # Documentation
+Makefile                 # Development automation
+pyproject.toml           # Project configuration
+.pre-commit-config.yaml  # Pre-commit hooks
 ```
 
 ## Code Architecture
@@ -86,10 +98,11 @@ pyproject.toml        # Project configuration
 ### Backend System
 
 - All backends implement the `LLMBackend` interface in [`llm_backend.py`](storyforge/llm_backend.py)
+- Shared image prompt helpers in base class: `_build_image_prompt_request()`, `_parse_numbered_prompts()`, `_segment_story()`, `_get_scene_labels()`
 - Current backends:
   - **Gemini** ([`gemini_backend.py`](storyforge/gemini_backend.py)) - Full features (text + image generation)
-  - **Anthropic** ([`anthropic_backend.py`](storyforge/anthropic_backend.py)) - Text generation only (Claude)
-  - **OpenAI** ([`openai_backend.py`](storyforge/openai_backend.py)) - Full features (GPT + DALL-E)
+  - **Anthropic** ([`anthropic_backend.py`](storyforge/anthropic_backend.py)) - Text + image prompt generation (no image rendering)
+  - **OpenAI** ([`openai_backend.py`](storyforge/openai_backend.py)) - Full features (GPT + image models)
 - To add a new backend: implement `LLMBackend` interface in a new module
 
 ### Package Organization
