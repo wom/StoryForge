@@ -268,3 +268,82 @@ def test_chain_with_long_names(context_manager, context_dir):
     assert chain[0]["filename"] == name1
     assert chain[1]["filename"] == name2
     assert chain[2]["filename"] == name3
+
+
+# --- Tests for load_chain_for_extension ---
+
+
+class TestLoadChainForExtension:
+    """Test loading the full story chain as concatenated context."""
+
+    def test_single_story_matches_load_context(self, context_manager, context_dir):
+        """Single-story chain should return same content as load_context_for_extension."""
+        filepath = create_context_file(context_dir, "solo.md", "A brave knight")
+
+        chain_content, chain_meta = context_manager.load_chain_for_extension(filepath)
+        single_content, single_meta = context_manager.load_context_for_extension(filepath)
+
+        # Content should be identical (no separators for single-entry chain)
+        assert chain_content == single_content
+        assert chain_meta["filename"] == single_meta["filename"]
+
+    def test_two_story_chain(self, context_manager, context_dir):
+        """Two-story chain should concatenate both parts with separators."""
+        create_context_file(context_dir, "original.md", "Dragon quest")
+        child = create_context_file(context_dir, "extended.md", "Dragon quest continued", "original")
+
+        content, metadata = context_manager.load_chain_for_extension(child)
+
+        # Should contain both parts
+        assert "--- Part 1 of 2 ---" in content
+        assert "--- Part 2 of 2 ---" in content
+        # Both stories present
+        assert "Dragon quest" in content
+        # Metadata from the final entry
+        assert metadata["filename"] == "extended"
+
+    def test_three_story_chain_chronological(self, context_manager, context_dir):
+        """Three-story chain should be in chronological order (oldest first)."""
+        create_context_file(context_dir, "story_a.md", "Chapter one")
+        create_context_file(context_dir, "story_b.md", "Chapter two", "story_a")
+        final = create_context_file(context_dir, "story_c.md", "Chapter three", "story_b")
+
+        content, metadata = context_manager.load_chain_for_extension(final)
+
+        assert "--- Part 1 of 3 ---" in content
+        assert "--- Part 2 of 3 ---" in content
+        assert "--- Part 3 of 3 ---" in content
+
+        # Part 1 (oldest) should appear before Part 2
+        pos1 = content.index("Part 1 of 3")
+        pos2 = content.index("Part 2 of 3")
+        pos3 = content.index("Part 3 of 3")
+        assert pos1 < pos2 < pos3
+
+        # Each part's content should follow its header
+        assert content.index("Chapter one") > pos1
+        assert content.index("Chapter two") > pos2
+        assert content.index("Chapter three") > pos3
+
+        # Final metadata
+        assert metadata["filename"] == "story_c"
+
+    def test_missing_ancestor_partial_chain(self, context_manager, context_dir):
+        """Chain with missing ancestor should include available entries only."""
+        # Create child that references a non-existent parent
+        child = create_context_file(context_dir, "orphan.md", "Lost story", "missing_parent")
+
+        content, metadata = context_manager.load_chain_for_extension(child)
+
+        # Should still return the child's content (chain of 1)
+        assert "Lost story" in content
+        assert metadata["filename"] == "orphan"
+
+    def test_empty_chain_fallback(self, context_manager, context_dir):
+        """Empty chain should fall back to load_context_for_extension."""
+        filepath = create_context_file(context_dir, "fallback.md", "Fallback story")
+
+        # Even though get_story_chain returns entries, test the fallback path
+        content, metadata = context_manager.load_chain_for_extension(filepath)
+        assert "Fallback story" in content
+        assert metadata["filename"] == "fallback"

@@ -1054,6 +1054,50 @@ class ContextManager:
 
         return full_content, metadata
 
+    def load_chain_for_extension(self, filepath: Path) -> tuple[str, dict[str, Any]]:
+        """Load the full story chain for extension, concatenating all ancestors.
+
+        Walks the chain from the original story through to the selected file,
+        loading the full text of each entry and joining them with part separators.
+        The metadata returned is from the final (most recent) entry.
+
+        If the chain has only one entry, this behaves identically to
+        :meth:`load_context_for_extension`.
+
+        Args:
+            filepath: Path to the final story in the chain.
+
+        Returns:
+            Tuple of (combined_chain_content, final_entry_metadata).
+        """
+        chain = self.get_story_chain(filepath)
+
+        if not chain:
+            # Fallback: treat as single file
+            return self.load_context_for_extension(filepath)
+
+        total = len(chain)
+        parts: list[str] = []
+
+        for idx, entry in enumerate(chain, 1):
+            entry_path: Path = entry.get("filepath", filepath)
+            try:
+                with open(entry_path, encoding="utf-8") as f:
+                    content = f.read()
+            except OSError:
+                continue
+
+            if total > 1:
+                parts.append(f"--- Part {idx} of {total} ---\n\n{content}")
+            else:
+                parts.append(content)
+
+        combined = "\n\n".join(parts)
+        # Metadata from the final entry (the one the user selected)
+        final_metadata = chain[-1]
+
+        return combined, final_metadata
+
     def get_story_chain(self, filepath: Path) -> list[dict[str, Any]]:
         """
         Reconstruct the full story chain by tracing back parent references.

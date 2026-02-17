@@ -161,6 +161,19 @@ class Prompt:
 
     def _build_continuation_instruction(self) -> str:
         """Build instruction for story continuation."""
+        # Detect multi-part chain from "--- Part N of M ---" separators
+        multi_part_note = ""
+        if self.context and "--- Part " in self.context:
+            import re
+
+            parts = re.findall(r"--- Part (\d+) of (\d+) ---", self.context)
+            if parts:
+                total = parts[-1][1]  # e.g. "3" from "Part 3 of 3"
+                multi_part_note = (
+                    f"\n\nNOTE: The context contains {total} connected story parts. "
+                    f"Continue from where Part {total} ends."
+                )
+
         recap_instruction = (
             "\n\nIMPORTANT: Begin your continuation with a brief recap "
             "(2-3 sentences starting with a phrase like 'When last we left our friends...' "
@@ -173,6 +186,7 @@ class Prompt:
                 "CONTINUATION TASK: The following is an existing story. "
                 "Please write a continuation that wraps up the narrative "
                 "with a satisfying resolution and complete ending."
+                f"{multi_part_note}"
                 f"{recap_instruction}"
             )
         else:  # cliffhanger
@@ -181,6 +195,7 @@ class Prompt:
                 "Please write a continuation that advances the plot but "
                 "ends with a cliffhanger - an exciting moment that sets "
                 "up the next adventure without full resolution."
+                f"{multi_part_note}"
                 f"{recap_instruction}"
             )
 

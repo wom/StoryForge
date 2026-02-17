@@ -22,6 +22,7 @@ from .schema.cli_integration import (
     generate_multi_option,
     validate_cli_arguments,
 )
+from .story_picker import pick_story
 
 # Create Typer app instance for entrypoint
 app = typer.Typer(
@@ -415,28 +416,12 @@ def extend_story(
             console.print("Or save an existing story as context.")
             raise typer.Exit(1)
 
-        # Display stories
-        console.print("\n[bold cyan]📚 Available Stories to Extend:[/bold cyan]\n")
-        for idx, ctx in enumerate(available_contexts, 1):
-            console.print(f"[bold]{idx}.[/bold] {ctx['filename']}")
-            console.print(f"   [dim]Generated: {ctx.get('timestamp', 'Unknown')}[/dim]")
-            if "characters" in ctx:
-                console.print(f"   Characters: {ctx['characters']}")
-            if "theme" in ctx:
-                console.print(f"   Theme: {ctx['theme']}")
-            if "preview" in ctx:
-                preview = ctx["preview"][:100]
-                console.print(f"   [dim]Preview: {preview}...[/dim]")
-            console.print()
-
-        # Get user selection
-        selection = typer.prompt(f"Select story (1-{len(available_contexts)})", type=int)
-
-        if selection < 1 or selection > len(available_contexts):
-            console.print("[red]Invalid selection[/red]")
-            raise typer.Exit(1)
-
-        selected_context = available_contexts[selection - 1]
+        # Launch interactive story picker
+        selected_idx = pick_story(available_contexts)
+        if selected_idx is None:
+            console.print("[yellow]Selection cancelled.[/yellow]")
+            raise typer.Exit(0)
+        selected_context = available_contexts[selected_idx]
 
         # Show the story chain
         story_chain = context_mgr.get_story_chain(selected_context["filepath"])
@@ -447,39 +432,11 @@ def extend_story(
                 prompt_text = story.get("prompt", "No prompt")[:50]
                 console.print(f"  {idx}. [dim]{story['filename']}[/dim]")
                 console.print(f"     {timestamp} - {prompt_text}...")
+            console.print(f"  [bold green]All {len(story_chain)} parts will be included as context.[/bold green]")
             console.print()
 
-        # Load story content
-        story_content, metadata = context_mgr.load_context_for_extension(selected_context["filepath"])
-
-        # Show story viewer with expand option
-        console.print("\n[bold cyan]📖 Story Preview:[/bold cyan]")
-        # Extract just the story part, skip metadata
-        story_text = story_content
-        if "## Story" in story_content:
-            story_text = story_content.split("## Story", 1)[1]
-
-        # Show first 100 words as preview
-        preview_words = " ".join(story_text.split()[:100])
-        console.print(f"[dim]{preview_words}...[/dim]\n")
-
-        # Ask if user wants to see the full story
-        view_full = Confirm.ask("📜 View full story before extending?", default=False)
-
-        if view_full:
-            from rich.markdown import Markdown
-            from rich.panel import Panel
-
-            console.print("\n")
-            # Create a formatted panel with the full story
-            full_story_panel = Panel(
-                Markdown(story_text.strip()),
-                title=f"[bold cyan]Complete Story: {selected_context['filename']}[/bold cyan]",
-                border_style="cyan",
-                padding=(1, 2),
-            )
-            console.print(full_story_panel)
-            console.print()
+        # Load full chain content (all ancestors + selected story)
+        story_content, metadata = context_mgr.load_chain_for_extension(selected_context["filepath"])
 
         # Ask continuation preference
         console.print("[bold cyan]🎬 How should this story continue?[/bold cyan]")
