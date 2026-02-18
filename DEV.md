@@ -153,6 +153,15 @@ uv venv .venv && source .venv/bin/activate && uv pip install .[dev]
 
 ## Troubleshooting
 
+### Release Process
+
+1. **Update version** in both `pyproject.toml` and `storyforge/__init__.py`
+2. **Update CHANGELOG.md** — move `[Unreleased]` items into a new versioned section with today's date
+3. **Validate**: `make lint && make test && make coverage`
+4. **Commit**: `git commit -am "release: v0.0.X"`
+5. **Tag**: `git tag v0.0.X`
+6. **Push**: `git push origin main --tags`
+
 ### Common Issues
 
 - **"uv not found"**: Install uv first, then run `make install`
