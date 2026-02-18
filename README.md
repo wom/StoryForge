@@ -67,6 +67,13 @@ sf --help
 
 ## Requirements
 
+- **Python 3.12+**
+- **[uv](https://github.com/astral-sh/uv)** — fast Python package manager (for installation)
+- **At least one API key** from a supported backend:
+  - `GEMINI_API_KEY` — [Google AI Studio](https://aistudio.google.com/apikey)
+  - `ANTHROPIC_API_KEY` — [Anthropic Console](https://console.anthropic.com/)
+  - `OPENAI_API_KEY` — [OpenAI Platform](https://platform.openai.com/api-keys)
+
 ## Checkpoint System
 
 StoryForge automatically saves your progress during story generation, allowing you to resume from any point if the process is interrupted or if you want to retry different options.

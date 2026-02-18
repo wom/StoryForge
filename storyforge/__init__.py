@@ -21,8 +21,8 @@ CLI Usage:
 from .StoryForge import app
 
 # Version info
-__version__ = "0.0.3"
-__author__ = "wom"
+__version__ = "0.0.7"
+__author__ = "Chris (wom)"
 
 # Main exports
 __all__ = [
