@@ -171,16 +171,16 @@ class StoryPicker(App[int | None]):
         """Read the full story text from the context file on disk."""
         raw_path = ctx.get("filepath")
         if raw_path is None:
-            return ctx.get("preview", "(no content available)")
+            return str(ctx.get("preview", "(no content available)"))
 
         filepath = Path(raw_path) if not isinstance(raw_path, Path) else raw_path
         if not filepath.exists():
-            return ctx.get("preview", "(no content available)")
+            return str(ctx.get("preview", "(no content available)"))
 
         try:
             raw = filepath.read_text(encoding="utf-8")
         except OSError:
-            return ctx.get("preview", "(unable to read file)")
+            return str(ctx.get("preview", "(unable to read file)"))
 
         # Extract just the story body after the metadata header
         if "## Story" in raw:
