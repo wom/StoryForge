@@ -512,3 +512,24 @@ class TestRegistryRoundtrip:
         assert "## Known Characters" in result
         assert "**Luna**" in result
         assert "1 story)" in result
+
+
+class TestTraitTruncation:
+    """Test that trait extraction respects MAX_TRAIT_LENGTH."""
+
+    def test_trait_truncation_uses_max_trait_length(self):
+        """Test traits longer than MAX_TRAIT_LENGTH are truncated with ellipsis."""
+        cm = ContextManager()
+        long_sentence = "Luna " + "word " * 60  # well over 200 chars
+        long_sentence = long_sentence.strip() + "."
+        assert len(long_sentence) > cm.MAX_TRAIT_LENGTH
+
+        content = f"## Story\n\n{long_sentence}"
+        metadata: dict[str, Any] = {"characters": "Luna"}
+        result = cm._extract_characters_from_story(content, metadata)
+
+        assert "Luna" in result
+        for trait in result["Luna"]:
+            assert len(trait) <= cm.MAX_TRAIT_LENGTH + 3  # truncated + "..."
+            if len(long_sentence) > cm.MAX_TRAIT_LENGTH:
+                assert trait.endswith("...")

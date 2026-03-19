@@ -299,6 +299,58 @@ class TestConfigToDict:
                     assert not key.startswith("#")
 
 
+class TestGetFieldValueExceptionHandling:
+    """Test narrowed exception handling in get_field_value().
+
+    The try block catches (KeyError, ValueError, AttributeError) and returns
+    the schema default. All other exceptions must propagate to the caller.
+    """
+
+    def test_keyerror_is_caught_returns_default(self):
+        """KeyError inside try block is caught, returns schema default."""
+        config = Config()
+        with patch.object(config.config, "get", side_effect=KeyError("missing")):
+            value = config.get_field_value("story", "style")
+        from storyforge.schema.config_schema import STORYFORGE_SCHEMA
+
+        expected = STORYFORGE_SCHEMA.story.fields["style"].default
+        assert value == expected
+
+    def test_valueerror_is_caught_returns_default(self):
+        """ValueError inside try block is caught, returns schema default."""
+        config = Config()
+        with patch.object(config.config, "get", side_effect=ValueError("bad value")):
+            value = config.get_field_value("story", "style")
+        from storyforge.schema.config_schema import STORYFORGE_SCHEMA
+
+        expected = STORYFORGE_SCHEMA.story.fields["style"].default
+        assert value == expected
+
+    def test_attributeerror_is_caught_returns_default(self):
+        """AttributeError inside try block is caught, returns schema default."""
+        config = Config()
+        with patch.object(config.config, "get", side_effect=AttributeError("no attr")):
+            value = config.get_field_value("story", "style")
+        from storyforge.schema.config_schema import STORYFORGE_SCHEMA
+
+        expected = STORYFORGE_SCHEMA.story.fields["style"].default
+        assert value == expected
+
+    def test_typeerror_propagates(self):
+        """TypeError is NOT caught by the narrowed handler, propagates to caller."""
+        config = Config()
+        with patch.object(config.config, "get", side_effect=TypeError("type error")):
+            with pytest.raises(TypeError, match="type error"):
+                config.get_field_value("story", "style")
+
+    def test_runtimeerror_propagates(self):
+        """RuntimeError is NOT caught by the narrowed handler, propagates to caller."""
+        config = Config()
+        with patch.object(config.config, "get", side_effect=RuntimeError("runtime error")):
+            with pytest.raises(RuntimeError, match="runtime error"):
+                config.get_field_value("story", "style")
+
+
 class TestLoadConfigFunction:
     """Test the load_config convenience function."""
 

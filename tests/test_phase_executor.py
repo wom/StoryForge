@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from storyforge.checkpoint import CheckpointData, CheckpointManager
+from storyforge.llm_backend import ERROR_STORY_SENTINEL
 from storyforge.phase_executor import PhaseExecutor
 
 
@@ -498,6 +499,137 @@ class TestPhaseExecutorPhases:
             self.phase_executor._phase_story_generate()
 
 
+class TestErrorStorySentinelDetection:
+    """Test that ERROR_STORY_SENTINEL + startswith() correctly detects error stories."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.checkpoint_manager = MagicMock(spec=CheckpointManager)
+        self.phase_executor = PhaseExecutor(self.checkpoint_manager)
+
+        self.checkpoint_data = CheckpointData.create_new(
+            "Test story prompt",
+            {"style": "adventure", "age_range": "preschool"},
+            {"backend": "gemini", "verbose": False, "debug": False},
+        )
+        self.phase_executor.checkpoint_data = self.checkpoint_data
+
+        # Common setup: mock backend and prompt
+        self.mock_backend = MagicMock()
+        self.phase_executor.llm_backend = self.mock_backend
+        self.phase_executor.story_prompt = MagicMock()
+
+    def _run_story_generate(self):
+        """Helper to run _phase_story_generate with required mocks."""
+        with (
+            patch("storyforge.phase_executor.Progress") as mock_progress,
+            patch("storyforge.phase_executor.Confirm.ask", return_value=False),
+            patch("storyforge.phase_executor.console"),
+        ):
+            mock_progress_instance = MagicMock()
+            mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
+            mock_progress.return_value.__exit__ = MagicMock(return_value=False)
+            self.phase_executor._phase_story_generate()
+
+    @patch("storyforge.phase_executor.Progress")
+    @patch("storyforge.phase_executor.Confirm.ask", return_value=False)
+    @patch("storyforge.phase_executor.console")
+    def test_exact_sentinel_is_detected_as_error(self, mock_console, mock_confirm, mock_progress):
+        """Story that exactly matches the sentinel should raise RuntimeError."""
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
+        mock_progress.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.mock_backend.generate_story.return_value = ERROR_STORY_SENTINEL
+
+        with pytest.raises(RuntimeError, match="Failed to generate story"):
+            self.phase_executor._phase_story_generate()
+
+    @patch("storyforge.phase_executor.Progress")
+    @patch("storyforge.phase_executor.Confirm.ask", return_value=False)
+    @patch("storyforge.phase_executor.console")
+    def test_sentinel_with_details_is_detected_as_error(self, mock_console, mock_confirm, mock_progress):
+        """Story starting with sentinel + extra details should raise RuntimeError (prefix match)."""
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
+        mock_progress.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.mock_backend.generate_story.return_value = f"{ERROR_STORY_SENTINEL}: Connection timeout"
+
+        with pytest.raises(RuntimeError, match="Failed to generate story"):
+            self.phase_executor._phase_story_generate()
+
+    @patch("storyforge.phase_executor.Progress")
+    @patch("storyforge.phase_executor.Confirm.ask", return_value=False)
+    @patch("storyforge.phase_executor.console")
+    def test_none_story_is_detected_as_error(self, mock_console, mock_confirm, mock_progress):
+        """None story should raise RuntimeError."""
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
+        mock_progress.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.mock_backend.generate_story.return_value = None
+
+        with pytest.raises(RuntimeError, match="Failed to generate story"):
+            self.phase_executor._phase_story_generate()
+
+    @patch("storyforge.phase_executor.Progress")
+    @patch("storyforge.phase_executor.Confirm.ask", return_value=False)
+    @patch("storyforge.phase_executor.console")
+    def test_valid_story_not_detected_as_error(self, mock_console, mock_confirm, mock_progress):
+        """A normal valid story should not raise any error."""
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
+        mock_progress.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.mock_backend.generate_story.return_value = "Once upon a time there was a brave fox."
+
+        self._run_story_generate()
+
+        assert self.phase_executor.story == "Once upon a time there was a brave fox."
+
+    @patch("storyforge.phase_executor.Progress")
+    @patch("storyforge.phase_executor.Confirm.ask", return_value=False)
+    @patch("storyforge.phase_executor.console")
+    def test_sentinel_mid_string_not_detected_as_error(self, mock_console, mock_confirm, mock_progress):
+        """Sentinel appearing mid-string should NOT be treated as error (startswith only)."""
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
+        mock_progress.return_value.__exit__ = MagicMock(return_value=False)
+
+        story_text = f"The story about {ERROR_STORY_SENTINEL} was great"
+        self.mock_backend.generate_story.return_value = story_text
+
+        self._run_story_generate()
+
+        assert self.phase_executor.story == story_text
+
+    @patch("storyforge.phase_executor.Progress")
+    @patch("storyforge.phase_executor.Confirm.ask")
+    @patch("storyforge.phase_executor.typer.prompt")
+    @patch("storyforge.phase_executor.console")
+    def test_sentinel_with_details_in_refinement_is_error(
+        self, mock_console, mock_typer_prompt, mock_confirm, mock_progress
+    ):
+        """Sentinel with details returned during refinement should raise RuntimeError."""
+        # First ask: accept refinement; second ask: won't be reached
+        mock_confirm.side_effect = [True]
+        mock_typer_prompt.return_value = "Make it shorter"
+
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
+        mock_progress.return_value.__exit__ = MagicMock(return_value=False)
+
+        # Initial story generation succeeds
+        self.mock_backend.generate_story.side_effect = [
+            "A valid story.",
+            f"{ERROR_STORY_SENTINEL}: rate limit exceeded",
+        ]
+
+        with pytest.raises(RuntimeError, match="Failed to refine story"):
+            self.phase_executor._phase_story_generate()
+
+
 class TestDumpSessionContext:
     """Test the _dump_session_context method."""
 
@@ -772,3 +904,11 @@ class TestContextIntelligenceWiring:
         call_args = mock_cm.update_character_registry.call_args
         # Check metadata contains characters
         assert "characters" in call_args[0][1]
+
+
+class TestPhaseExecutorConstants:
+    """Test named constants on PhaseExecutor."""
+
+    def test_max_filename_prefix_length_constant(self):
+        """Test MAX_FILENAME_PREFIX_LENGTH is 30."""
+        assert PhaseExecutor.MAX_FILENAME_PREFIX_LENGTH == 30
