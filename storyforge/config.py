@@ -201,7 +201,7 @@ class Config:
             else:
                 return raw_value if raw_value else field.default
 
-        except Exception:
+        except (KeyError, ValueError, AttributeError):
             logging.getLogger(__name__).debug(
                 "Error reading config field %s.%s, using default", section_name, field_name, exc_info=True
             )

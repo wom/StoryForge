@@ -85,10 +85,6 @@ class ConfigSection:
     description: str
     fields: dict[str, ConfigField] = field(default_factory=dict)
 
-    def get_field(self, name: str) -> ConfigField | None:
-        """Get a field by name."""
-        return self.fields.get(name)
-
     def add_field(self, field_obj: ConfigField) -> None:
         """Add a field to this section."""
         field_obj.section = self.name

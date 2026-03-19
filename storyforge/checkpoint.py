@@ -45,16 +45,6 @@ class SessionStatus(Enum):
 
 
 @dataclass
-class GeneratedImage:
-    """Data structure for generated image information."""
-
-    filename: str
-    path: str
-    generated_at: str | None = None
-    size_bytes: int | None = None
-
-
-@dataclass
 class CheckpointData:
     """Checkpoint data structure for StoryForge execution state."""
 
@@ -92,7 +82,7 @@ class CheckpointData:
 
     @classmethod
     def create_new(
-        cls,
+        _cls,
         original_prompt: str,
         cli_arguments: dict[str, Any],
         resolved_config: dict[str, Any],

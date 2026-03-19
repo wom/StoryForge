@@ -10,7 +10,7 @@ from typing import Any
 
 import anthropic
 
-from .llm_backend import LLMBackend
+from .llm_backend import ERROR_STORY_SENTINEL, LLMBackend
 from .prompt import Prompt
 
 logger = logging.getLogger(__name__)
@@ -57,6 +57,15 @@ class AnthropicBackend(LLMBackend):
         # Set text input limit (Claude models all have 200K context)
         self._text_input_limit = self.DEFAULT_TEXT_INPUT_LIMIT
 
+    @staticmethod
+    def _extract_text(response: Any) -> str | None:
+        """Extract text content from an Anthropic API response."""
+        if response.content:
+            for content_block in response.content:
+                if content_block.type == "text" and hasattr(content_block, "text"):
+                    return str(content_block.text).strip()
+        return None
+
     def generate_story(self, prompt: Prompt) -> str:
         """
         Generate a story based on the given Prompt object using Claude.
@@ -83,17 +92,15 @@ class AnthropicBackend(LLMBackend):
             )
 
             # Extract the story text from the response with proper null checking
-            if response.content and len(response.content) > 0:
-                # Claude returns a list of content blocks, get the first text block
-                for content_block in response.content:
-                    if content_block.type == "text" and hasattr(content_block, "text"):
-                        return content_block.text.strip()
+            text = self._extract_text(response)
+            if text:
+                return text
 
             return "[Error: No valid response from Claude]"
         except Exception as e:
             # Return a generic error message if generation fails
             logger.warning("Story generation failed: %s", e)
-            return f"[Error generating story: {str(e)}]"
+            return f"{ERROR_STORY_SENTINEL}: {e}"
 
     def generate_image(
         self,
@@ -140,15 +147,9 @@ class AnthropicBackend(LLMBackend):
             )
 
             # Extract name with proper null checking
-            if response.content and len(response.content) > 0:
-                for content_block in response.content:
-                    if content_block.type == "text" and hasattr(content_block, "text"):
-                        name = content_block.text.strip()
-                        # Remove file extension if present
-                        name = name.split(".")[0]
-                        # Clean up any unwanted characters
-                        name = "".join(c for c in name if c.isalnum() or c == "_")
-                        return name if name else "story_image"
+            text = self._extract_text(response)
+            if text:
+                return self._sanitize_image_name(text)
 
             return "story_image"
         except Exception:
@@ -180,13 +181,11 @@ class AnthropicBackend(LLMBackend):
                 messages=[{"role": "user", "content": image_prompt_request}],
             )
 
-            if response.content and len(response.content) > 0:
-                for content_block in response.content:
-                    if content_block.type == "text" and hasattr(content_block, "text"):
-                        text = content_block.text.strip()
-                        parsed = self._parse_numbered_prompts(text, num_prompts)
-                        if parsed:
-                            return parsed
+            text = self._extract_text(response)
+            if text:
+                parsed = self._parse_numbered_prompts(text, num_prompts)
+                if parsed:
+                    return parsed
 
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
