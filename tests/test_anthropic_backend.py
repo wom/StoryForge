@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from storyforge.anthropic_backend import AnthropicBackend
+from storyforge.llm_backend import ERROR_STORY_SENTINEL
 from storyforge.prompt import Prompt
 
 
@@ -102,7 +103,8 @@ def test_generate_story_api_error(mock_anthropic):
     prompt = Prompt(prompt="test prompt")
     result = AnthropicBackend().generate_story(prompt)
 
-    assert "Error generating story: API Error" in result
+    assert result.startswith(ERROR_STORY_SENTINEL)
+    assert "API Error" in result
 
 
 @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"})

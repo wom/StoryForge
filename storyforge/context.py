@@ -44,9 +44,13 @@ class ContextManager:
     SAMPLES_PER_ERA: int = 2
     NUM_ERAS: int = 5
 
+    # --- Tokenization constants ---
+    CHARS_PER_TOKEN: int = 4  # Approximate characters per token for budget estimation
+
     # --- Character registry constants ---
     MAX_REGISTRY_TOKENS: int = 1000
     MAX_TRAITS_PER_CHARACTER: int = 5
+    MAX_TRAIT_LENGTH: int = 200
     CHARACTER_SCORE_BONUS: int = 3
     COMMON_STOPWORDS: set[str] = {
         "the",
@@ -351,7 +355,7 @@ class ContextManager:
                 return int(self.tokenizer(text))
             except Exception:
                 logging.getLogger(__name__).debug("Tokenizer failed, falling back to heuristic", exc_info=True)
-        return max(1, int(len(text) / 4))
+        return max(1, int(len(text) / self.CHARS_PER_TOKEN))
 
     def _read_and_normalize(self, file_path: Path) -> list[str]:
         """
@@ -423,7 +427,7 @@ class ContextManager:
         # Split into sentences conservatively
         sentences = [s.strip() for s in chunk.replace("\n", " ").split(". ") if s.strip()]
         if not sentences:
-            return chunk[: int(target_tokens * 4)] if target_tokens > 0 else chunk
+            return chunk[: int(target_tokens * self.CHARS_PER_TOKEN)] if target_tokens > 0 else chunk
 
         out: list[str] = []
         out_tokens = 0
@@ -524,7 +528,7 @@ class ContextManager:
             else:
                 # Try to truncate last item by characters if it helps
                 if remaining_budget > 0:
-                    approx_chars = int(remaining_budget * 4)
+                    approx_chars = int(remaining_budget * self.CHARS_PER_TOKEN)
                     truncated = o["summary"][:approx_chars].rsplit(".", 1)[0]
                     if truncated:
                         selected.append(truncated.strip() + ".")
@@ -727,8 +731,8 @@ class ContextManager:
                 if name in sentence and len(sentence) > 15:
                     # Clean up and cap sentence length
                     trait = sentence if sentence.endswith(".") else sentence + "."
-                    if len(trait) > 200:
-                        trait = trait[:200].rsplit(" ", 1)[0] + "..."
+                    if len(trait) > self.MAX_TRAIT_LENGTH:
+                        trait = trait[: self.MAX_TRAIT_LENGTH].rsplit(" ", 1)[0] + "..."
                     traits.append(trait)
                     if len(traits) >= 3:
                         break
@@ -1358,13 +1362,3 @@ class ContextManager:
             f.write("\n".join(combined_content))
 
         return output_path
-
-
-def get_default_context_manager() -> ContextManager:
-    """
-    Get a default context manager instance.
-
-    Returns:
-        ContextManager: Configured with default settings
-    """
-    return ContextManager()

@@ -20,6 +20,8 @@ from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
 
+ERROR_STORY_SENTINEL = "[Error generating story]"
+
 if TYPE_CHECKING:
     from .config import Config
     from .prompt import Prompt
@@ -399,6 +401,13 @@ class LLMBackend(ABC):
             int: Estimated number of tokens.
         """
         return len(text) // 4
+
+    @staticmethod
+    def _sanitize_image_name(name: str) -> str:
+        """Sanitize a generated image name to a safe filename stem."""
+        name = name.split(".")[0]
+        name = "".join(c for c in name if c.isalnum() or c == "_")
+        return name if name else "story_image"
 
 
 def get_backend(

@@ -11,7 +11,7 @@ from typing import Any, Literal
 import openai
 from PIL import Image
 
-from .llm_backend import LLMBackend
+from .llm_backend import ERROR_STORY_SENTINEL, LLMBackend
 from .prompt import Prompt
 
 logger = logging.getLogger(__name__)
@@ -104,6 +104,13 @@ class OpenAIBackend(LLMBackend):
         )
         return self.DEFAULT_TEXT_INPUT_LIMIT
 
+    @staticmethod
+    def _extract_text(response: Any) -> str | None:
+        """Extract text content from an OpenAI API response."""
+        if response.choices and response.choices[0].message and response.choices[0].message.content:
+            return str(response.choices[0].message.content).strip()
+        return None
+
     def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
         """Break the story into detailed image prompts using OpenAI's text model.
 
@@ -128,8 +135,8 @@ class OpenAIBackend(LLMBackend):
                 temperature=0.5,
             )
 
-            if response.choices and response.choices[0].message and response.choices[0].message.content:
-                text = response.choices[0].message.content.strip()
+            text = self._extract_text(response)
+            if text:
                 parsed = self._parse_numbered_prompts(text, num_prompts)
                 if parsed:
                     return parsed
@@ -163,14 +170,14 @@ class OpenAIBackend(LLMBackend):
             )
 
             # Extract the story text from the response with proper null checking
-            if response.choices and response.choices[0].message and response.choices[0].message.content:
-                return response.choices[0].message.content.strip()
-            else:
-                return "[Error: No valid response from OpenAI]"
+            text = self._extract_text(response)
+            if text:
+                return text
+            return "[Error: No valid response from OpenAI]"
         except Exception as e:
             # Return a generic error message if generation fails
             logger.warning("Story generation failed: %s", e)
-            return f"[Error generating story: {str(e)}]"
+            return f"{ERROR_STORY_SENTINEL}: {e}"
 
     def generate_image(
         self,
@@ -222,12 +229,9 @@ class OpenAIBackend(LLMBackend):
                     messages=[{"role": "user", "content": compression_prompt}],
                 )
 
-                if (
-                    compression_response.choices
-                    and compression_response.choices[0].message
-                    and compression_response.choices[0].message.content
-                ):
-                    text_prompt = compression_response.choices[0].message.content.strip()
+                compressed = self._extract_text(compression_response)
+                if compressed:
+                    text_prompt = compressed
                 else:
                     # Fallback to simple truncation if compression fails
                     text_prompt = text_prompt[:3900] + "..."
@@ -291,15 +295,10 @@ class OpenAIBackend(LLMBackend):
             )
 
             # Extract name with proper null checking
-            if response.choices and response.choices[0].message and response.choices[0].message.content:
-                name = response.choices[0].message.content.strip()
-                # Remove file extension if present
-                name = name.split(".")[0]
-                # Clean up any unwanted characters to match Anthropic pattern
-                name = "".join(c for c in name if c.isalnum() or c == "_")
-                return name if name else "story_image"
-            else:
-                return "story_image"
+            text = self._extract_text(response)
+            if text:
+                return self._sanitize_image_name(text)
+            return "story_image"
         except Exception:
             logger.debug("Image name generation failed, using fallback", exc_info=True)
             return "story_image"

@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from storyforge.llm_backend import ERROR_STORY_SENTINEL
 from storyforge.openai_backend import OpenAIBackend
 from storyforge.prompt import Prompt
 
@@ -86,9 +87,7 @@ class TestOpenAIBackend:
 
         result = backend.generate_story(prompt)
 
-        assert result.startswith("[Error generating story:")
-        # The implementation returns error message with exception details
-        assert result.startswith("[Error generating story:")
+        assert result.startswith(ERROR_STORY_SENTINEL)
         assert "API Error" in result
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)

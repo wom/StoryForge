@@ -2,6 +2,7 @@ import os
 from unittest.mock import MagicMock, patch
 
 from storyforge.gemini_backend import GeminiBackend
+from storyforge.llm_backend import ERROR_STORY_SENTINEL
 from storyforge.prompt import Prompt
 
 
@@ -24,7 +25,7 @@ def test_generate_story_error(mock_client):
     backend.client.models.generate_content.side_effect = Exception("fail")
     prompt = Prompt(prompt="test prompt")
     result = backend.generate_story(prompt)
-    assert result == "[Error generating story: fail]"
+    assert result == f"{ERROR_STORY_SENTINEL}: fail"
 
 
 @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})

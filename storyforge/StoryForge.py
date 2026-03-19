@@ -254,11 +254,9 @@ def main(
         tone = tone if tone is not None else config.get_field_value("story", "tone")
         theme = theme if theme is not None else config.get_field_value("story", "theme")
         learning_focus = (
-            learning_focus
-            if learning_focus is not None
-            else (config.get_field_value("story", "learning_focus") or None)
+            learning_focus if learning_focus is not None else config.get_field_value("story", "learning_focus")
         )
-        setting = setting if setting is not None else (config.get_field_value("story", "setting") or None)
+        setting = setting if setting is not None else config.get_field_value("story", "setting")
 
         # Handle characters - merge config and CLI
         if characters is None:
@@ -266,7 +264,7 @@ def main(
             characters = config_characters
 
         image_style = image_style if image_style is not None else config.get_field_value("images", "image_style")
-        output_dir = output_dir if output_dir is not None else (config.get_field_value("output", "output_dir") or None)
+        output_dir = output_dir if output_dir is not None else config.get_field_value("output", "output_dir")
         use_context = use_context if use_context is not None else config.get_field_value("output", "use_context")
         verbose = verbose if verbose is not None else config.get_field_value("system", "verbose")
         debug = debug if debug is not None else config.get_field_value("system", "debug")
@@ -550,7 +548,6 @@ def export_chain(
     output: Annotated[
         str | None, typer.Option("--output", "-o", help="Output file path (default: complete_story_TIMESTAMP.txt)")
     ] = None,
-    config_file: Annotated[str | None, typer.Option("--config", help="Path to configuration file")] = None,
 ) -> None:
     """
     Export a complete story chain to a single file.

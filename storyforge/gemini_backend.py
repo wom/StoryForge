@@ -16,7 +16,7 @@ from google import genai
 from google.genai import types
 from PIL import Image
 
-from .llm_backend import LLMBackend
+from .llm_backend import ERROR_STORY_SENTINEL, LLMBackend
 from .model_discovery import find_image_generation_model, find_text_generation_model, list_gemini_models
 from .prompt import Prompt
 
@@ -111,6 +111,18 @@ class GeminiBackend(LLMBackend):
         logger.warning(f"⚠️  Model {model_name} not found in cache, using fallback limit of {default_limit} tokens")
         return default_limit
 
+    @staticmethod
+    def _extract_text(response: Any) -> str | None:
+        """Extract text content from a Gemini API response."""
+        candidates = getattr(response, "candidates", None)
+        if candidates:
+            content = getattr(candidates[0], "content", None)
+            if content:
+                parts = getattr(content, "parts", None) or []
+                if parts and getattr(parts[0], "text", None):
+                    return str(parts[0].text).strip()
+        return None
+
     def _compress_prompt(self, prompt_text: str, target_tokens: int) -> str:
         """Compress a prompt to fit within token limits.
 
@@ -134,17 +146,11 @@ class GeminiBackend(LLMBackend):
         try:
             model = self._text_model or "gemini-2.5-flash"
             response = self.client.models.generate_content(model=model, contents=compression_prompt)
-            candidates = getattr(response, "candidates", None)
-            if candidates and len(candidates) > 0:
-                candidate = candidates[0]
-                content = getattr(candidate, "content", None)
-                if content:
-                    parts = getattr(content, "parts", None) or []
-                    if parts and getattr(parts[0], "text", None):
-                        compressed = str(parts[0].text).strip()
-                        compressed_tokens = self.estimate_token_count(compressed)
-                        logger.info(f"Compression successful: ~{compressed_tokens} tokens")
-                        return compressed
+            compressed = self._extract_text(response)
+            if compressed:
+                compressed_tokens = self.estimate_token_count(compressed)
+                logger.info(f"Compression successful: ~{compressed_tokens} tokens")
+                return compressed
         except Exception as e:
             logger.error(f"Prompt compression failed: {e}. Using truncation fallback.")
 
@@ -173,17 +179,11 @@ class GeminiBackend(LLMBackend):
             image_prompt_request = self._build_image_prompt_request(story, context, num_prompts)
             model = self._text_model or "gemini-2.5-flash"
             response = self.client.models.generate_content(model=model, contents=image_prompt_request)
-            candidates = getattr(response, "candidates", None)
-            if candidates and len(candidates) > 0:
-                candidate = candidates[0]
-                content = getattr(candidate, "content", None)
-                if content:
-                    parts = getattr(content, "parts", None) or []
-                    if parts and getattr(parts[0], "text", None):
-                        text: str = parts[0].text.strip()
-                        parsed = self._parse_numbered_prompts(text, num_prompts)
-                        if parsed:
-                            return parsed
+            text = self._extract_text(response)
+            if text:
+                parsed = self._parse_numbered_prompts(text, num_prompts)
+                if parsed:
+                    return parsed
             return self._generate_fallback_image_prompts(story, context, num_prompts)
         except Exception:
             logger.debug("Image prompt generation failed, using fallback", exc_info=True)
@@ -203,19 +203,13 @@ class GeminiBackend(LLMBackend):
 
             model = self._text_model or "gemini-2.5-pro"
             response = self.client.models.generate_content(model=model, contents=contents)
-            candidates = getattr(response, "candidates", None)
-            if candidates and len(candidates) > 0:
-                candidate = candidates[0]
-                content = getattr(candidate, "content", None)
-                if content:
-                    parts = getattr(content, "parts", None) or []
-                    if parts and getattr(parts[0], "text", None):
-                        text: str = parts[0].text
-                        return text.strip()
+            text = self._extract_text(response)
+            if text:
+                return text
             return "[Error: No valid response from Gemini]"
         except Exception as e:
             logger.warning("Story generation failed: %s", e)
-            return f"[Error generating story: {e}]"
+            return f"{ERROR_STORY_SENTINEL}: {e}"
 
     def _extract_image_from_response(self, resp: Any) -> tuple[Image.Image | None, bytes | None]:
         if not resp:
@@ -322,20 +316,9 @@ class GeminiBackend(LLMBackend):
             contents = prompt.image_name(story)
             model = self._text_model or "gemini-2.5-flash"
             response = self.client.models.generate_content(model=model, contents=contents)
-            candidates = getattr(response, "candidates", None)
-            if candidates and len(candidates) > 0:
-                candidate = candidates[0]
-                content = getattr(candidate, "content", None)
-                if content:
-                    parts = getattr(content, "parts", None) or []
-                    if parts and getattr(parts[0], "text", None):
-                        text: str = parts[0].text
-                        name = text.strip()
-                        # Remove file extension if present
-                        name = name.split(".")[0]
-                        # Clean up any unwanted characters (match Anthropic/OpenAI sanitization)
-                        name = "".join(c for c in name if c.isalnum() or c == "_")
-                        return name if name else "story_image"
+            text = self._extract_text(response)
+            if text:
+                return self._sanitize_image_name(text)
             return "story_image"
         except Exception:
             logger.debug("Image name generation failed, using fallback", exc_info=True)

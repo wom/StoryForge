@@ -20,12 +20,14 @@ from .checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
 from .config import Config, load_config
 from .console import console
 from .context import ContextManager
-from .llm_backend import get_backend
+from .llm_backend import ERROR_STORY_SENTINEL, get_backend
 from .prompt import Prompt
 
 
 class PhaseExecutor:
     """Phase-based execution engine with checkpoint support."""
+
+    MAX_FILENAME_PREFIX_LENGTH: int = 30
 
     def __init__(self, checkpoint_manager: CheckpointManager) -> None:
         """Initialize the phase executor."""
@@ -620,7 +622,7 @@ class PhaseExecutor:
                 if verbose:
                     console.print("[dim]Story generation complete.[/dim]")
 
-        if self.story is None or self.story == "[Error generating story]":
+        if self.story is None or self.story.startswith(ERROR_STORY_SENTINEL):
             raise RuntimeError("Failed to generate story. Please check your API key and try again.")
 
         # Store story in checkpoint
@@ -710,7 +712,7 @@ class PhaseExecutor:
             if self.story_prompt:
                 self.story_prompt.prompt = original_prompt_text
 
-            if self.story is None or self.story == "[Error generating story]":
+            if self.story is None or self.story.startswith(ERROR_STORY_SENTINEL):
                 raise RuntimeError("Failed to refine story. Please check your API key and try again.")
 
             # Update story in checkpoint
@@ -1051,8 +1053,10 @@ class PhaseExecutor:
                 # Generate context filename based on story prompt
                 prompt_summary = str(self.checkpoint_data.original_inputs.get("prompt", "story"))
 
-                # Create a safe filename from prompt (first 30 chars, alphanumeric only)
-                safe_name = "".join(c for c in prompt_summary[:30] if c.isalnum() or c in " -_")
+                # Create a safe filename from prompt (alphanumeric only, truncated)
+                safe_name = "".join(
+                    c for c in prompt_summary[: self.MAX_FILENAME_PREFIX_LENGTH] if c.isalnum() or c in " -_"
+                )
                 safe_name = safe_name.replace(" ", "_").strip("_")
                 if not safe_name:
                     safe_name = "story"
