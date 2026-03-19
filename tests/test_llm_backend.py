@@ -400,3 +400,47 @@ class TestFallbackImagePrompts:
         # First segment should have start, second should have end
         assert "Start of story" in result[0]
         assert "End of story" in result[1]
+
+
+class TestSanitizeImageName:
+    """Test the _sanitize_image_name static method."""
+
+    def test_normal_filename_with_extension(self):
+        """Test extension is stripped from a normal filename."""
+        assert LLMBackend._sanitize_image_name("brave_mouse.png") == "brave_mouse"
+
+    def test_multiple_dots(self):
+        """Test only text before the first dot is kept."""
+        assert LLMBackend._sanitize_image_name("image.tar.gz") == "image"
+
+    def test_no_extension(self):
+        """Test filename without extension is returned as-is."""
+        assert LLMBackend._sanitize_image_name("brave_mouse") == "brave_mouse"
+
+    def test_special_characters_stripped(self):
+        """Test non-alphanumeric, non-underscore characters are removed."""
+        assert LLMBackend._sanitize_image_name("image-@#$%.png") == "image"
+
+    def test_spaces_stripped(self):
+        """Test spaces are removed from the filename."""
+        assert LLMBackend._sanitize_image_name("my image.png") == "myimage"
+
+    def test_empty_string_fallback(self):
+        """Test empty string returns the fallback name."""
+        assert LLMBackend._sanitize_image_name("") == "story_image"
+
+    def test_only_dots_fallback(self):
+        """Test string of only dots returns the fallback name."""
+        assert LLMBackend._sanitize_image_name("...") == "story_image"
+
+    def test_only_special_chars_fallback(self):
+        """Test string of only special chars returns the fallback name."""
+        assert LLMBackend._sanitize_image_name("!!!.png") == "story_image"
+
+    def test_underscores_preserved(self):
+        """Test underscores and digits are preserved."""
+        assert LLMBackend._sanitize_image_name("my_image_123") == "my_image_123"
+
+    def test_mixed_valid_invalid_chars(self):
+        """Test mix of valid and invalid characters."""
+        assert LLMBackend._sanitize_image_name("hello-world_2.jpg") == "helloworld_2"

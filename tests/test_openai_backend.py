@@ -389,3 +389,39 @@ class TestOpenAIBackend:
         assert len(result) == 2
         assert "Context:" not in result[0]
         assert "Context:" not in result[1]
+
+    def test_extract_text_valid_response(self):
+        """Test _extract_text with valid response."""
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content="A story"))]
+        assert OpenAIBackend._extract_text(mock_response) == "A story"
+
+    def test_extract_text_empty_choices(self):
+        """Test _extract_text with empty choices list."""
+        mock_response = Mock()
+        mock_response.choices = []
+        assert OpenAIBackend._extract_text(mock_response) is None
+
+    def test_extract_text_message_none(self):
+        """Test _extract_text when message is None."""
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=None)]
+        assert OpenAIBackend._extract_text(mock_response) is None
+
+    def test_extract_text_content_none(self):
+        """Test _extract_text when content is None."""
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content=None))]
+        assert OpenAIBackend._extract_text(mock_response) is None
+
+    def test_extract_text_content_empty_string(self):
+        """Test _extract_text when content is empty string."""
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content=""))]
+        assert OpenAIBackend._extract_text(mock_response) is None
+
+    def test_extract_text_whitespace_content(self):
+        """Test _extract_text with whitespace-only content."""
+        mock_response = Mock()
+        mock_response.choices = [Mock(message=Mock(content="   "))]
+        assert OpenAIBackend._extract_text(mock_response) == ""

@@ -133,3 +133,51 @@ def test_generate_image_generated_images_path(mock_client):
         image, image_bytes = backend.generate_image(prompt)
         assert image == "gen_image"
         assert image_bytes == b"gen_image_bytes"
+
+
+def test_extract_text_valid_response():
+    """Test _extract_text with valid response containing text."""
+    mock_response = MagicMock()
+    mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="A story")]))]
+    assert GeminiBackend._extract_text(mock_response) == "A story"
+
+
+def test_extract_text_no_candidates_attribute():
+    """Test _extract_text when response has no candidates attribute."""
+    mock_response = MagicMock(spec=[])
+    assert GeminiBackend._extract_text(mock_response) is None
+
+
+def test_extract_text_empty_candidates():
+    """Test _extract_text with empty candidates list."""
+    mock_response = MagicMock()
+    mock_response.candidates = []
+    assert GeminiBackend._extract_text(mock_response) is None
+
+
+def test_extract_text_content_none():
+    """Test _extract_text when candidates[0].content is None."""
+    mock_response = MagicMock()
+    mock_response.candidates = [MagicMock(content=None)]
+    assert GeminiBackend._extract_text(mock_response) is None
+
+
+def test_extract_text_empty_parts():
+    """Test _extract_text with empty parts list."""
+    mock_response = MagicMock()
+    mock_response.candidates = [MagicMock(content=MagicMock(parts=[]))]
+    assert GeminiBackend._extract_text(mock_response) is None
+
+
+def test_extract_text_text_none():
+    """Test _extract_text when parts[0].text is None."""
+    mock_response = MagicMock()
+    mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text=None)]))]
+    assert GeminiBackend._extract_text(mock_response) is None
+
+
+def test_extract_text_strips_whitespace():
+    """Test _extract_text strips leading/trailing whitespace."""
+    mock_response = MagicMock()
+    mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="  hello  ")]))]
+    assert GeminiBackend._extract_text(mock_response) == "hello"

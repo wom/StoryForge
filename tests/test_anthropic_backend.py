@@ -338,3 +338,59 @@ def test_generate_fallback_image_prompts_fewer_paragraphs():
     # All prompts should contain the paragraph text
     assert "Only one paragraph" in result[0]
     assert all("Forest setting" in prompt for prompt in result)
+
+
+def test_extract_text_valid_response():
+    """Test _extract_text with valid text content block."""
+    mock_response = MagicMock()
+    mock_block = MagicMock()
+    mock_block.type = "text"
+    mock_block.text = "  A story  "
+    mock_response.content = [mock_block]
+    assert AnthropicBackend._extract_text(mock_response) == "A story"
+
+
+def test_extract_text_empty_content():
+    """Test _extract_text with empty content list."""
+    mock_response = MagicMock()
+    mock_response.content = []
+    assert AnthropicBackend._extract_text(mock_response) is None
+
+
+def test_extract_text_content_none():
+    """Test _extract_text when content is None."""
+    mock_response = MagicMock()
+    mock_response.content = None
+    assert AnthropicBackend._extract_text(mock_response) is None
+
+
+def test_extract_text_non_text_type():
+    """Test _extract_text skips content blocks with type != 'text'."""
+    mock_response = MagicMock()
+    mock_block = MagicMock()
+    mock_block.type = "image"
+    mock_response.content = [mock_block]
+    assert AnthropicBackend._extract_text(mock_response) is None
+
+
+def test_extract_text_no_text_attribute():
+    """Test _extract_text skips content block without 'text' attribute."""
+    from unittest.mock import Mock
+
+    mock_response = MagicMock()
+    mock_block = Mock(spec=["type"])
+    mock_block.type = "text"
+    mock_response.content = [mock_block]
+    assert AnthropicBackend._extract_text(mock_response) is None
+
+
+def test_extract_text_multiple_blocks_second_text():
+    """Test _extract_text returns text from second block when first is non-text."""
+    mock_response = MagicMock()
+    non_text_block = MagicMock()
+    non_text_block.type = "image"
+    text_block = MagicMock()
+    text_block.type = "text"
+    text_block.text = "Found it"
+    mock_response.content = [non_text_block, text_block]
+    assert AnthropicBackend._extract_text(mock_response) == "Found it"

@@ -700,3 +700,22 @@ class TestBackwardsCompatibility:
         assert cm.max_tokens == 100
         assert cm.pinned_token_fraction == 0.3
         assert cm.summary_cache_dir == "/tmp/cache"
+
+
+class TestContextConstants:
+    """Test named constants on ContextManager."""
+
+    def test_chars_per_token_constant(self):
+        """Test CHARS_PER_TOKEN is 4."""
+        assert ContextManager.CHARS_PER_TOKEN == 4
+
+    def test_max_trait_length_constant(self):
+        """Test MAX_TRAIT_LENGTH is 200."""
+        assert ContextManager.MAX_TRAIT_LENGTH == 200
+
+    def test_token_estimation_uses_chars_per_token(self):
+        """Test _estimate_tokens divides by CHARS_PER_TOKEN."""
+        cm = ContextManager()
+        text = "x" * 100
+        expected = len(text) // ContextManager.CHARS_PER_TOKEN
+        assert cm._estimate_tokens(text) == expected
