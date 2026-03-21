@@ -662,30 +662,17 @@ class PhaseExecutor:
 
             self.refinements = typer.prompt("Refinements:")
 
-            # Build refinement prompt that includes the existing story
-            refinement_instruction = (
-                "I have an existing story that needs refinement. "
-                "Please keep the story as similar as possible to the original, "
-                "but apply the following specific changes. "
-                "Maintain all the good storytelling elements, structure, and flow of the original story.\n\n"
-                f"ORIGINAL STORY:\n{self.story}\n\n"
-                f"REQUESTED CHANGES:\n{self.refinements}\n\n"
-                "Please generate the refined version of this story, incorporating the requested changes "
-                "while preserving everything else about the original story."
-            )
-
             # Store refinements in checkpoint
             if self.checkpoint_data:
                 self.checkpoint_data.generated_content["refinements"] = self.refinements
                 self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
 
-            # Create a new prompt with the refinement instructions
-            # Save the original prompt first
-            original_prompt_text = self.story_prompt.prompt if self.story_prompt else ""
-
-            # Temporarily update the prompt for refinement
+            # Set refinement mode on the prompt so Prompt.story builds
+            # a dedicated editing prompt instead of a "write new story" prompt
             if self.story_prompt:
-                self.story_prompt.prompt = refinement_instruction
+                self.story_prompt.refinement_mode = True
+                self.story_prompt.original_story = self.story
+                self.story_prompt.refinement_instructions = self.refinements
 
             # Regenerate story with refinement
             with Progress(
@@ -699,7 +686,8 @@ class PhaseExecutor:
                 if debug:
                     # In debug mode, show what would be sent but use test story
                     console.print("[dim]Debug mode: skipping LLM refinement, using test story.[/dim]")
-                    console.print(f"[dim]{refinement_instruction[:200]}...[/dim]")
+                    if self.story_prompt:
+                        console.print(f"[dim]{self.story_prompt.story[:200]}...[/dim]")
                     from .StoryForge import load_story_from_file
 
                     self.story = load_story_from_file("storyforge/test_story.txt")
@@ -708,9 +696,11 @@ class PhaseExecutor:
                     if verbose:
                         console.print("[dim]Story refinement complete.[/dim]")
 
-            # Restore original prompt
+            # Clear refinement mode
             if self.story_prompt:
-                self.story_prompt.prompt = original_prompt_text
+                self.story_prompt.refinement_mode = False
+                self.story_prompt.original_story = None
+                self.story_prompt.refinement_instructions = None
 
             if self.story is None or self.story.startswith(ERROR_STORY_SENTINEL):
                 raise RuntimeError("Failed to refine story. Please check your API key and try again.")

@@ -450,6 +450,14 @@ def extend_story(
         ending_type_str = "wrap_up" if ending_choice == 1 else "cliffhanger"
         ending_type = cast(Literal["wrap_up", "cliffhanger"], ending_type_str)
 
+        # Ask for optional direction guidance
+        continuation_direction = typer.prompt(
+            "\nAny direction for this continuation? (press Enter to skip)",
+            default="",
+            show_default=False,
+        )
+        continuation_direction = continuation_direction.strip() or None
+
         # Parse characters from metadata (handle both list and string formats)
         characters_value = metadata.get("characters", [])
         if isinstance(characters_value, str):
@@ -475,6 +483,7 @@ def extend_story(
             context=story_content,
             continuation_mode=True,
             ending_type=ending_type,
+            continuation_direction=continuation_direction,
         )
 
         console.print(
@@ -499,6 +508,7 @@ def extend_story(
             "image_style": prompt.image_style,
             "theme": prompt.theme,
             "characters": prompt.characters,
+            "continuation_direction": continuation_direction,
         }
 
         # Prepare resolved configuration
@@ -514,6 +524,7 @@ def extend_story(
             "style": prompt.style,
             "tone": prompt.tone,
             "image_style": prompt.image_style,
+            "continuation_direction": continuation_direction,
             "source_context_file": str(selected_context["filepath"]),
         }
 

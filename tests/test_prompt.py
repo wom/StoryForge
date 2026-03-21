@@ -639,3 +639,182 @@ class TestTechnicalDebtCleanup:
         # Should not contain hardcoded validation
         assert "valid_lengths" not in source_text
         assert "valid_age_ranges" not in source_text
+
+
+class TestRefinementMode:
+    """Test refinement mode prompt construction."""
+
+    def test_refinement_prompt_no_new_story_framing(self):
+        """Refinement prompt should not contain 'write a new story' framing."""
+        prompt = Prompt(
+            prompt="A brave little mouse",
+            refinement_mode=True,
+            original_story="Once upon a time, a brave little mouse set out on an adventure.",
+            refinement_instructions="Make the mouse a rabbit instead.",
+        )
+        story = prompt.story
+        assert "write" not in story.split("STORY REFINEMENT TASK")[0].lower()
+        assert "STORY REFINEMENT TASK" in story
+        assert "based on this prompt:" not in story.lower()
+
+    def test_refinement_prompt_includes_original_story(self):
+        """Refinement prompt should include the original story text."""
+        original = "Once upon a time, a brave little mouse set out on an adventure."
+        prompt = Prompt(
+            prompt="A brave little mouse",
+            refinement_mode=True,
+            original_story=original,
+            refinement_instructions="Make it shorter.",
+        )
+        story = prompt.story
+        assert original in story
+        assert "ORIGINAL STORY:" in story
+
+    def test_refinement_prompt_includes_requested_changes(self):
+        """Refinement prompt should include the refinement instructions."""
+        changes = "Make the dragon friendly instead of scary"
+        prompt = Prompt(
+            prompt="A dragon tale",
+            refinement_mode=True,
+            original_story="A scary dragon terrorized the village.",
+            refinement_instructions=changes,
+        )
+        story = prompt.story
+        assert changes in story
+        assert "REQUESTED CHANGES:" in story
+
+    def test_refinement_prompt_includes_context(self):
+        """Refinement prompt should include context if provided."""
+        prompt = Prompt(
+            prompt="A wizard's quest",
+            context="Character: Luna the wizard, always wears a purple hat.",
+            refinement_mode=True,
+            original_story="Luna cast a spell.",
+            refinement_instructions="Add more detail about her hat.",
+        )
+        story = prompt.story
+        assert "Luna the wizard" in story
+        assert "STORY CONTEXT:" in story
+
+    def test_refinement_prompt_includes_original_prompt(self):
+        """Refinement prompt should include the original user prompt for reference."""
+        prompt = Prompt(
+            prompt="A wizard's quest",
+            refinement_mode=True,
+            original_story="Luna cast a spell.",
+            refinement_instructions="Add a sidekick.",
+        )
+        story = prompt.story
+        assert "A wizard's quest" in story
+        assert "ORIGINAL PROMPT:" in story
+
+    def test_refinement_prompt_maintains_tone_and_style(self):
+        """Refinement prompt should instruct LLM to maintain tone and style."""
+        prompt = Prompt(
+            prompt="test",
+            tone="silly",
+            style="comedy",
+            refinement_mode=True,
+            original_story="A silly story.",
+            refinement_instructions="Add more jokes.",
+        )
+        story = prompt.story
+        assert "silly" in story
+        assert "comedy" in story
+
+    def test_refinement_prompt_includes_age_guidance(self):
+        """Refinement prompt should include age-appropriate constraints."""
+        prompt = Prompt(
+            prompt="test",
+            age_range="toddler",
+            refinement_mode=True,
+            original_story="A simple story.",
+            refinement_instructions="Add a new character.",
+        )
+        story = prompt.story
+        assert "simple words" in story.lower() or "short sentences" in story.lower()
+
+    def test_refinement_mode_false_uses_normal_prompt(self):
+        """When refinement_mode=False, normal story prompt should be used."""
+        prompt = Prompt(
+            prompt="A brave little mouse",
+            refinement_mode=False,
+            original_story="Should be ignored.",
+            refinement_instructions="Should also be ignored.",
+        )
+        story = prompt.story
+        assert "STORY REFINEMENT TASK" not in story
+        assert "write" in story.lower()
+        assert "A brave little mouse" in story
+
+    def test_refinement_prompt_without_context(self):
+        """Refinement prompt should work without context."""
+        prompt = Prompt(
+            prompt="A dragon tale",
+            refinement_mode=True,
+            original_story="A dragon flew over the mountain.",
+            refinement_instructions="Add a sunset.",
+        )
+        story = prompt.story
+        assert "STORY CONTEXT:" not in story
+        assert "ORIGINAL STORY:" in story
+
+
+class TestContinuationDirection:
+    """Test continuation_direction in continuation mode."""
+
+    def test_direction_included_in_continuation_prompt(self):
+        """Continuation direction should appear in the prompt."""
+        prompt = Prompt(
+            prompt="",
+            context="Once upon a time in a magical forest...",
+            continuation_mode=True,
+            ending_type="cliffhanger",
+            continuation_direction="The dragon should become an ally",
+        )
+        story = prompt.story
+        assert "The dragon should become an ally" in story
+        assert "DIRECTION" in story
+
+    def test_no_direction_section_when_none(self):
+        """No DIRECTION section when continuation_direction is None."""
+        prompt = Prompt(
+            prompt="",
+            context="Once upon a time in a magical forest...",
+            continuation_mode=True,
+            ending_type="wrap_up",
+            continuation_direction=None,
+        )
+        story = prompt.story
+        assert "DIRECTION" not in story
+
+    def test_direction_with_wrap_up_ending(self):
+        """Direction works with wrap_up ending type."""
+        prompt = Prompt(
+            prompt="",
+            context="A story about a knight...",
+            continuation_mode=True,
+            ending_type="wrap_up",
+            continuation_direction="The knight finds the treasure",
+        )
+        story = prompt.story
+        assert "The knight finds the treasure" in story
+        assert "wraps up" in story.lower()
+
+    def test_direction_with_cliffhanger_ending(self):
+        """Direction works with cliffhanger ending type."""
+        prompt = Prompt(
+            prompt="",
+            context="A story about a knight...",
+            continuation_mode=True,
+            ending_type="cliffhanger",
+            continuation_direction="Introduce a mysterious stranger",
+        )
+        story = prompt.story
+        assert "Introduce a mysterious stranger" in story
+        assert "cliffhanger" in story.lower()
+
+    def test_direction_default_is_none(self):
+        """continuation_direction defaults to None."""
+        prompt = Prompt(prompt="test")
+        assert prompt.continuation_direction is None
