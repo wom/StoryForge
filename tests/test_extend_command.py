@@ -273,9 +273,9 @@ class TestExtendCommandIntegration:
         ]
         mock_context_mgr.return_value = mock_mgr
 
-        # Mock user input: pick_story returns 0-based index, typer.prompt for ending choice
+        # Mock user input: pick_story returns 0-based index, typer.prompt for ending choice + direction
         mock_pick_story.return_value = 0
-        mock_prompt.return_value = 1  # wrap-up ending
+        mock_prompt.side_effect = [1, ""]  # wrap-up ending, no direction
 
         # Mock config
         mock_config = Mock()

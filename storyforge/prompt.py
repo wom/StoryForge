@@ -69,6 +69,10 @@ class Prompt:
     continuation_mode: bool = False
     ending_type: Literal["wrap_up", "cliffhanger"] = "wrap_up"
     has_old_context: bool = False
+    continuation_direction: str | None = None
+    refinement_mode: bool = False
+    original_story: str | None = None
+    refinement_instructions: str | None = None
 
     def __post_init__(self) -> None:
         """Resolve random parameters and validate after initialization."""
@@ -181,12 +185,19 @@ class Prompt:
             "what happened in the original story before continuing with new content."
         )
 
+        direction_note = ""
+        if self.continuation_direction:
+            direction_note = (
+                f"\n\nDIRECTION FOR THIS CONTINUATION: {self.continuation_direction}"
+            )
+
         if self.ending_type == "wrap_up":
             instruction = (
                 "CONTINUATION TASK: The following is an existing story. "
                 "Please write a continuation that wraps up the narrative "
                 "with a satisfying resolution and complete ending."
                 f"{multi_part_note}"
+                f"{direction_note}"
                 f"{recap_instruction}"
             )
         else:  # cliffhanger
@@ -196,10 +207,52 @@ class Prompt:
                 "ends with a cliffhanger - an exciting moment that sets "
                 "up the next adventure without full resolution."
                 f"{multi_part_note}"
+                f"{direction_note}"
                 f"{recap_instruction}"
             )
 
         return instruction
+
+    def _build_refinement_prompt(self) -> str:
+        """Build a prompt for refining an existing story.
+
+        Creates a focused editing prompt that instructs the LLM to modify
+        the existing story based on specific requested changes, rather than
+        generating a completely new story.
+        """
+        parts = []
+
+        parts.append(
+            "STORY REFINEMENT TASK: You are editing an existing children's story. "
+            "Make ONLY the requested changes below. Keep everything else — plot, characters, "
+            "structure, pacing, and wording — as close to the original as possible.\n"
+        )
+
+        # Include context if available (character descriptions, etc.)
+        if self.context:
+            parts.append(f"\nSTORY CONTEXT:\n{self.context}\n")
+
+        # Include the original user prompt for thematic reference
+        if self.prompt:
+            parts.append(f"\nORIGINAL PROMPT: {self.prompt}\n")
+
+        parts.append(f"\nORIGINAL STORY:\n{self.original_story}\n")
+        parts.append(f"\nREQUESTED CHANGES:\n{self.refinement_instructions}\n")
+
+        # Constraints framed as "maintain these" not "write with these"
+        parts.append(f"\nMaintain the {self.tone} tone and {self.style} style throughout.")
+        parts.append(f"\nAge-appropriate constraints: {self._get_age_appropriate_guidance()}")
+        parts.append("\n\nThe refined story must remain:")
+        parts.append("\n- Completely safe and appropriate for children")
+        parts.append("\n- Consistent with the original characters and setting")
+        parts.append("\n- The same length and structure as the original unless the changes require otherwise")
+
+        parts.append(
+            "\n\nOutput ONLY the complete refined story text. "
+            "Do not include commentary or explanations."
+        )
+
+        return "".join(parts)
 
     @property
     def story(self) -> str:
@@ -211,6 +264,10 @@ class Prompt:
         """
         # Start with the base prompt
         prompt_parts = []
+
+        # Refinement mode: dedicated path for modifying an existing story
+        if self.refinement_mode and self.original_story and self.refinement_instructions:
+            return self._build_refinement_prompt()
 
         # Add continuation instruction if in continuation mode
         if self.continuation_mode:
