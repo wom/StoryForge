@@ -51,6 +51,9 @@ app = typer.Typer(
 config_app = typer.Typer(help="Configuration management commands")
 app.add_typer(config_app, name="config")
 
+world_app = typer.Typer(help="World definition file management (characters, places, lore)")
+app.add_typer(world_app, name="world")
+
 
 def generate_default_output_dir(extended: bool = False) -> str:
     """Generate a timestamped output directory name."""
@@ -149,6 +152,119 @@ def init_config(
         raise typer.Exit(1) from None
 
 
+def _resolve_world_file_path() -> Path:
+    """Resolve the path where world.md should live.
+
+    Returns the first existing context directory, or creates the XDG data dir.
+    """
+    from .world_template import WORLD_FILENAME
+
+    # Prefer local ./context/ if it exists
+    local_dir = Path("context")
+    if local_dir.exists() and local_dir.is_dir():
+        return local_dir / WORLD_FILENAME
+
+    # Fall back to XDG data directory
+    from platformdirs import user_data_dir
+
+    xdg_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
+    xdg_dir.mkdir(parents=True, exist_ok=True)
+    return xdg_dir / WORLD_FILENAME
+
+
+@world_app.command(name="edit", help="Open world.md in your editor (creates from template if needed)")
+def world_edit() -> None:
+    """Open world.md in $EDITOR for editing."""
+    import os
+    import shlex
+    import subprocess
+
+    from .world_template import WORLD_TEMPLATE
+
+    world_path = _resolve_world_file_path()
+
+    # Create from template if it doesn't exist
+    created = False
+    if not world_path.exists():
+        world_path.parent.mkdir(parents=True, exist_ok=True)
+        world_path.write_text(WORLD_TEMPLATE, encoding="utf-8")
+        created = True
+        console.print(f"[bold green]✨ Created world file from template:[/bold green] {world_path}")
+    else:
+        console.print(f"[bold cyan]📖 Opening world file:[/bold cyan] {world_path}")
+
+    editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "nano"))
+    try:
+        subprocess.run(shlex.split(editor) + [str(world_path)], check=True)  # noqa: S603
+        console.print("[bold green]✅ World file saved.[/bold green]")
+    except FileNotFoundError:
+        console.print(f"[red]Error:[/red] Editor '{editor}' not found. Set $EDITOR to your preferred editor.")
+        if created:
+            console.print(f"[dim]World file created at: {world_path} — edit it manually.[/dim]")
+        raise typer.Exit(1) from None
+    except subprocess.CalledProcessError:
+        console.print("[yellow]Editor exited with an error.[/yellow]")
+        raise typer.Exit(1) from None
+
+
+@world_app.command(name="init", help="Create world.md from template without opening an editor")
+def world_init(
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing world file"),
+) -> None:
+    """Create world.md from the default template."""
+    from .world_template import WORLD_TEMPLATE
+
+    world_path = _resolve_world_file_path()
+
+    if world_path.exists() and not force:
+        console.print(f"[yellow]World file already exists:[/yellow] {world_path}")
+        console.print("[dim]Use --force to overwrite, or 'storyforge world edit' to modify it.[/dim]")
+        raise typer.Exit(0)
+
+    world_path.parent.mkdir(parents=True, exist_ok=True)
+    world_path.write_text(WORLD_TEMPLATE, encoding="utf-8")
+    console.print(f"[bold green]✨ World file created:[/bold green] {world_path}")
+    console.print("[dim]Edit it with: storyforge world edit[/dim]")
+
+
+@world_app.command(name="show", help="Display the current world.md contents")
+def world_show() -> None:
+    """Print world.md to stdout."""
+    context_mgr = ContextManager()
+    content = context_mgr.load_world()
+
+    if content is None:
+        console.print("[yellow]No world file found.[/yellow]")
+        console.print("[dim]Create one with: storyforge world init[/dim]")
+        raise typer.Exit(1)
+
+    from rich.markdown import Markdown
+    from rich.panel import Panel
+
+    panel = Panel(
+        Markdown(content),
+        title="[bold cyan]📖 Story World[/bold cyan]",
+        border_style="cyan",
+        padding=(1, 2),
+    )
+    console.print(panel)
+
+
+@world_app.command(name="path", help="Show the resolved path to world.md")
+def world_path_cmd() -> None:
+    """Print the resolved world.md path."""
+    context_mgr = ContextManager()
+    world_file = context_mgr._discover_world_file()
+
+    if world_file:
+        console.print(f"[bold green]📍 World file:[/bold green] {world_file}")
+    else:
+        expected = _resolve_world_file_path()
+        console.print("[yellow]No world file found.[/yellow]")
+        console.print(f"[dim]Expected location: {expected}[/dim]")
+        console.print("[dim]Create one with: storyforge world init[/dim]")
+
+
 @app.command(
     "main",  # Keep it named "main" but we'll make it default via entry point
     context_settings={"help_option_names": ["-h", "--help"]},
@@ -174,6 +290,7 @@ def main(
     image_style: str | None = generate_cli_option("image_style"),
     output_dir: str | None = generate_cli_option("output_dir"),
     use_context: bool | None = generate_boolean_cli_option("use_context", "--use-context/--no-use-context"),
+    world_file: str | None = generate_cli_option("world_file"),
     verbose: bool | None = generate_cli_option("verbose"),
     debug: bool | None = generate_cli_option("debug"),
     backend: str | None = generate_cli_option("backend"),
@@ -199,6 +316,7 @@ def main(
         "image_style": image_style,
         "output_dir": output_dir,
         "use_context": use_context,
+        "world_file": world_file,
         "verbose": verbose,
         "debug": debug,
         "backend": backend,
@@ -266,6 +384,7 @@ def main(
         image_style = image_style if image_style is not None else config.get_field_value("images", "image_style")
         output_dir = output_dir if output_dir is not None else config.get_field_value("output", "output_dir")
         use_context = use_context if use_context is not None else config.get_field_value("output", "use_context")
+        world_file = world_file if world_file is not None else config.get_field_value("output", "world_file")
         verbose = verbose if verbose is not None else config.get_field_value("system", "verbose")
         debug = debug if debug is not None else config.get_field_value("system", "debug")
 
@@ -319,6 +438,7 @@ def main(
             "image_style": image_style,
             "output_dir": output_dir,
             "use_context": use_context,
+            "world_file": world_file,
             "verbose": verbose,
             "debug": debug,
             "backend": config_backend,
@@ -329,6 +449,7 @@ def main(
             "backend": config_backend,
             "output_directory": output_dir,
             "use_context": use_context,
+            "world_file": world_file,
             "verbose": verbose,
             "debug": debug,
             "length": length,
@@ -733,6 +854,7 @@ if __name__ == "__main__":
             "continue",
             "extend",
             "export-chain",
+            "world",
         ]
     ):
         sys.argv.insert(1, "main")
@@ -753,6 +875,7 @@ def cli_entry() -> None:
         "continue",
         "extend",
         "export-chain",
+        "world",
     ]:
         sys.argv.insert(1, "main")
     app()

@@ -19,6 +19,8 @@ from typing import Any
 
 from platformdirs import user_data_dir
 
+from .world_template import WORLD_FILENAME
+
 # Use "StoryForge" as appauthor for user_data_dir to ensure user-agnostic,
 # organization-consistent data storage
 
@@ -147,6 +149,7 @@ class ContextManager:
         pinned_token_fraction: float = 0.2,
         tokenizer: Callable[[str], int] | None = None,
         summary_cache_dir: str | None = None,
+        world_file_path: str | None = None,
     ):
         """
         Initialize the ContextManager.
@@ -160,9 +163,11 @@ class ContextManager:
             pinned_token_fraction: Fraction of budget reserved for high-relevance verbatim chunks (0-1).
             tokenizer: Optional callable to estimate tokens from text. Uses heuristic if None.
             summary_cache_dir: Optional directory for persisting summaries (not yet implemented).
+            world_file_path: Explicit path to a world definition file. If None, auto-discovers.
         """
         self.context_file_path = context_file_path
         self._cached_context: str | None = None
+        self.world_file_path = world_file_path
 
         # Summarization configuration (always enabled)
         self.max_tokens = max_tokens
@@ -180,6 +185,8 @@ class ContextManager:
     def _discover_context_files(self) -> list[Path]:
         """Discover context files from configured path, env override, or default locations.
 
+        Excludes world.md from results — it is loaded separately via load_world().
+
         Returns:
             List of Path objects for discovered .md context files, sorted by mtime.
         """
@@ -192,20 +199,73 @@ class ContextManager:
         if test_context_dir:
             context_dir = Path(test_context_dir)
             if context_dir.exists() and context_dir.is_dir():
-                return sorted(context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+                files = sorted(context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+                return [f for f in files if f.name != WORLD_FILENAME]
             return []
 
         # Prefer ./context/ in the current working directory if it exists
         local_context_dir = Path("context")
         if local_context_dir.exists() and local_context_dir.is_dir():
-            return sorted(local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+            files = sorted(local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+            return [f for f in files if f.name != WORLD_FILENAME]
 
         # Use lowercase 'storyforge' for normalized cross-platform paths
         user_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
         if user_dir.exists() and user_dir.is_dir():
-            return sorted(user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+            files = sorted(user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+            return [f for f in files if f.name != WORLD_FILENAME]
 
         return []
+
+    def _discover_world_file(self) -> Path | None:
+        """Discover the world definition file.
+
+        Search order: explicit world_file_path → ./context/world.md → XDG data dir.
+
+        Returns:
+            Path to world.md if found, None otherwise.
+        """
+        import os
+
+        # 1. Explicit path from constructor / CLI
+        if self.world_file_path:
+            p = Path(self.world_file_path).expanduser()
+            return p if p.exists() and p.is_file() else None
+
+        # 2. Test environment override
+        test_context_dir = os.environ.get("STORYFORGE_TEST_CONTEXT_DIR")
+        if test_context_dir:
+            p = Path(test_context_dir) / WORLD_FILENAME
+            return p if p.exists() and p.is_file() else None
+
+        # 3. Local ./context/ directory
+        p = Path("context") / WORLD_FILENAME
+        if p.exists() and p.is_file():
+            return p
+
+        # 4. XDG user data directory
+        p = Path(user_data_dir("storyforge", "storyforge")) / "context" / WORLD_FILENAME
+        if p.exists() and p.is_file():
+            return p
+
+        return None
+
+    def load_world(self) -> str | None:
+        """Load the world definition file verbatim (no summarization).
+
+        Returns:
+            The full contents of world.md, or None if not found or empty.
+        """
+        world_path = self._discover_world_file()
+        if world_path is None:
+            return None
+
+        try:
+            content = world_path.read_text(encoding="utf-8").strip()
+            return content if content else None
+        except OSError:
+            logging.getLogger(__name__).warning("Failed to read world file: %s", world_path, exc_info=True)
+            return None
 
     def _select_context_files(self, files: list[Path]) -> list[Path]:
         """Select a representative subset of context files using temporal stratified sampling.

@@ -36,6 +36,7 @@ class PhaseExecutor:
         self.config: Config | None = None
         self.llm_backend: Any = None  # LLMBackend type not available in this scope
         self.context: str | None = None
+        self.world: str | None = None
         self.story_prompt: Any = None  # Prompt type not available in this scope
         self.story: str | None = None
         self.refinements: str | None = None
@@ -474,16 +475,18 @@ class PhaseExecutor:
             raise typer.Exit(0)
 
     def _phase_context_load(self) -> None:
-        """Load context files phase.
+        """Load context files and world definition phase.
 
         Uses extractive summarization to compress context to fit within
         the backend's token budget (50% of model context window).
         Falls back to raw concatenation if no prompt is available.
+        World file (world.md) is always loaded verbatim, bypassing token budgets.
         """
         if self.checkpoint_data is None:
             raise RuntimeError("Checkpoint data must be initialized")
         use_context = self.checkpoint_data.resolved_config.get("use_context", True)
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
+        world_file = self.checkpoint_data.resolved_config.get("world_file") or None
 
         # Skip context loading for extensions — the pre-built prompt already
         # carries the full chain content as its context field.
@@ -509,7 +512,21 @@ class PhaseExecutor:
                     f"{self.llm_backend.text_input_limit} model limit)[/dim]"
                 )
 
-        context_manager = ContextManager(max_tokens=max_tokens)
+        context_manager = ContextManager(max_tokens=max_tokens, world_file_path=world_file)
+
+        # Load world file (always verbatim, no budget limit)
+        self.world = context_manager.load_world()
+        if self.world:
+            word_count = len(self.world.split())
+            estimated_tokens = word_count * 4 // 3  # rough word-to-token ratio
+            if verbose:
+                console.print(f"[dim]Loaded world file: {word_count} words (verbatim)[/dim]")
+            if estimated_tokens > 5000:
+                console.print(
+                    f"[yellow]⚠ World file is large (~{estimated_tokens} tokens). "
+                    f"This is included verbatim in every prompt and may consume "
+                    f"significant context window. Consider trimming it.[/yellow]"
+                )
 
         # Use extractive summarization when we have a prompt for relevance scoring
         prompt_text = self.checkpoint_data.original_inputs.get("prompt", "")
@@ -529,18 +546,26 @@ class PhaseExecutor:
                 word_count = len(self.context.split())
                 console.print(f"[dim]Loaded raw context: {word_count} words (no prompt for scoring)[/dim]")
 
-        if verbose and not self.context:
-            console.print("[dim]No context files found[/dim]")
+        if verbose and not self.context and not self.world:
+            console.print("[dim]No context or world files found[/dim]")
 
         # Store context in checkpoint
-        if self.context and self.checkpoint_data:
-            self.checkpoint_data.context_data = {
-                "loaded_context": self.context,
-                "context_files_used": [],
-                "summarized": bool(prompt_text),
-                "max_tokens": max_tokens,
-                "has_old_context": context_manager.has_old_context,
-            }
+        if self.checkpoint_data:
+            context_data: dict[str, Any] = {}
+            if self.context:
+                context_data.update(
+                    {
+                        "loaded_context": self.context,
+                        "context_files_used": [],
+                        "summarized": bool(prompt_text),
+                        "max_tokens": max_tokens,
+                        "has_old_context": context_manager.has_old_context,
+                    }
+                )
+            if self.world:
+                context_data["world_content"] = self.world
+            if context_data:
+                self.checkpoint_data.context_data = context_data
 
     def _phase_build_prompt(self) -> None:
         """Build the story prompt from inputs."""
@@ -566,6 +591,7 @@ class PhaseExecutor:
         self.story_prompt = Prompt(
             prompt=prompt,
             context=self.context,
+            world=self.world,
             length=str(cli_args.get("length") or resolved_config.get("length") or ""),
             age_range=str(cli_args.get("age_range") or resolved_config.get("age_range") or ""),
             style=str(cli_args.get("style") or resolved_config.get("style") or ""),

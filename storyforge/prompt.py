@@ -31,6 +31,7 @@ class Prompt:
     Attributes:
         prompt (str): The main story prompt or description
         context (str, optional): Background information for story consistency
+        world (str, optional): World definition (characters, places, lore) always included verbatim
         length (str): Story length - "flash", "short", "medium", "bedtime"
         age_range (str): Target age group - "toddler", "preschool", "early_reader",
             "middle_grade"
@@ -57,6 +58,7 @@ class Prompt:
 
     prompt: str
     context: str | None = None
+    world: str | None = None
     length: str = "short"
     age_range: str = "preschool"
     style: str = "adventure"
@@ -193,9 +195,7 @@ class Prompt:
 
         direction_note = ""
         if self.continuation_direction:
-            direction_note = (
-                f"\n\nDIRECTION FOR THIS CONTINUATION: {self.continuation_direction}"
-            )
+            direction_note = f"\n\nDIRECTION FOR THIS CONTINUATION: {self.continuation_direction}"
 
         if self.ending_type == "wrap_up":
             instruction = (
@@ -234,6 +234,10 @@ class Prompt:
             "structure, pacing, and wording — as close to the original as possible.\n"
         )
 
+        # Include world definition if available (always verbatim)
+        if self.world:
+            parts.append(f"\nSTORY WORLD:\n{self.world}\n")
+
         # Include context if available (character descriptions, etc.)
         if self.context:
             parts.append(f"\nSTORY CONTEXT:\n{self.context}\n")
@@ -253,10 +257,7 @@ class Prompt:
         parts.append("\n- Consistent with the original characters and setting")
         parts.append("\n- The same length and structure as the original unless the changes require otherwise")
 
-        parts.append(
-            "\n\nOutput ONLY the complete refined story text. "
-            "Do not include commentary or explanations."
-        )
+        parts.append("\n\nOutput ONLY the complete refined story text. Do not include commentary or explanations.")
 
         return "".join(parts)
 
@@ -280,6 +281,10 @@ class Prompt:
             continuation_instruction = self._build_continuation_instruction()
             prompt_parts.append(f"{continuation_instruction}\n\n")
 
+        # Add world definition (always included verbatim, before context)
+        if self.world:
+            prompt_parts.append(f"Story world definition:\n{self.world}\n\n")
+
         # Add context if provided
         if self.context:
             prompt_parts.append(f"Context for story generation:\n{self.context}\n")
@@ -292,6 +297,8 @@ class Prompt:
                 )
             if not self.continuation_mode:
                 prompt_parts.append("Based on the above context, ")
+        elif self.world and not self.continuation_mode:
+            prompt_parts.append("Based on the story world above, ")
 
         # Main story instruction (skip if in continuation mode since context IS the story)
         if not self.continuation_mode:
@@ -363,6 +370,10 @@ class Prompt:
         prompts = []
         for i in range(num_images):
             image_parts = []
+
+            # Add world definition for visual consistency
+            if self.world:
+                image_parts.append(f"Story world (character and setting reference):\n{self.world}\n\n")
 
             # Add context as a separate section if present
             if self.context:
