@@ -7,10 +7,8 @@ VENV_ACTIVATE = . .venv/bin/activate &&
 all: install
 
 
-PYTHON ?= python3
-
 venv:
-	test -d .venv || uv venv .venv --python $(PYTHON)
+	test -d .venv || uv venv .venv
 
 install: venv
 	uv pip install -e .[dev]
