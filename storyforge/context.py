@@ -250,18 +250,29 @@ class ContextManager:
 
         return None
 
+    @staticmethod
+    def _strip_html_comments(text: str) -> str:
+        """Strip HTML comments from text and collapse resulting blank lines."""
+        stripped = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+        # Collapse runs of 3+ newlines down to 2 (one blank line)
+        stripped = re.sub(r"\n{3,}", "\n\n", stripped)
+        return stripped.strip()
+
     def load_world(self) -> str | None:
-        """Load the world definition file verbatim (no summarization).
+        """Load the world definition file with HTML comments stripped.
 
         Returns:
-            The full contents of world.md, or None if not found or empty.
+            The contents of world.md with comments removed, or None if not found or empty.
         """
         world_path = self._discover_world_file()
         if world_path is None:
             return None
 
         try:
-            content = world_path.read_text(encoding="utf-8").strip()
+            raw = world_path.read_text(encoding="utf-8").strip()
+            if not raw:
+                return None
+            content = self._strip_html_comments(raw)
             return content if content else None
         except OSError:
             logging.getLogger(__name__).warning("Failed to read world file: %s", world_path, exc_info=True)
