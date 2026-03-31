@@ -206,6 +206,24 @@ def _create_output_section() -> ConfigSection:
         )
     )
 
+    section.add_field(
+        ConfigField(
+            name="world_file",
+            field_type=FieldType.PATH,
+            default="",
+            section="output",
+            description="Path to a world definition file that is always included verbatim in prompts",
+            cli_help="Path to world file (always included in full)",
+            cli_short="-w",
+            example_values=["./context/world.md", "~/.local/share/storyforge/storyforge/context/world.md"],
+            ini_comment=(
+                "Path to a world definition file (characters, places, lore) that is always\n"
+                "# included verbatim in every story prompt. Use 'storyforge world init' to create one.\n"
+                "# Leave empty to auto-discover from context directory"
+            ),
+        )
+    )
+
     return section
 
 

@@ -129,7 +129,7 @@ class TestPhaseExecutorPhases:
 
         assert self.phase_executor.context == "Summarized context content"
         mock_context_mgr.extract_relevant_context.assert_called_once_with(prompt="Test story prompt")
-        mock_context_mgr_class.assert_called_once_with(max_tokens=64000)
+        mock_context_mgr_class.assert_called_once_with(max_tokens=64000, world_file_path=None)
         assert self.checkpoint_data.context_data["loaded_context"] == "Summarized context content"
         assert self.checkpoint_data.context_data["summarized"] is True
 
@@ -179,7 +179,7 @@ class TestPhaseExecutorPhases:
 
         self.phase_executor._phase_context_load()
 
-        mock_context_mgr_class.assert_called_once_with(max_tokens=100000)
+        mock_context_mgr_class.assert_called_once_with(max_tokens=100000, world_file_path=None)
 
     @patch("storyforge.phase_executor.Prompt")
     def test_phase_build_prompt(self, mock_prompt_class):
