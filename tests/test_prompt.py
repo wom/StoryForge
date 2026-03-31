@@ -759,6 +759,36 @@ class TestRefinementMode:
         assert "STORY CONTEXT:" not in story
         assert "ORIGINAL STORY:" in story
 
+    def test_refinement_mode_missing_original_story_raises(self):
+        """refinement_mode=True without original_story should raise ValueError."""
+        with pytest.raises(ValueError, match="original_story"):
+            Prompt(
+                prompt="A brave mouse",
+                refinement_mode=True,
+                original_story=None,
+                refinement_instructions="Make it funnier.",
+            )
+
+    def test_refinement_mode_missing_instructions_raises(self):
+        """refinement_mode=True without refinement_instructions should raise ValueError."""
+        with pytest.raises(ValueError, match="refinement_instructions"):
+            Prompt(
+                prompt="A brave mouse",
+                refinement_mode=True,
+                original_story="Once upon a time...",
+                refinement_instructions=None,
+            )
+
+    def test_refinement_mode_empty_original_story_raises(self):
+        """refinement_mode=True with empty original_story should raise ValueError."""
+        with pytest.raises(ValueError, match="original_story"):
+            Prompt(
+                prompt="A brave mouse",
+                refinement_mode=True,
+                original_story="",
+                refinement_instructions="Make it funnier.",
+            )
+
 
 class TestContinuationDirection:
     """Test continuation_direction in continuation mode."""
