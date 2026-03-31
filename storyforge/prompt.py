@@ -124,6 +124,12 @@ class Prompt:
                         # Raise the first validation error
                         raise ValueError(errors[0].message)
 
+        if self.refinement_mode:
+            if not self.original_story:
+                raise ValueError("refinement_mode requires original_story to be set")
+            if not self.refinement_instructions:
+                raise ValueError("refinement_mode requires refinement_instructions to be set")
+
     def _get_length_description(self) -> str:
         """Get description text for the story length."""
         length_descriptions = {
@@ -266,7 +272,7 @@ class Prompt:
         prompt_parts = []
 
         # Refinement mode: dedicated path for modifying an existing story
-        if self.refinement_mode and self.original_story and self.refinement_instructions:
+        if self.refinement_mode:
             return self._build_refinement_prompt()
 
         # Add continuation instruction if in continuation mode
