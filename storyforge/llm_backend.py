@@ -14,13 +14,65 @@ Supported backends:
 
 import logging
 import os
+import random
 import re
+import time
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING
+from collections.abc import Callable
+from typing import TYPE_CHECKING, TypeVar
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+
 ERROR_STORY_SENTINEL = "[Error generating story]"
+
+# Transient HTTP status codes
+TRANSIENT_STATUS_CODES = {429, 500, 502, 503}
+
+
+def classify_story_error(sentinel_value: str) -> tuple[str, bool]:
+    """Classify an error story sentinel into a user-friendly message.
+
+    Parses the sentinel string to determine the error type and returns
+    an appropriate user-facing message and whether the error was transient.
+
+    Args:
+        sentinel_value: The error sentinel string from generate_story().
+
+    Returns:
+        A tuple of (user_message, is_transient).
+    """
+    error_detail = sentinel_value.removeprefix(ERROR_STORY_SENTINEL).strip(": ")
+
+    # Check for transient errors
+    error_lower = error_detail.lower()
+    for code in TRANSIENT_STATUS_CODES:
+        if str(code) in error_detail:
+            return (
+                f"Server temporarily unavailable ({code}). Please try again later.\nDetails: {error_detail}",
+                True,
+            )
+
+    transient_keywords = ["unavailable", "overloaded", "rate limit", "too many requests", "high demand"]
+    if any(kw in error_lower for kw in transient_keywords):
+        return (
+            f"Server temporarily unavailable. Please try again later.\nDetails: {error_detail}",
+            True,
+        )
+
+    # Check for auth errors
+    if any(code in error_detail for code in ["401", "403", "UNAUTHENTICATED", "PERMISSION_DENIED"]):
+        return (
+            f"Authentication failed. Please check your API key and try again.\nDetails: {error_detail}",
+            False,
+        )
+
+    # Unknown error — show the detail without misleading advice
+    if error_detail:
+        return f"Story generation failed: {error_detail}", False
+    return "Story generation failed. Please check your configuration and try again.", False
+
 
 if TYPE_CHECKING:
     from .config import Config
@@ -91,6 +143,106 @@ class LLMBackend(ABC):
             contents = contents[:target_chars]
 
         return contents
+
+    # Transient error codes that should trigger retry
+    TRANSIENT_STATUS_CODES = {429, 500, 502, 503}
+    MAX_RETRIES = 3
+    BASE_RETRY_DELAY = 10.0  # seconds
+
+    @staticmethod
+    def _is_transient_error(error: Exception) -> bool:
+        """Check if an exception represents a transient API error worth retrying.
+
+        Inspects the exception for HTTP status codes commonly associated with
+        temporary failures: 429 (rate limit), 500, 502, 503 (server overload).
+        Checks both typed exception attributes and string representations.
+
+        Args:
+            error: The exception to classify.
+
+        Returns:
+            True if the error is transient and the request should be retried.
+        """
+        # Check for status_code attribute (google-genai, openai, anthropic all use this)
+        status_code = getattr(error, "status_code", None) or getattr(error, "status", None)
+        if status_code and int(status_code) in LLMBackend.TRANSIENT_STATUS_CODES:
+            return True
+
+        # Check for HTTP status attribute on nested response objects
+        response = getattr(error, "response", None)
+        if response is not None:
+            resp_status = getattr(response, "status_code", None) or getattr(response, "status", None)
+            if resp_status and int(resp_status) in LLMBackend.TRANSIENT_STATUS_CODES:
+                return True
+
+        # Fallback: check string representation for status codes
+        error_str = str(error)
+        for code in LLMBackend.TRANSIENT_STATUS_CODES:
+            if str(code) in error_str:
+                return True
+
+        # Check for common transient error keywords
+        transient_keywords = ["UNAVAILABLE", "overloaded", "rate limit", "too many requests", "high demand"]
+        error_lower = error_str.lower()
+        return any(kw.lower() in error_lower for kw in transient_keywords)
+
+    def _retry_transient(self, fn: Callable[[], T], operation: str = "API call") -> T:
+        """Execute a callable with retry logic for transient errors.
+
+        On transient failures (429, 500, 502, 503), retries with exponential
+        backoff starting at 10s (10s → 20s → 40s) plus random jitter.
+        Prints clear status messages so the user knows what's happening.
+
+        Args:
+            fn: Zero-argument callable to execute (typically a lambda wrapping the API call).
+            operation: Human-readable description for log messages (e.g., "story generation").
+
+        Returns:
+            The return value of fn on success.
+
+        Raises:
+            The original exception if the error is not transient or retries are exhausted.
+        """
+        from .console import console
+
+        last_exception: Exception | None = None
+
+        for attempt in range(self.MAX_RETRIES + 1):  # 0 = initial, 1-3 = retries
+            try:
+                return fn()
+            except Exception as e:
+                last_exception = e
+
+                if not self._is_transient_error(e):
+                    raise
+
+                if attempt >= self.MAX_RETRIES:
+                    console.print(
+                        f"[red]❌ {operation.capitalize()} still failing after "
+                        f"{self.MAX_RETRIES} retries. Giving up.[/red]"
+                    )
+                    raise
+
+                delay = self.BASE_RETRY_DELAY * (2**attempt)
+                jitter = random.uniform(0, delay * 0.25)
+                total_delay = delay + jitter
+
+                # Extract a short error description for the user
+                error_brief = str(e).split("\n")[0][:120]
+                console.print(
+                    f"[yellow]⚠ {operation.capitalize()} failed: {error_brief}[/yellow]\n"
+                    f"[yellow]  Retrying in {total_delay:.0f}s... "
+                    f"(attempt {attempt + 1}/{self.MAX_RETRIES})[/yellow]"
+                )
+                logger.info(
+                    "Transient error during %s (attempt %d/%d): %s", operation, attempt + 1, self.MAX_RETRIES, e
+                )
+
+                time.sleep(total_delay)
+
+        # Should not reach here, but satisfy type checker
+        assert last_exception is not None
+        raise last_exception
 
     @abstractmethod
     def generate_story(self, prompt: "Prompt") -> str:

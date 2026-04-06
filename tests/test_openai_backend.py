@@ -425,3 +425,74 @@ class TestOpenAIBackend:
         mock_response = Mock()
         mock_response.choices = [Mock(message=Mock(content="   "))]
         assert OpenAIBackend._extract_text(mock_response) == ""
+
+
+class TestOpenAIRetryIntegration:
+    """Test that OpenAIBackend integrates retry logic for transient errors."""
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    @patch("openai.OpenAI")
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    @patch("storyforge.console.console")
+    def test_generate_story_retries_on_429(self, mock_console, mock_random, mock_sleep, mock_openai_client):
+        """generate_story() should retry on 429 rate limit and succeed."""
+        mock_client_instance = Mock()
+        mock_openai_client.return_value = mock_client_instance
+
+        success_response = Mock()
+        success_response.choices = [Mock(message=Mock(content="A story"))]
+
+        mock_client_instance.chat.completions.create.side_effect = [
+            Exception("429 Too Many Requests"),
+            success_response,
+        ]
+
+        backend = OpenAIBackend()
+        prompt = Mock(spec=Prompt)
+        prompt.story = "Test prompt"
+
+        result = backend.generate_story(prompt)
+
+        assert result == "A story"
+        assert mock_client_instance.chat.completions.create.call_count == 2
+        mock_sleep.assert_called_once()
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    @patch("openai.OpenAI")
+    def test_generate_story_no_retry_on_permanent_error(self, mock_openai_client):
+        """generate_story() should NOT retry on auth errors."""
+        mock_client_instance = Mock()
+        mock_openai_client.return_value = mock_client_instance
+        mock_client_instance.chat.completions.create.side_effect = Exception("401 Unauthorized")
+
+        backend = OpenAIBackend()
+        prompt = Mock(spec=Prompt)
+        prompt.story = "Test prompt"
+
+        result = backend.generate_story(prompt)
+
+        assert result.startswith(ERROR_STORY_SENTINEL)
+        assert mock_client_instance.chat.completions.create.call_count == 1
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    @patch("openai.OpenAI")
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    @patch("storyforge.console.console")
+    def test_generate_story_returns_sentinel_after_exhaustion(
+        self, mock_console, mock_random, mock_sleep, mock_openai_client
+    ):
+        """generate_story() should return sentinel after all retries fail."""
+        mock_client_instance = Mock()
+        mock_openai_client.return_value = mock_client_instance
+        mock_client_instance.chat.completions.create.side_effect = Exception("503 Service Unavailable")
+
+        backend = OpenAIBackend()
+        prompt = Mock(spec=Prompt)
+        prompt.story = "Test prompt"
+
+        result = backend.generate_story(prompt)
+
+        assert result.startswith(ERROR_STORY_SENTINEL)
+        assert mock_client_instance.chat.completions.create.call_count == 4  # 1 + 3 retries

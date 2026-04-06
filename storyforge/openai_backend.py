@@ -165,15 +165,16 @@ class OpenAIBackend(LLMBackend):
             # Safety check: truncate if prompt exceeds model limits
             contents = self._check_and_truncate_prompt(contents)
 
-            response = self.client.chat.completions.create(
-                model=self.story_model, messages=[{"role": "user", "content": contents}], temperature=1
-            )
+            def _call() -> str:
+                response = self.client.chat.completions.create(
+                    model=self.story_model, messages=[{"role": "user", "content": contents}], temperature=1
+                )
+                text = self._extract_text(response)
+                if text:
+                    return text
+                return "[Error: No valid response from OpenAI]"
 
-            # Extract the story text from the response with proper null checking
-            text = self._extract_text(response)
-            if text:
-                return text
-            return "[Error: No valid response from OpenAI]"
+            return self._retry_transient(_call, operation="story generation")
         except Exception as e:
             # Return a generic error message if generation fails
             logger.warning("Story generation failed: %s", e)
@@ -239,35 +240,38 @@ class OpenAIBackend(LLMBackend):
             # Generate image using configured model (gpt-image-1.5 or dall-e-3)
             # Use quality="auto" for gpt-image models, "standard" for dall-e models
             quality: Literal["auto", "standard"] = "auto" if "gpt-image" in self.image_model else "standard"
-            response = self.client.images.generate(
-                prompt=text_prompt,
-                model=self.image_model,
-                size="1024x1024",
-                quality=quality,
-                n=1,
-            )
+            image_model = self.image_model
 
-            if response.data and len(response.data) > 0:
-                item = response.data[0]
-                if item.url:
-                    # Download the image from the URL (dall-e models)
-                    import requests
+            def _call() -> tuple[object | None, bytes | None]:
+                response = self.client.images.generate(
+                    prompt=text_prompt,
+                    model=image_model,
+                    size="1024x1024",
+                    quality=quality,
+                    n=1,
+                )
 
-                    img_response = requests.get(item.url, timeout=30)
-                    if img_response.status_code == 200:
-                        image_bytes = img_response.content
+                if response.data and len(response.data) > 0:
+                    item = response.data[0]
+                    if item.url:
+                        import requests
+
+                        img_response = requests.get(item.url, timeout=30)
+                        if img_response.status_code == 200:
+                            image_bytes = img_response.content
+                            image = Image.open(BytesIO(image_bytes))
+                            return image, image_bytes
+                    elif getattr(item, "b64_json", None):
+                        import base64
+
+                        b64_data: str = item.b64_json  # type: ignore[assignment]
+                        image_bytes = base64.b64decode(b64_data)
                         image = Image.open(BytesIO(image_bytes))
                         return image, image_bytes
-                elif getattr(item, "b64_json", None):
-                    # Decode base64 image data (gpt-image models)
-                    import base64
 
-                    b64_data: str = item.b64_json  # type: ignore[assignment]
-                    image_bytes = base64.b64decode(b64_data)
-                    image = Image.open(BytesIO(image_bytes))
-                    return image, image_bytes
+                return None, None
 
-            return None, None
+            return self._retry_transient(_call, operation="image generation")
 
         except Exception as e:
             logger.error("Failed to generate image with DALL-E: %s", e)

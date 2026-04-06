@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from storyforge.llm_backend import LLMBackend, get_backend
+from storyforge.llm_backend import ERROR_STORY_SENTINEL, LLMBackend, get_backend
 from storyforge.prompt import Prompt
 
 
@@ -444,3 +444,213 @@ class TestSanitizeImageName:
     def test_mixed_valid_invalid_chars(self):
         """Test mix of valid and invalid characters."""
         assert LLMBackend._sanitize_image_name("hello-world_2.jpg") == "helloworld_2"
+
+
+class TestIsTransientError:
+    """Test transient error detection logic."""
+
+    def test_503_in_message(self):
+        """503 in error string should be transient."""
+        error = Exception("503 UNAVAILABLE. This model is experiencing high demand.")
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_429_in_message(self):
+        """429 rate limit in error string should be transient."""
+        error = Exception("429 Too Many Requests")
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_500_in_message(self):
+        """500 internal server error should be transient."""
+        error = Exception("500 Internal Server Error")
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_502_in_message(self):
+        """502 bad gateway should be transient."""
+        error = Exception("502 Bad Gateway")
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_status_code_attribute(self):
+        """Error with status_code attribute should be detected."""
+        error = Exception("Service unavailable")
+        error.status_code = 503
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_overloaded_keyword(self):
+        """'overloaded' keyword should be detected as transient."""
+        error = Exception("The server is currently overloaded")
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_high_demand_keyword(self):
+        """'high demand' keyword should be detected as transient."""
+        error = Exception("This model is currently experiencing high demand")
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_rate_limit_keyword(self):
+        """'rate limit' keyword should be detected as transient."""
+        error = Exception("rate limit exceeded, please slow down")
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_401_not_transient(self):
+        """401 authentication error should NOT be transient."""
+        error = Exception("401 Unauthorized: Invalid API key")
+        assert LLMBackend._is_transient_error(error) is False
+
+    def test_400_not_transient(self):
+        """400 bad request should NOT be transient."""
+        error = Exception("400 Bad Request: Invalid parameter")
+        assert LLMBackend._is_transient_error(error) is False
+
+    def test_generic_error_not_transient(self):
+        """Generic errors without status codes should NOT be transient."""
+        error = Exception("Something went wrong with parsing")
+        assert LLMBackend._is_transient_error(error) is False
+
+    def test_response_attribute_status(self):
+        """Error with response.status_code attribute should be detected."""
+        error = Exception("API error")
+        error.response = MagicMock(status_code=503)
+        assert LLMBackend._is_transient_error(error) is True
+
+
+class TestRetryTransient:
+    """Test retry logic with exponential backoff."""
+
+    def setup_method(self):
+        self.backend = DummyBackend()
+
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    def test_succeeds_after_transient_retry(self, mock_random, mock_sleep):
+        """Should succeed after a transient error followed by success."""
+        call_count = 0
+
+        def flaky_call():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Exception("503 UNAVAILABLE")
+            return "success"
+
+        with patch("storyforge.console.console"):
+            result = self.backend._retry_transient(flaky_call, operation="test")
+
+        assert result == "success"
+        assert call_count == 2
+        mock_sleep.assert_called_once_with(10.0)  # BASE_RETRY_DELAY * 2^0 + 0 jitter
+
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    def test_exponential_backoff_delays(self, mock_random, mock_sleep):
+        """Should use exponential backoff: 10s, 20s, 40s."""
+        call_count = 0
+
+        def always_fails():
+            nonlocal call_count
+            call_count += 1
+            raise Exception("503 UNAVAILABLE")
+
+        with patch("storyforge.console.console"):
+            with pytest.raises(Exception, match="503 UNAVAILABLE"):
+                self.backend._retry_transient(always_fails, operation="test")
+
+        assert call_count == 4  # 1 initial + 3 retries
+        delays = [c[0][0] for c in mock_sleep.call_args_list]
+        assert delays == [10.0, 20.0, 40.0]
+
+    @patch("storyforge.llm_backend.time.sleep")
+    def test_no_retry_on_permanent_error(self, mock_sleep):
+        """Should NOT retry on non-transient errors (e.g., 401)."""
+        call_count = 0
+
+        def auth_error():
+            nonlocal call_count
+            call_count += 1
+            raise Exception("401 Unauthorized: Invalid API key")
+
+        with pytest.raises(Exception, match="401 Unauthorized"):
+            self.backend._retry_transient(auth_error, operation="test")
+
+        assert call_count == 1
+        mock_sleep.assert_not_called()
+
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    def test_retry_exhaustion_raises_last_error(self, mock_random, mock_sleep):
+        """After max retries, should raise the last exception."""
+
+        def always_503():
+            raise Exception("503 UNAVAILABLE")
+
+        with patch("storyforge.console.console"):
+            with pytest.raises(Exception, match="503 UNAVAILABLE"):
+                self.backend._retry_transient(always_503, operation="test")
+
+        assert mock_sleep.call_count == 3  # 3 retries
+
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    def test_succeeds_on_third_attempt(self, mock_random, mock_sleep):
+        """Should succeed on the third attempt after two transient failures."""
+        call_count = 0
+
+        def fails_twice():
+            nonlocal call_count
+            call_count += 1
+            if call_count <= 2:
+                raise Exception("429 Too Many Requests")
+            return "finally worked"
+
+        with patch("storyforge.console.console"):
+            result = self.backend._retry_transient(fails_twice, operation="test")
+
+        assert result == "finally worked"
+        assert call_count == 3
+        assert mock_sleep.call_count == 2
+
+
+class TestClassifyStoryError:
+    """Test error classification for user-facing messages."""
+
+    def test_503_classified_as_transient(self):
+        from storyforge.llm_backend import classify_story_error
+
+        msg, is_transient = classify_story_error(f"{ERROR_STORY_SENTINEL}: 503 UNAVAILABLE")
+        assert is_transient is True
+        assert "temporarily unavailable" in msg.lower()
+        assert "503" in msg
+
+    def test_429_classified_as_transient(self):
+        from storyforge.llm_backend import classify_story_error
+
+        msg, is_transient = classify_story_error(f"{ERROR_STORY_SENTINEL}: 429 Too Many Requests")
+        assert is_transient is True
+        assert "temporarily unavailable" in msg.lower()
+
+    def test_high_demand_classified_as_transient(self):
+        from storyforge.llm_backend import classify_story_error
+
+        msg, is_transient = classify_story_error(
+            f"{ERROR_STORY_SENTINEL}: This model is currently experiencing high demand"
+        )
+        assert is_transient is True
+
+    def test_401_classified_as_auth(self):
+        from storyforge.llm_backend import classify_story_error
+
+        msg, is_transient = classify_story_error(f"{ERROR_STORY_SENTINEL}: 401 UNAUTHENTICATED")
+        assert is_transient is False
+        assert "api key" in msg.lower()
+
+    def test_generic_error_classified(self):
+        from storyforge.llm_backend import classify_story_error
+
+        msg, is_transient = classify_story_error(f"{ERROR_STORY_SENTINEL}: Connection timeout")
+        assert is_transient is False
+        assert "Connection timeout" in msg
+
+    def test_bare_sentinel_classified(self):
+        from storyforge.llm_backend import classify_story_error
+
+        msg, is_transient = classify_story_error(ERROR_STORY_SENTINEL)
+        assert is_transient is False
+        assert "Story generation failed" in msg

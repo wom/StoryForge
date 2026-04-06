@@ -20,7 +20,7 @@ from .checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
 from .config import Config, load_config
 from .console import console
 from .context import ContextManager
-from .llm_backend import ERROR_STORY_SENTINEL, get_backend
+from .llm_backend import ERROR_STORY_SENTINEL, classify_story_error, get_backend
 from .prompt import Prompt
 
 
@@ -76,8 +76,8 @@ class PhaseExecutor:
             raise typer.Exit(130) from None  # Standard exit code for SIGINT
         except Exception as e:
             # Mark session as failed and save checkpoint
-            current_phase = self.checkpoint_data.current_phase if self.checkpoint_data else "unknown"
-            error_msg = f"Error in phase {current_phase}: {str(e)}"
+            # Don't re-wrap the error — _execute_phase() already adds phase context
+            error_msg = str(e)
             console.print(f"[red]Session failed:[/red] {error_msg}")
 
             if self.checkpoint_data:
@@ -265,8 +265,8 @@ class PhaseExecutor:
             raise typer.Exit(130) from None  # Standard exit code for SIGINT
         except Exception as e:
             # Mark session as failed and save checkpoint
-            current_phase = self.checkpoint_data.current_phase if self.checkpoint_data else "unknown"
-            error_msg = f"Error in phase {current_phase}: {str(e)}"
+            # Don't re-wrap the error — _execute_phase() already adds phase context
+            error_msg = str(e)
             console.print(f"[red]Session failed:[/red] {error_msg}")
 
             if self.checkpoint_data:
@@ -325,10 +325,14 @@ class PhaseExecutor:
             if self._should_skip_phase(phase):
                 continue
 
+            # Update current_phase BEFORE executing so error messages reference the correct phase
+            if self.checkpoint_data is not None:
+                self.checkpoint_data.current_phase = phase.value
+
             console.print(f"[dim]Executing phase:[/dim] {phase.value}")
             self._execute_phase(phase)
 
-            # Update checkpoint after each phase
+            # Mark phase completed and save checkpoint after success
             if self.checkpoint_data is not None:
                 self.checkpoint_data.update_phase(phase)
                 self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
@@ -649,7 +653,8 @@ class PhaseExecutor:
                     console.print("[dim]Story generation complete.[/dim]")
 
         if self.story is None or self.story.startswith(ERROR_STORY_SENTINEL):
-            raise RuntimeError("Failed to generate story. Please check your API key and try again.")
+            error_msg, _ = classify_story_error(self.story or ERROR_STORY_SENTINEL)
+            raise RuntimeError(error_msg)
 
         # Store story in checkpoint
         self.checkpoint_data.generated_content["story"] = self.story
@@ -729,7 +734,8 @@ class PhaseExecutor:
                 self.story_prompt.refinement_instructions = None
 
             if self.story is None or self.story.startswith(ERROR_STORY_SENTINEL):
-                raise RuntimeError("Failed to refine story. Please check your API key and try again.")
+                error_msg, _ = classify_story_error(self.story or ERROR_STORY_SENTINEL)
+                raise RuntimeError(error_msg)
 
             # Update story in checkpoint
             self.checkpoint_data.generated_content["story"] = self.story
