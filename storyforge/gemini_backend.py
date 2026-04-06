@@ -202,11 +202,15 @@ class GeminiBackend(LLMBackend):
                 contents = self._compress_prompt(contents, target_tokens)
 
             model = self._text_model or "gemini-2.5-pro"
-            response = self.client.models.generate_content(model=model, contents=contents)
-            text = self._extract_text(response)
-            if text:
-                return text
-            return "[Error: No valid response from Gemini]"
+
+            def _call() -> str:
+                response = self.client.models.generate_content(model=model, contents=contents)
+                text = self._extract_text(response)
+                if text:
+                    return text
+                return "[Error: No valid response from Gemini]"
+
+            return self._retry_transient(_call, operation="story generation")
         except Exception as e:
             logger.warning("Story generation failed: %s", e)
             return f"{ERROR_STORY_SENTINEL}: {e}"
@@ -298,13 +302,17 @@ class GeminiBackend(LLMBackend):
 
         model = self._image_model or "gemini-2.5-flash-image"
         try:
-            response = self.client.models.generate_content(
-                model=model,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                ),
-            )
+
+            def _call() -> Any:
+                return self.client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        response_modalities=["IMAGE", "TEXT"],
+                    ),
+                )
+
+            response = self._retry_transient(_call, operation="image generation")
         except Exception as e:
             logger.error(f"Failed to generate image with model {model}: {e}")
             return None, None

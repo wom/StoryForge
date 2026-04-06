@@ -394,3 +394,63 @@ def test_extract_text_multiple_blocks_second_text():
     text_block.text = "Found it"
     mock_response.content = [non_text_block, text_block]
     assert AnthropicBackend._extract_text(mock_response) == "Found it"
+
+
+class TestAnthropicRetryIntegration:
+    """Test that AnthropicBackend integrates retry logic for transient errors."""
+
+    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"})
+    @patch("storyforge.anthropic_backend.anthropic.Anthropic")
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    @patch("storyforge.console.console")
+    def test_generate_story_retries_on_overloaded(self, mock_console, mock_random, mock_sleep, mock_anthropic):
+        """generate_story() should retry on overloaded and succeed."""
+        backend = AnthropicBackend()
+
+        success_block = MagicMock()
+        success_block.type = "text"
+        success_block.text = "A wonderful story"
+        success_response = MagicMock()
+        success_response.content = [success_block]
+
+        backend.client.messages.create.side_effect = [
+            Exception("529 overloaded"),
+            success_response,
+        ]
+
+        prompt = Prompt(prompt="test prompt")
+        result = backend.generate_story(prompt)
+
+        assert result == "A wonderful story"
+        assert backend.client.messages.create.call_count == 2
+        mock_sleep.assert_called_once()
+
+    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"})
+    @patch("storyforge.anthropic_backend.anthropic.Anthropic")
+    def test_generate_story_no_retry_on_permanent_error(self, mock_anthropic):
+        """generate_story() should NOT retry on non-transient errors."""
+        backend = AnthropicBackend()
+        backend.client.messages.create.side_effect = Exception("400 Invalid request")
+
+        prompt = Prompt(prompt="test prompt")
+        result = backend.generate_story(prompt)
+
+        assert result.startswith(ERROR_STORY_SENTINEL)
+        assert backend.client.messages.create.call_count == 1
+
+    @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"})
+    @patch("storyforge.anthropic_backend.anthropic.Anthropic")
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    @patch("storyforge.console.console")
+    def test_generate_story_sentinel_after_exhaustion(self, mock_console, mock_random, mock_sleep, mock_anthropic):
+        """generate_story() should return sentinel after retries exhausted."""
+        backend = AnthropicBackend()
+        backend.client.messages.create.side_effect = Exception("503 UNAVAILABLE")
+
+        prompt = Prompt(prompt="test prompt")
+        result = backend.generate_story(prompt)
+
+        assert result.startswith(ERROR_STORY_SENTINEL)
+        assert backend.client.messages.create.call_count == 4  # 1 + 3 retries

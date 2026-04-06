@@ -181,3 +181,91 @@ def test_extract_text_strips_whitespace():
     mock_response = MagicMock()
     mock_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="  hello  ")]))]
     assert GeminiBackend._extract_text(mock_response) == "hello"
+
+
+class TestGeminiRetryIntegration:
+    """Test that GeminiBackend integrates retry logic for transient errors."""
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
+    @patch("storyforge.gemini_backend.genai.Client")
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    @patch("storyforge.console.console")
+    def test_generate_story_retries_on_503(self, mock_console, mock_random, mock_sleep, mock_client):
+        """generate_story() should retry on 503 and succeed on second attempt."""
+        backend = GeminiBackend()
+
+        success_response = MagicMock()
+        success_response.candidates = [MagicMock(content=MagicMock(parts=[MagicMock(text="A story")]))]
+
+        backend.client.models.generate_content.side_effect = [
+            Exception("503 UNAVAILABLE. This model is currently experiencing high demand."),
+            success_response,
+        ]
+
+        prompt = Prompt(prompt="test prompt")
+        result = backend.generate_story(prompt)
+
+        assert result == "A story"
+        assert backend.client.models.generate_content.call_count == 2
+        mock_sleep.assert_called_once()
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
+    @patch("storyforge.gemini_backend.genai.Client")
+    def test_generate_story_no_retry_on_permanent_error(self, mock_client):
+        """generate_story() should NOT retry on non-transient errors like 400."""
+        backend = GeminiBackend()
+        backend.client.models.generate_content.side_effect = Exception("400 Bad Request: Invalid content")
+
+        prompt = Prompt(prompt="test prompt")
+        result = backend.generate_story(prompt)
+
+        assert result.startswith(ERROR_STORY_SENTINEL)
+        assert backend.client.models.generate_content.call_count == 1
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
+    @patch("storyforge.gemini_backend.genai.Client")
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    @patch("storyforge.console.console")
+    def test_generate_story_returns_sentinel_after_retry_exhaustion(
+        self, mock_console, mock_random, mock_sleep, mock_client
+    ):
+        """generate_story() should return error sentinel after all retries fail."""
+        backend = GeminiBackend()
+        backend.client.models.generate_content.side_effect = Exception("503 UNAVAILABLE")
+
+        prompt = Prompt(prompt="test prompt")
+        result = backend.generate_story(prompt)
+
+        assert result.startswith(ERROR_STORY_SENTINEL)
+        assert "503" in result
+        assert backend.client.models.generate_content.call_count == 4  # 1 initial + 3 retries
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
+    @patch("storyforge.gemini_backend.genai.Client")
+    @patch("storyforge.llm_backend.time.sleep")
+    @patch("storyforge.llm_backend.random.uniform", return_value=0)
+    @patch("storyforge.console.console")
+    def test_generate_image_retries_on_503(self, mock_console, mock_random, mock_sleep, mock_client):
+        """generate_image() should retry on 503."""
+        backend = GeminiBackend()
+
+        success_response = MagicMock()
+        success_response.generated_images = None
+        mock_part = MagicMock()
+        mock_part.inline_data = MagicMock(data=b"image_bytes")
+        mock_part.text = None
+        success_response.candidates = [MagicMock(content=MagicMock(parts=[mock_part]))]
+
+        backend.client.models.generate_content.side_effect = [
+            Exception("503 UNAVAILABLE"),
+            success_response,
+        ]
+
+        prompt = Prompt(prompt="test prompt")
+        with patch("storyforge.gemini_backend.Image.open", return_value="image_obj"):
+            image, image_bytes = backend.generate_image(prompt)
+
+        assert image == "image_obj"
+        assert backend.client.models.generate_content.call_count == 2

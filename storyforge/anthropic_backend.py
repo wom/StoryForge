@@ -84,19 +84,19 @@ class AnthropicBackend(LLMBackend):
             # Safety check: truncate if prompt exceeds model limits
             story_prompt = self._check_and_truncate_prompt(story_prompt)
 
-            response = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
-                max_tokens=4000,
-                temperature=0.7,
-                messages=[{"role": "user", "content": story_prompt}],
-            )
+            def _call() -> str:
+                response = self.client.messages.create(
+                    model="claude-3-5-sonnet-20241022",
+                    max_tokens=4000,
+                    temperature=0.7,
+                    messages=[{"role": "user", "content": story_prompt}],
+                )
+                text = self._extract_text(response)
+                if text:
+                    return text
+                return "[Error: No valid response from Claude]"
 
-            # Extract the story text from the response with proper null checking
-            text = self._extract_text(response)
-            if text:
-                return text
-
-            return "[Error: No valid response from Claude]"
+            return self._retry_transient(_call, operation="story generation")
         except Exception as e:
             # Return a generic error message if generation fails
             logger.warning("Story generation failed: %s", e)

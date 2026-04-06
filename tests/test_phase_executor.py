@@ -542,7 +542,7 @@ class TestErrorStorySentinelDetection:
 
         self.mock_backend.generate_story.return_value = ERROR_STORY_SENTINEL
 
-        with pytest.raises(RuntimeError, match="Failed to generate story"):
+        with pytest.raises(RuntimeError, match="Story generation failed"):
             self.phase_executor._phase_story_generate()
 
     @patch("storyforge.phase_executor.Progress")
@@ -556,7 +556,7 @@ class TestErrorStorySentinelDetection:
 
         self.mock_backend.generate_story.return_value = f"{ERROR_STORY_SENTINEL}: Connection timeout"
 
-        with pytest.raises(RuntimeError, match="Failed to generate story"):
+        with pytest.raises(RuntimeError, match="Story generation failed"):
             self.phase_executor._phase_story_generate()
 
     @patch("storyforge.phase_executor.Progress")
@@ -570,7 +570,7 @@ class TestErrorStorySentinelDetection:
 
         self.mock_backend.generate_story.return_value = None
 
-        with pytest.raises(RuntimeError, match="Failed to generate story"):
+        with pytest.raises(RuntimeError, match="Story generation failed"):
             self.phase_executor._phase_story_generate()
 
     @patch("storyforge.phase_executor.Progress")
@@ -626,7 +626,7 @@ class TestErrorStorySentinelDetection:
             f"{ERROR_STORY_SENTINEL}: rate limit exceeded",
         ]
 
-        with pytest.raises(RuntimeError, match="Failed to refine story"):
+        with pytest.raises(RuntimeError, match="Server temporarily unavailable"):
             self.phase_executor._phase_story_generate()
 
 
@@ -912,3 +912,112 @@ class TestPhaseExecutorConstants:
     def test_max_filename_prefix_length_constant(self):
         """Test MAX_FILENAME_PREFIX_LENGTH is 30."""
         assert PhaseExecutor.MAX_FILENAME_PREFIX_LENGTH == 30
+
+
+class TestPhaseTrackingOnError:
+    """Test that current_phase is correctly set before execution."""
+
+    def setup_method(self):
+        self.checkpoint_manager = MagicMock(spec=CheckpointManager)
+        self.phase_executor = PhaseExecutor(self.checkpoint_manager)
+
+        self.checkpoint_data = CheckpointData.create_new(
+            "Test story",
+            {"style": "adventure", "age_range": "preschool"},
+            {"backend": "gemini", "verbose": False, "debug": False},
+        )
+        self.phase_executor.checkpoint_data = self.checkpoint_data
+
+    @patch("storyforge.phase_executor.console")
+    def test_current_phase_set_before_execution(self, mock_console):
+        """current_phase should reference the failing phase, not the previous one."""
+        mock_backend = MagicMock()
+        mock_backend.generate_story.side_effect = RuntimeError("API error")
+        self.phase_executor.llm_backend = mock_backend
+        self.phase_executor.story_prompt = MagicMock()
+
+        # Simulate that prompt_build was the last completed phase
+        self.checkpoint_data.current_phase = "prompt_build"
+
+        with pytest.raises(RuntimeError):
+            self.phase_executor._execute_phase_sequence(
+                __import__("storyforge.checkpoint", fromlist=["ExecutionPhase"]).ExecutionPhase.STORY_GENERATE
+            )
+
+        # current_phase should be story_generate (the failing phase), not prompt_build
+        assert self.checkpoint_data.current_phase == "story_generate"
+
+    @patch("storyforge.phase_executor.console")
+    def test_error_message_not_double_wrapped(self, mock_console):
+        """Error from _execute_phase should NOT be re-wrapped in execute_new_session."""
+        mock_backend = MagicMock()
+        mock_backend.generate_story.side_effect = RuntimeError("Original API error")
+        self.phase_executor.llm_backend = mock_backend
+        self.phase_executor.story_prompt = MagicMock()
+
+        # Run _execute_phase directly and check it wraps once
+        from storyforge.checkpoint import ExecutionPhase
+
+        with pytest.raises(RuntimeError) as exc_info:
+            self.phase_executor._execute_phase(ExecutionPhase.STORY_GENERATE)
+
+        error_msg = str(exc_info.value)
+        assert "Failed during story_generate phase" in error_msg
+        # Should NOT contain double-wrapping like "Error in phase X: Failed during..."
+        assert "Error in phase" not in error_msg
+
+
+class TestContextAwareErrorMessages:
+    """Test that error messages are context-aware based on error type."""
+
+    def setup_method(self):
+        self.checkpoint_manager = MagicMock(spec=CheckpointManager)
+        self.phase_executor = PhaseExecutor(self.checkpoint_manager)
+
+        self.checkpoint_data = CheckpointData.create_new(
+            "Test story",
+            {"style": "adventure", "age_range": "preschool"},
+            {"backend": "gemini", "verbose": False, "debug": False},
+        )
+        self.phase_executor.checkpoint_data = self.checkpoint_data
+        self.phase_executor.llm_backend = MagicMock()
+        self.phase_executor.story_prompt = MagicMock()
+
+    @patch("storyforge.phase_executor.Progress")
+    @patch("storyforge.phase_executor.Confirm.ask", return_value=False)
+    @patch("storyforge.phase_executor.console")
+    def test_503_error_says_temporarily_unavailable(self, mock_console, mock_confirm, mock_progress):
+        """503 sentinel should produce 'temporarily unavailable' message, not 'check API key'."""
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
+        mock_progress.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.phase_executor.llm_backend.generate_story.return_value = (
+            f"{ERROR_STORY_SENTINEL}: 503 UNAVAILABLE. This model is experiencing high demand."
+        )
+
+        with pytest.raises(RuntimeError) as exc_info:
+            self.phase_executor._phase_story_generate()
+
+        error_msg = str(exc_info.value)
+        assert "temporarily unavailable" in error_msg.lower()
+        assert "503" in error_msg
+        # Should NOT say "check your API key"
+        assert "API key" not in error_msg
+
+    @patch("storyforge.phase_executor.Progress")
+    @patch("storyforge.phase_executor.Confirm.ask", return_value=False)
+    @patch("storyforge.phase_executor.console")
+    def test_401_error_says_check_api_key(self, mock_console, mock_confirm, mock_progress):
+        """401 sentinel should produce 'check API key' message."""
+        mock_progress_instance = MagicMock()
+        mock_progress.return_value.__enter__ = MagicMock(return_value=mock_progress_instance)
+        mock_progress.return_value.__exit__ = MagicMock(return_value=False)
+
+        self.phase_executor.llm_backend.generate_story.return_value = f"{ERROR_STORY_SENTINEL}: 401 UNAUTHENTICATED"
+
+        with pytest.raises(RuntimeError) as exc_info:
+            self.phase_executor._phase_story_generate()
+
+        error_msg = str(exc_info.value)
+        assert "API key" in error_msg
