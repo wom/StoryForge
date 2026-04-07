@@ -155,7 +155,7 @@ class LLMBackend(ABC):
     def _safe_int(value: object) -> int | None:
         """Attempt to convert a value to int, returning None on failure."""
         try:
-            return int(value)  # type: ignore[arg-type]
+            return int(value)  # type: ignore[call-overload, no-any-return]
         except (ValueError, TypeError):
             return None
 
@@ -202,8 +202,14 @@ class LLMBackend(ABC):
                 return True
 
         # Check for common transient error keywords
-        transient_keywords = ["UNAVAILABLE", "overloaded", "rate limit", "too many requests", "high demand",
-                              "RESOURCE_EXHAUSTED"]
+        transient_keywords = [
+            "UNAVAILABLE",
+            "overloaded",
+            "rate limit",
+            "too many requests",
+            "high demand",
+            "RESOURCE_EXHAUSTED",
+        ]
         error_lower = error_str.lower()
         return any(kw.lower() in error_lower for kw in transient_keywords)
 
