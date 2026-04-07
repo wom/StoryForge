@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from storyforge.checkpoint import CheckpointData, CheckpointManager
+from storyforge.checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
 from storyforge.llm_backend import ERROR_STORY_SENTINEL
 from storyforge.phase_executor import PhaseExecutor
 
@@ -936,13 +936,22 @@ class TestPhaseTrackingOnError:
         self.phase_executor.llm_backend = mock_backend
         self.phase_executor.story_prompt = MagicMock()
 
+        # Mark critical init phases as already initialised so they are skipped.
+        # Without this, _execute_phase_sequence re-runs CONFIG_LOAD / BACKEND_INIT
+        # etc. which depend on real config files and API keys — making the test
+        # pass locally but fail on CI.
+        self.phase_executor._initialized_phases = {
+            ExecutionPhase.CONFIG_LOAD,
+            ExecutionPhase.BACKEND_INIT,
+            ExecutionPhase.CONTEXT_LOAD,
+            ExecutionPhase.PROMPT_BUILD,
+        }
+
         # Simulate that prompt_build was the last completed phase
         self.checkpoint_data.current_phase = "prompt_build"
 
         with pytest.raises(RuntimeError):
-            self.phase_executor._execute_phase_sequence(
-                __import__("storyforge.checkpoint", fromlist=["ExecutionPhase"]).ExecutionPhase.STORY_GENERATE
-            )
+            self.phase_executor._execute_phase_sequence(ExecutionPhase.STORY_GENERATE)
 
         # current_phase should be story_generate (the failing phase), not prompt_build
         assert self.checkpoint_data.current_phase == "story_generate"
@@ -956,8 +965,6 @@ class TestPhaseTrackingOnError:
         self.phase_executor.story_prompt = MagicMock()
 
         # Run _execute_phase directly and check it wraps once
-        from storyforge.checkpoint import ExecutionPhase
-
         with pytest.raises(RuntimeError) as exc_info:
             self.phase_executor._execute_phase(ExecutionPhase.STORY_GENERATE)
 
