@@ -4,6 +4,31 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.0.8] - 2026-04-06
+
+### Added
+- World definition file support with `world init/edit/show/path` CLI subcommands for persistent world-building context that enriches story prompts. (commit: fd45304)
+- HTML comment stripping from `world.md` so authors can leave notes that don't leak into prompts. (commit: 25b83db)
+- Refinement and continuation direction prompt fields with `--refine` and `--direction` CLI flags for steering story generation and extension. (commit: 4ce7d9e)
+- Retry logic with exponential backoff and jitter for transient API errors across all backends (Gemini, OpenAI, Anthropic), including gRPC status string handling. (commits: 2f490b9, 1ff57f8, 8d6b90a)
+
+### Fixed
+- Refinement fields are now validated at `Prompt` init time, catching invalid values before generation starts. (commit: ec2da92)
+- Phase executor test imports cleaned up to remove unnecessary dependencies. (commit: ae98248)
+
+### Refactored
+- Backend response extraction deduplicated into shared `LLMBackend` base class, reducing repetition across all three backends. (commit: 42f231f)
+
+### Tests
+- +416 lines of new test coverage across 8 test files covering backend methods, character registry, config, context summarization, and phase executor edge cases. (commit: 05481ab)
+- Comprehensive world definition test suite (621 lines). (commit: 25b83db)
+- Retry logic test coverage including gRPC status handling across all backends. (commits: 2f490b9, 1ff57f8)
+- Refinement and continuation direction prompt tests. (commits: 4ce7d9e, ec2da92)
+
+### Build
+- Removed `PYTHON` variable from Makefile in favor of direct `python3` calls. (commit: edc1986)
+- Updated GitHub Actions and improved coverage reporting. (commit: 0bd8764)
+
 ## [0.0.7] - 2026-02-18
 
 ### Added
