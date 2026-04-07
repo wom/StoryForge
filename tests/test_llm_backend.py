@@ -511,6 +511,35 @@ class TestIsTransientError:
         error.response = MagicMock(status_code=503)
         assert LLMBackend._is_transient_error(error) is True
 
+    def test_resource_exhausted_status_code_string(self):
+        """Gemini RESOURCE_EXHAUSTED status_code string should be transient."""
+        error = Exception("quota exceeded")
+        error.status_code = "RESOURCE_EXHAUSTED"
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_unavailable_status_code_string(self):
+        """gRPC UNAVAILABLE status_code string should be transient."""
+        error = Exception("service unavailable")
+        error.status_code = "UNAVAILABLE"
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_resource_exhausted_in_message(self):
+        """RESOURCE_EXHAUSTED in error message should be transient."""
+        error = Exception("RESOURCE_EXHAUSTED: quota exceeded for model")
+        assert LLMBackend._is_transient_error(error) is True
+
+    def test_non_numeric_non_grpc_status_not_transient(self):
+        """Non-numeric, non-gRPC status_code should not crash or be transient."""
+        error = Exception("some error")
+        error.status_code = "INVALID_ARGUMENT"
+        assert LLMBackend._is_transient_error(error) is False
+
+    def test_response_with_grpc_status_string(self):
+        """Error with response.status_code as gRPC string should be detected."""
+        error = Exception("API error")
+        error.response = MagicMock(status_code="RESOURCE_EXHAUSTED")
+        assert LLMBackend._is_transient_error(error) is True
+
 
 class TestRetryTransient:
     """Test retry logic with exponential backoff."""

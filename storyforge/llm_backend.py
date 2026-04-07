@@ -146,8 +146,18 @@ class LLMBackend(ABC):
 
     # Transient error codes that should trigger retry
     TRANSIENT_STATUS_CODES = {429, 500, 502, 503}
+    # gRPC/Gemini status strings that indicate transient errors
+    TRANSIENT_STATUS_NAMES = {"RESOURCE_EXHAUSTED", "UNAVAILABLE", "INTERNAL", "DEADLINE_EXCEEDED"}
     MAX_RETRIES = 3
     BASE_RETRY_DELAY = 10.0  # seconds
+
+    @staticmethod
+    def _safe_int(value: object) -> int | None:
+        """Attempt to convert a value to int, returning None on failure."""
+        try:
+            return int(value)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            return None
 
     @staticmethod
     def _is_transient_error(error: Exception) -> bool:
@@ -155,6 +165,7 @@ class LLMBackend(ABC):
 
         Inspects the exception for HTTP status codes commonly associated with
         temporary failures: 429 (rate limit), 500, 502, 503 (server overload).
+        Also recognises gRPC/Gemini status name strings like RESOURCE_EXHAUSTED.
         Checks both typed exception attributes and string representations.
 
         Args:
@@ -165,15 +176,24 @@ class LLMBackend(ABC):
         """
         # Check for status_code attribute (google-genai, openai, anthropic all use this)
         status_code = getattr(error, "status_code", None) or getattr(error, "status", None)
-        if status_code and int(status_code) in LLMBackend.TRANSIENT_STATUS_CODES:
-            return True
+        if status_code is not None:
+            # Gemini may set status_code to a gRPC status name string
+            if str(status_code) in LLMBackend.TRANSIENT_STATUS_NAMES:
+                return True
+            numeric = LLMBackend._safe_int(status_code)
+            if numeric is not None and numeric in LLMBackend.TRANSIENT_STATUS_CODES:
+                return True
 
         # Check for HTTP status attribute on nested response objects
         response = getattr(error, "response", None)
         if response is not None:
             resp_status = getattr(response, "status_code", None) or getattr(response, "status", None)
-            if resp_status and int(resp_status) in LLMBackend.TRANSIENT_STATUS_CODES:
-                return True
+            if resp_status is not None:
+                if str(resp_status) in LLMBackend.TRANSIENT_STATUS_NAMES:
+                    return True
+                numeric = LLMBackend._safe_int(resp_status)
+                if numeric is not None and numeric in LLMBackend.TRANSIENT_STATUS_CODES:
+                    return True
 
         # Fallback: check string representation for status codes
         error_str = str(error)
@@ -182,7 +202,8 @@ class LLMBackend(ABC):
                 return True
 
         # Check for common transient error keywords
-        transient_keywords = ["UNAVAILABLE", "overloaded", "rate limit", "too many requests", "high demand"]
+        transient_keywords = ["UNAVAILABLE", "overloaded", "rate limit", "too many requests", "high demand",
+                              "RESOURCE_EXHAUSTED"]
         error_lower = error_str.lower()
         return any(kw.lower() in error_lower for kw in transient_keywords)
 
