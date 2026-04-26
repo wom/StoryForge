@@ -1187,6 +1187,11 @@ class ContextManager:
             if art_style_match:
                 metadata["art_style"] = art_style_match.group(1).strip()
 
+            # Extract voice archetype from **Voice:** field
+            voice_match = re.search(r"\*\*Voice:\*\*\s*(.+)", content)
+            if voice_match:
+                metadata["voice"] = voice_match.group(1).strip()
+
             # Extract original prompt from **Original Prompt:** field
             prompt_match = re.search(r"\*\*Original Prompt:\*\*\s*(.+)", content)
             if prompt_match:

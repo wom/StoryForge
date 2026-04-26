@@ -14,6 +14,78 @@ from typing import Literal
 
 from .schema import STORYFORGE_SCHEMA, SchemaValidator
 
+# ---------------------------------------------------------------------------
+# Voice archetype descriptions
+#
+# DISCLAIMER: Voice archetypes are original stylistic descriptions inspired
+# by literary traditions. They are not affiliated with, endorsed by, or
+# associated with any named authors or their estates. Author references in
+# documentation are used solely as familiar touchstones to help users
+# understand the writing style each archetype produces.
+# ---------------------------------------------------------------------------
+
+VOICE_DESCRIPTIONS: dict[str, str] = {
+    "anapestic": (
+        "Write in anapestic tetrameter — a bouncy, rhythmic verse style with a "
+        "'da-da-DUM da-da-DUM' meter. Use playful invented nonsense words, "
+        "strong rhythmic patterns, and repetitive refrains. Sentences should have "
+        "a sing-song quality with unexpected rhymes and exuberant wordplay."
+    ),
+    "sardonic": (
+        "Write with a sardonic, conspiratorial narrator voice. Address the reader "
+        "directly with dark humor and gleeful mischief. Use vivid, slightly "
+        "grotesque descriptions played for laughs. Villains should be delightfully "
+        "awful and receive satisfying comeuppance. The narrator should seem to "
+        "relish telling the story with knowing asides."
+    ),
+    "picaresque": (
+        "Write as a picaresque adventure — a quest-driven narrative with rich "
+        "world-building and enchanted settings. Use vivid descriptions of magical "
+        "places and creatures. The protagonist should journey through a series of "
+        "episodic encounters, each revealing something new about the story world. "
+        "Balance wonder with forward momentum."
+    ),
+    "iambic": (
+        "Write in iambic meter — a classic 'da-DUM da-DUM' rhythmic pattern. "
+        "Use elegant, flowing verse with measured cadence. Favor rich imagery and "
+        "elevated vocabulary appropriate for the age range. The rhythm should feel "
+        "natural and stately, like a story told by firelight."
+    ),
+    "fable": (
+        "Write as a fable — a concise moral tale with animal characters who embody "
+        "human traits. Use a wise, measured narrator voice. Each character should "
+        "represent a clear virtue or flaw. Build toward a satisfying moral lesson "
+        "stated or implied at the end. Keep the narrative focused and purposeful."
+    ),
+    "gothic": (
+        "Write as a gothic fairy tale — atmospheric, lyrical, and bittersweet. "
+        "Use rich sensory descriptions: moonlit forests, ancient castles, "
+        "whispering winds. The tone should be dreamy and slightly mysterious, "
+        "but always safe for children. Beauty and wonder should shine through "
+        "the shadows. End with warmth and resolution."
+    ),
+    "nonsense": (
+        "Write as nonsense literature — embrace absurdist logic, impossible events, "
+        "and delightful wordplay. Invent portmanteau words, use paradoxes, and let "
+        "characters behave in charmingly illogical ways. The world should operate "
+        "by its own whimsical rules. Include witty dialogue and playful riddles."
+    ),
+    "lyrical": (
+        "Write as soft, repetitive bedtime prose — gentle rhythm, cozy imagery, "
+        "and a soothing, almost hypnotic cadence. Use simple repetitive phrases "
+        "and warm sensory details: soft blankets, twinkling stars, quiet whispers. "
+        "The story should feel like a lullaby in prose form, winding down gently "
+        "toward sleep."
+    ),
+    "epistolary": (
+        "Write as an epistolary narrative — first-person journal entries, diary "
+        "pages, or letters. Use a conversational, confessional tone with the "
+        "immediacy of someone writing about their day. Include doodle-like "
+        "asides, crossed-out words (struck through), and the candid humor of "
+        "a kid narrating their own life."
+    ),
+}
+
 
 @dataclass
 class Prompt:
@@ -39,6 +111,9 @@ class Prompt:
             "friendship"
         tone (str): Story mood - "gentle", "exciting", "silly", "heartwarming",
             "magical"
+        voice (str, optional): Writing voice archetype - "anapestic", "sardonic",
+            "picaresque", "iambic", "fable", "gothic", "nonsense", "lyrical",
+            "epistolary"
         theme (str, optional): Moral/educational theme
         setting (str, optional): Specific story setting
         characters (list[str], optional): Character names/descriptions to include
@@ -63,6 +138,7 @@ class Prompt:
     age_range: str = "preschool"
     style: str = "adventure"
     tone: str = "heartwarming"
+    voice: str | None = None
     theme: str | None = None
     setting: str | None = None
     characters: list[str] | None = None
@@ -93,6 +169,10 @@ class Prompt:
         if self.tone == "random":
             self.tone = random.choice(valid_values["tone"])
 
+        # Resolve random voice
+        if self.voice is not None and self.voice == "random":
+            self.voice = random.choice(valid_values["voice"])
+
         # Resolve random theme
         if self.theme == "random":
             self.theme = random.choice(valid_values["theme"])
@@ -111,6 +191,7 @@ class Prompt:
             ("age_range", "story", self.age_range),
             ("style", "story", self.style),
             ("tone", "story", self.tone),
+            ("voice", "story", self.voice),
             ("theme", "story", self.theme),
             ("learning_focus", "story", self.learning_focus),
             ("image_style", "images", self.image_style),
@@ -170,6 +251,12 @@ class Prompt:
             "friendship": "a heartwarming story about friendship, cooperation, and caring for others",
         }
         return style_descriptions[self.style]
+
+    def _get_voice_instruction(self) -> str | None:
+        """Get the full voice instruction for prompt assembly, or None if no voice is set."""
+        if not self.voice:
+            return None
+        return VOICE_DESCRIPTIONS.get(self.voice)
 
     def _build_continuation_instruction(self) -> str:
         """Build instruction for story continuation."""
@@ -251,6 +338,9 @@ class Prompt:
 
         # Constraints framed as "maintain these" not "write with these"
         parts.append(f"\nMaintain the {self.tone} tone and {self.style} style throughout.")
+        voice_instruction = self._get_voice_instruction()
+        if voice_instruction:
+            parts.append(f"\nMaintain the voice / narrator style: {voice_instruction}")
         parts.append(f"\nAge-appropriate constraints: {self._get_age_appropriate_guidance()}")
         parts.append("\n\nThe refined story must remain:")
         parts.append("\n- Completely safe and appropriate for children")
@@ -308,6 +398,11 @@ class Prompt:
             prompt_parts.append(f" that is {self._get_style_description()}")
             prompt_parts.append(f" with a {self.tone} tone")
 
+            # Add voice archetype instruction (prominent placement for LLM attention)
+            voice_instruction = self._get_voice_instruction()
+            if voice_instruction:
+                prompt_parts.append(f"\n\nVOICE / NARRATOR STYLE: {voice_instruction}")
+
             # Add the main prompt
             prompt_parts.append(f" based on this prompt: {self.prompt}")
 
@@ -344,6 +439,11 @@ class Prompt:
             # In continuation mode, provide guidance for the continuation
             prompt_parts.append(f"\nWrite a {self._get_length_description()} continuation ")
             prompt_parts.append(f"that maintains the {self.tone} tone and {self.style} style.")
+
+            # Add voice instruction in continuation mode
+            voice_instruction = self._get_voice_instruction()
+            if voice_instruction:
+                prompt_parts.append(f"\n\nVOICE / NARRATOR STYLE: {voice_instruction}")
 
             # Add age-appropriate guidance
             prompt_parts.append(f"\n\nAge-appropriate guidelines: {self._get_age_appropriate_guidance()}")

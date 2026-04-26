@@ -466,6 +466,7 @@ class PhaseExecutor:
             age_range=cli_args.get("age_range", resolved_config.get("age_range")),
             style=cli_args.get("style", resolved_config.get("style")),
             tone=cli_args.get("tone", resolved_config.get("tone")),
+            voice=cli_args.get("voice", resolved_config.get("voice")),
             theme=cli_args.get("theme", resolved_config.get("theme")),
             length=cli_args.get("length", resolved_config.get("length")),
             setting=cli_args.get("setting"),
@@ -600,6 +601,7 @@ class PhaseExecutor:
             age_range=str(cli_args.get("age_range") or resolved_config.get("age_range") or ""),
             style=str(cli_args.get("style") or resolved_config.get("style") or ""),
             tone=str(cli_args.get("tone") or resolved_config.get("tone") or ""),
+            voice=cli_args.get("voice") or resolved_config.get("voice") or None,
             theme=cli_args.get("theme") or resolved_config.get("theme"),
             setting=cli_args.get("setting"),
             characters=cli_args.get("characters"),
@@ -1104,6 +1106,8 @@ class PhaseExecutor:
                     context_content += f"**Characters:** {', '.join(cli_args['characters'])}\n\n"
                 if cli_args and cli_args.get("setting"):
                     context_content += f"**Setting:** {cli_args['setting']}\n\n"
+                if cli_args and cli_args.get("voice"):
+                    context_content += f"**Voice:** {cli_args['voice']}\n\n"
 
                 context_content += "## Story\n\n"
                 context_content += self.story or ""

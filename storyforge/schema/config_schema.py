@@ -80,6 +80,42 @@ def _create_story_section() -> ConfigSection:
         )
     )
 
+    # Writing Voice
+    section.add_field(
+        ConfigField(
+            name="voice",
+            field_type=FieldType.STRING,
+            default="",
+            section="story",
+            description="Writing voice archetype that shapes the narrator's style and rhythm",
+            cli_help=(
+                "Writing voice (anapestic, sardonic, picaresque, iambic, fable, "
+                "gothic, nonsense, lyrical, epistolary, random). Leave empty for none"
+            ),
+            valid_values=[
+                "anapestic",
+                "sardonic",
+                "picaresque",
+                "iambic",
+                "fable",
+                "gothic",
+                "nonsense",
+                "lyrical",
+                "epistolary",
+                "random",
+                "",
+            ],
+            example_values=["anapestic", "lyrical"],
+            ini_comment=(
+                "Writing voice archetype options: anapestic (whimsical rhyming verse), "
+                "sardonic (darkly humorous narrator), picaresque (quest-driven adventure), "
+                "iambic (classic rhythmic verse), fable (moral tale), gothic (atmospheric fairy tale), "
+                "nonsense (absurdist wordplay), lyrical (soft bedtime prose), "
+                "epistolary (first-person journal/letters), random (leave empty for none)"
+            ),
+        )
+    )
+
     # Story Theme
     section.add_field(
         ConfigField(
