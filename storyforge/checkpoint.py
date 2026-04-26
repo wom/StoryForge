@@ -19,6 +19,22 @@ from rich.prompt import Confirm, IntPrompt
 from .console import console
 
 
+def _multiline_str_representer(dumper: yaml.Dumper, data: str) -> yaml.ScalarNode:
+    """Use literal block style (|) for multiline strings to avoid YAML escaping issues."""
+    if "\n" in data:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data)
+
+
+class _SafeMultilineDumper(yaml.Dumper):
+    """YAML dumper that uses literal block style for multiline strings."""
+
+    pass
+
+
+_SafeMultilineDumper.add_representer(str, _multiline_str_representer)
+
+
 class ExecutionPhase(Enum):
     """Enumeration of StoryForge execution phases."""
 
@@ -188,7 +204,9 @@ class CheckpointManager:
 
             with open(checkpoint_path, "w", encoding="utf-8") as f:
                 f.write(yaml_content)
-                yaml.dump(data_dict, f, default_flow_style=False, indent=2, sort_keys=False)
+                yaml.dump(
+                    data_dict, f, Dumper=_SafeMultilineDumper, default_flow_style=False, indent=2, sort_keys=False
+                )
 
             return checkpoint_path
 

@@ -1102,12 +1102,35 @@ class PhaseExecutor:
 
                 # Add story parameters if available
                 cli_args = self.checkpoint_data.original_inputs.get("cli_arguments", {})
+                resolved = self.checkpoint_data.resolved_config or {}
                 if cli_args and cli_args.get("characters"):
                     context_content += f"**Characters:** {', '.join(cli_args['characters'])}\n\n"
                 if cli_args and cli_args.get("setting"):
                     context_content += f"**Setting:** {cli_args['setting']}\n\n"
-                if cli_args and cli_args.get("voice"):
-                    context_content += f"**Voice:** {cli_args['voice']}\n\n"
+                tone_val = (cli_args or {}).get("tone") or resolved.get("tone")
+                if tone_val:
+                    context_content += f"**Tone:** {tone_val}\n\n"
+                style_val = (cli_args or {}).get("style") or resolved.get("style")
+                if style_val:
+                    context_content += f"**Style:** {style_val}\n\n"
+                voice_val = (cli_args or {}).get("voice") or resolved.get("voice")
+                if voice_val:
+                    context_content += f"**Voice:** {voice_val}\n\n"
+                theme_val = (cli_args or {}).get("theme") or resolved.get("theme")
+                if theme_val:
+                    context_content += f"**Theme:** {theme_val}\n\n"
+                age_val = (cli_args or {}).get("age_range") or resolved.get("age_range")
+                if age_val:
+                    context_content += f"**Age Group:** {age_val}\n\n"
+                img_val = (cli_args or {}).get("image_style") or resolved.get("image_style")
+                if img_val:
+                    context_content += f"**Art Style:** {img_val}\n\n"
+                length_val = (cli_args or {}).get("length") or resolved.get("length")
+                if length_val:
+                    context_content += f"**Length:** {length_val}\n\n"
+                learning_val = (cli_args or {}).get("learning_focus") or resolved.get("learning_focus")
+                if learning_val:
+                    context_content += f"**Learning Focus:** {learning_val}\n\n"
 
                 context_content += "## Story\n\n"
                 context_content += self.story or ""

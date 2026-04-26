@@ -789,6 +789,32 @@ class TestRefinementMode:
                 refinement_instructions="Make it funnier.",
             )
 
+    def test_refinement_prompt_preserves_all_parameters(self):
+        """Refinement prompt should include all preserved parameters."""
+        prompt = Prompt(
+            prompt="A wizard's quest",
+            tone="silly",
+            style="fantasy",
+            voice="lyrical",
+            theme="courage",
+            age_range="early_reader",
+            characters=["Wizard", "Dragon"],
+            setting="enchanted forest",
+            refinement_mode=True,
+            original_story="Once upon a time a wizard ventured into the enchanted forest.",
+            refinement_instructions="Add more dialogue.",
+        )
+        story = prompt.story
+
+        assert "silly" in story
+        assert "fantasy" in story
+        assert "lyrical" in story.lower() or "bedtime prose" in story.lower()
+        assert "courage" in story
+        assert "Wizard" in story
+        assert "Dragon" in story
+        assert "enchanted forest" in story
+        assert "A wizard's quest" in story
+
 
 class TestVoiceArchetypes:
     """Test the voice archetype feature."""

@@ -1192,6 +1192,26 @@ class ContextManager:
             if voice_match:
                 metadata["voice"] = voice_match.group(1).strip()
 
+            # Extract style from **Style:** field
+            style_match = re.search(r"\*\*Style:\*\*\s*(.+)", content)
+            if style_match:
+                metadata["style"] = style_match.group(1).strip()
+
+            # Extract setting from **Setting:** field
+            setting_match = re.search(r"\*\*Setting:\*\*\s*(.+)", content)
+            if setting_match:
+                metadata["setting"] = setting_match.group(1).strip()
+
+            # Extract length from **Length:** field
+            length_match = re.search(r"\*\*Length:\*\*\s*(.+)", content)
+            if length_match:
+                metadata["length"] = length_match.group(1).strip()
+
+            # Extract learning focus from **Learning Focus:** field
+            learning_focus_match = re.search(r"\*\*Learning Focus:\*\*\s*(.+)", content)
+            if learning_focus_match:
+                metadata["learning_focus"] = learning_focus_match.group(1).strip()
+
             # Extract original prompt from **Original Prompt:** field
             prompt_match = re.search(r"\*\*Original Prompt:\*\*\s*(.+)", content)
             if prompt_match:

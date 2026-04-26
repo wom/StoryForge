@@ -465,6 +465,64 @@ class TestPhaseExecutorPhases:
         assert written_content is not None
         assert "**Extended From:**" not in written_content
 
+    @patch("storyforge.phase_executor.ContextManager")
+    @patch("storyforge.phase_executor.console")
+    @patch("storyforge.phase_executor.Confirm.ask")
+    @patch("storyforge.phase_executor.Path")
+    def test_phase_context_save_writes_all_parameters(
+        self, mock_path_class, mock_confirm, mock_console, mock_cm_class
+    ):
+        """Test _phase_context_save writes every story parameter to the context file."""
+        mock_confirm.return_value = True
+        self.phase_executor.story = "A story about a wizard in an enchanted forest."
+        self.checkpoint_data.original_inputs["prompt"] = "A wizard's quest"
+        self.checkpoint_data.original_inputs["cli_arguments"] = {
+            "characters": ["Wizard", "Dragon"],
+            "setting": "enchanted forest",
+            "tone": "whimsical",
+            "style": "fable",
+            "voice": "sage",
+            "theme": "perseverance",
+            "age_range": "early_reader",
+            "image_style": "watercolor",
+            "length": "bedtime",
+            "learning_focus": "counting",
+        }
+        self.checkpoint_data.resolved_config["source_context_file"] = None
+
+        mock_dir = MagicMock()
+        mock_dir.exists.return_value = True
+        mock_path_class.return_value = mock_dir
+
+        written_content = None
+
+        def capture_write(content):
+            nonlocal written_content
+            written_content = content
+
+        mock_file = MagicMock()
+        mock_file.__enter__ = MagicMock(return_value=mock_file)
+        mock_file.__exit__ = MagicMock(return_value=False)
+        mock_file.write = capture_write
+
+        with patch("builtins.open", return_value=mock_file):
+            self.phase_executor._phase_context_save()
+
+        assert written_content is not None
+
+        # Verify all parameters are present in the written context file
+        assert "**Characters:** Wizard, Dragon" in written_content
+        assert "**Setting:** enchanted forest" in written_content
+        assert "**Tone:** whimsical" in written_content
+        assert "**Style:** fable" in written_content
+        assert "**Voice:** sage" in written_content
+        assert "**Theme:** perseverance" in written_content
+        assert "**Age Group:** early_reader" in written_content
+        assert "**Art Style:** watercolor" in written_content
+        assert "**Length:** bedtime" in written_content
+        assert "**Learning Focus:** counting" in written_content
+        assert "A story about a wizard" in written_content
+
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.Confirm.ask")
     def test_phase_context_save_user_declines(self, mock_confirm, mock_console):
