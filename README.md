@@ -1,396 +1,154 @@
 # StoryForge
 
-StoryForge is a command-line tool that generates illustrated children's stories using AI language models. Simply provide a story prompt, and StoryForge will create both a short story and accompanying AI-generated images.
-
-## Supported AI Backends
-
-- **Google Gemini** - Fully supported for story and image generation
-- **OpenAI** - Fully supported for story and image generation
-- **Anthropic** - Supported for story (text) generation only; image generation is not currently supported
+A CLI/TUI that generates illustrated children's stories using AI. Provide a prompt, get a story and AI-generated images.
 
 ## Features
 
-- 📖 Generate custom children's stories from simple prompts
-- 🎨 Create AI illustrations with multiple art styles (chibi, realistic, cartoon, watercolor, sketch)
-- ⚙️ Flexible story customization (age range, length, tone, theme, learning focus, setting, characters)
-- 💾 Save stories and images with organized output directories
-- 🖥️ Interactive terminal interface or direct CLI usage
-- 📚 Context system for character consistency across stories
-- 👤 **Character registry** - Tracks character appearances and injects visual descriptions into image prompts
-- 🖼️ **Intelligent image prompts** - LLM-generated scene descriptions with story progression and character context
-- ⏯️ **Checkpoint system** for resuming interrupted sessions
-- 📝 **Story extension** with interactive TUI story picker for browsing and selecting stories
-- 🔄 **Intelligent context summarization** with temporal sampling and sentence deduplication
-- 🔒 **Token safety** - Automatic prompt size detection and truncation to stay within model limits
+- 📖 Story generation from simple prompts with customizable age range, length, tone, theme, and style
+- 🎨 AI illustrations in multiple art styles (chibi, realistic, cartoon, watercolor, sketch)
+- 🗣️ **Voice archetypes** — narrator styles (anapestic, sardonic, picaresque, gothic, lyrical, and more)
+- 🌍 **World definitions** — persistent `world.md` for characters, places, and lore across stories
+- 📚 **Story extension** — continue stories with an interactive TUI picker; chain tracking and export
+- 👤 **Character registry** — tracks appearances and injects visual descriptions into image prompts
+- ⏯️ **Checkpoint system** — resume interrupted sessions with `sf continue`
+- 🔄 Context summarization with temporal sampling, sentence deduplication, and token budget management
+- 🔁 Automatic retry with exponential backoff for transient API errors
 
-## Configuration
-
-For detailed configuration options, defaults, and examples see the full configuration reference: [Configuration Documentation](docs/CONFIGURATION.md)
-
-StoryForge supports model configuration for OpenAI backends via the config file:
-- `openai_story_model` (default: `gpt-5.2`) - Model for story generation
-- `openai_image_model` (default: `gpt-image-1.5`) - Model for image generation
-- `image_count` (default: `3`) - Number of images to generate per story (1-5)
-
-See the [Configuration Documentation](docs/CONFIGURATION.md) for all available options.
-
-### Generate a default config file
-
-```bash
-# Create config file in default location
-storyforge config init
-
-# Force overwrite an existing config file
-storyforge config init --force
-
-# Create config at custom location
-storyforge config init --path /path/to/config.ini
-```
-
-The config file will be created at `~/.config/storyforge/storyforge.ini` by default. You can override the location using the `STORYFORGE_CONFIG` environment variable.
-
-### Command Alias
-
-For convenience, `sf` can be used as a shorter alias for all `storyforge` commands:
-
-```bash
-# These are equivalent
-storyforge "A brave knight befriends a dragon"
-sf "A brave knight befriends a dragon"
-
-# Works with all commands
-sf config init
-sf continue
-sf extend
-sf --help
-```
-
-## Requirements
-
-- **Python 3.12+**
-- **[uv](https://github.com/astral-sh/uv)** — fast Python package manager (for installation)
-- **At least one API key** from a supported backend:
-  - `GEMINI_API_KEY` — [Google AI Studio](https://aistudio.google.com/apikey)
-  - `ANTHROPIC_API_KEY` — [Anthropic Console](https://console.anthropic.com/)
-  - `OPENAI_API_KEY` — [OpenAI Platform](https://platform.openai.com/api-keys)
-
-## Checkpoint System
-
-StoryForge automatically saves your progress during story generation, allowing you to resume from any point if the process is interrupted or if you want to retry different options.
-
-### Resume from Previous Sessions
-
-```bash
-# Resume from a previous session (interactive selection)
-storyforge continue
-
-# Or use the --continue flag with main command
-storyforge main --continue
-```
-
-This will show you the last 5 sessions and let you choose:
-
-- **For interrupted sessions**: Resume from where you left off
-- **For completed sessions**: Choose to:
-  - Generate new images with the same story
-  - Modify and regenerate the story
-  - Save the story as context for future use
-  - Start completely over with the same parameters
-
-### Checkpoint Storage
-
-Checkpoint files are automatically stored in:
-- **Linux/macOS**: `~/.local/share/storyforge/checkpoints/`
-- **Windows**: `%APPDATA%\storyforge\storyforge\checkpoints\`
-
-The system automatically cleans up old checkpoints, keeping the 15 most recent sessions. Stale active sessions (older than 24 hours) are automatically marked as failed/abandoned.
-
-### Example Workflow
-
-```bash
-# Start a story generation
-storyforge "A dragon learning to dance"
-
-# If interrupted, resume later with:
-storyforge continue
-# Select your session and choose where to resume
-```
-
-## Story Extension
-
-Create continuations of previously generated stories with the `extend` command. This is perfect for creating sequels or adding new chapters to existing stories.
-
-### Extend an Existing Story
-
-```bash
-# Interactive story selection from recent stories
-storyforge extend
-
-# The extend command will:
-# 1. Show you a list of recently generated stories
-# 2. Let you select which story to continue
-# 3. Ask if you want to wrap up or leave a cliffhanger
-# 4. Generate a continuation based on your choice
-```
-
-### Example Extend Workflow
-
-```bash
-# First, generate a story
-storyforge "A brave mouse named Max finds a magic acorn"
-
-# Later, extend it with a continuation
-storyforge extend
-
-# Output:
-# Recent stories:
-#   1. "A brave mouse named Max finds a magic acorn" (2025-10-26 14:30)
-#   2. "Two robots become friends" (2025-10-25 10:15)
-#   ...
-# 
-# Select story to extend [1-5]: 1
-# 
-# How should the continuation end?
-#   1. Wrap up the story (satisfying conclusion)
-#   2. Leave a cliffhanger (sets up next adventure)
-# 
-# Select ending type [1/2]: 2
-#
-# Generating continuation...
-```
-
-The extended story will:
-- Continue from where the original story left off
-- Maintain character consistency and story context
-- Be saved in a new timestamped output directory
-- Include the original story context for reference
-
-## Story Chain Tracking
-
-When you extend stories multiple times, StoryForge automatically tracks the complete "chain" of related stories. This makes it easy to see the full lineage and export complete story sagas.
-
-### View Story Chains
-
-```bash
-# When extending a story, StoryForge shows the full chain
-storyforge extend
-
-# Example output:
-# Story Chain (3 parts):
-#   1. "A wizard finds a mysterious artifact" (2025-11-05 10:00)
-#   2. "The artifact reveals its power" (2025-11-05 12:00)  
-#   3. "The final confrontation" (2025-11-05 14:00)  ← You are here
-```
-
-### Export Complete Story Chains
-
-Combine all parts of a story chain into a single readable file:
-
-```bash
-# Interactive selection from available chains
-storyforge export-chain
-
-# Export a specific chain by name match
-storyforge export-chain -c wizard_artifact
-
-# Specify custom output location
-storyforge export-chain -c wizard_story -o my_complete_saga.txt
-```
-
-The exported file will contain:
-- All story parts in chronological order
-- Clear section dividers between parts
-- Metadata about when each part was created
-
-For detailed information about story chain tracking, see: [Story Chain Tracking Documentation](docs/STORY_CHAIN_TRACKING.md)
+**Backends:** [Google Gemini](https://aistudio.google.com/apikey) ✅ | [OpenAI](https://platform.openai.com/api-keys) ✅ | [Anthropic](https://console.anthropic.com/) (text only)
 
 ## Installation
 
-### Recommended: Using uv
+Requires **Python 3.12+** and at least one API key from a supported backend.
 
 ```bash
+# Install with uv (recommended)
 uv tool install StoryForge
-```
 
-If you don't have uv:
-
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-### Alternative: Using pipx
-
-```bash
+# Or with pipx
 pipx install StoryForge
 ```
 
-If you don't have pipx:
+Set up an API key (add to your shell profile to persist):
 
 ```bash
-# macOS: brew install pipx
-# Ubuntu/Debian: sudo apt install pipx
-# Or: pip install pipx
+export GEMINI_API_KEY=your_key    # or OPENAI_API_KEY or ANTHROPIC_API_KEY
 ```
 
-## Setup
+StoryForge auto-detects the backend from available keys. Override with `LLM_BACKEND=gemini|openai|anthropic`.
 
-Choose one of the supported AI backends and configure the corresponding API key:
-
-### Google Gemini
-
-1. Visit [Google AI Studio](https://aistudio.google.com/) to get your free Gemini API key
-2. Set the environment variable:
+## Quick Start
 
 ```bash
-export GEMINI_API_KEY=your_api_key_here
+# Generate a story
+sf "A brave mouse named Max finds a magic acorn"
+
+# With options
+sf "A dragon learns to fly" \
+  --age-range preschool --length short --tone exciting \
+  --voice anapestic --image-style watercolor \
+  --setting "enchanted forest" --character "Luna the owl" -n 3
+
+# Resume an interrupted session
+sf continue
+
+# Extend a previous story (interactive TUI picker)
+sf extend
+
+# Export a multi-part story chain to one file
+sf export-chain
 ```
 
-### OpenAI
+> **Tip:** `sf` is a shorthand alias for `storyforge`. All commands work with either.
 
-1. Get your API key from [OpenAI Platform](https://platform.openai.com/api-keys)
-2. Set the environment variable:
+### Story Options
+
+| Option | Values |
+|--------|--------|
+| `--age-range` | `toddler`, `preschool`, `early_reader`, `middle_grade` |
+| `--length` | `flash`, `short`, `medium`, `bedtime` |
+| `--style` | `adventure`, `comedy`, `fantasy`, `fairy_tale`, `friendship`, `random` |
+| `--tone` | `gentle`, `exciting`, `silly`, `heartwarming`, `magical`, `random` |
+| `--voice` | `anapestic`, `sardonic`, `picaresque`, `iambic`, `fable`, `gothic`, `nonsense`, `lyrical`, `epistolary`, `random` |
+| `--theme` | `courage`, `kindness`, `teamwork`, `problem_solving`, `creativity`, `random` |
+| `--image-style` | `chibi`, `realistic`, `cartoon`, `watercolor`, `sketch` |
+| `--setting` | Free text (e.g., `"enchanted forest"`) |
+| `--character` | Repeatable (e.g., `--character "Max the mouse" --character "Luna the owl"`) |
+| `-n` | Image count (1–5, default: 3) |
+
+### All Commands
 
 ```bash
-export OPENAI_API_KEY=your_api_key_here
+sf "prompt" [options]           # Generate a new story
+sf continue                     # Resume a previous session
+sf extend                       # Extend a previous story
+sf export-chain [-c NAME] [-o FILE]  # Export story chain
+sf config init [--force]        # Generate default config file
+sf world init                   # Create world.md template
+sf world edit                   # Open world.md in $EDITOR
+sf world show                   # Display world.md contents
+sf world path                   # Show world.md location
+sf --help                       # Full help
 ```
 
-### Anthropic (Experimental)
+## Configuration
 
-1. Get your API key from [Anthropic Console](https://console.anthropic.com/)
-2. Set the environment variable:
+StoryForge can be configured via CLI flags, a config file, or both (CLI flags take priority).
 
 ```bash
-export ANTHROPIC_API_KEY=your_api_key_here
+# Generate a default config file
+sf config init
 ```
 
-### Environment Variables
+Config file location (first found wins): `$STORYFORGE_CONFIG` → `~/.config/storyforge/storyforge.ini` → `~/.storyforge.ini` → `./storyforge.ini`
 
-| Variable | Backend | Status | Description |
-|----------|---------|---------|-------------|
-| `GEMINI_API_KEY` | Google Gemini | ✅ Fully Supported | Required for Gemini backend |
-| `GEMINI_IMAGE_MODEL` | Google Gemini | 🔧 Optional | Override image model (e.g., `gemini-2.5-flash-image`) |
-| `OPENAI_API_KEY` | OpenAI | ✅ Fully Supported | Required for OpenAI backend |
-| `ANTHROPIC_API_KEY` | Anthropic | 🧪 Experimental | Required for Anthropic backend |
-| `LLM_BACKEND` | All | Optional | Force specific backend (`gemini`, `openai`, `anthropic`) |
+See [**docs/CONFIGURATION.md**](docs/CONFIGURATION.md) for the full reference of all options, defaults, and examples.
 
-**Note**: StoryForge will automatically detect which backend to use based on available API keys. If multiple keys are set, you can specify which backend to use with the `LLM_BACKEND` environment variable.
+## World Definitions
 
-Add environment variables to your shell profile (`.bashrc`, `.zshrc`, etc.) to make them permanent:
+Define your story universe in a persistent `world.md` file — characters, places, lore, and tone notes. This content is injected into every story prompt, giving the LLM consistent world knowledge across all generations.
 
 ```bash
-# Example for Gemini
-echo 'export GEMINI_API_KEY=your_api_key_here' >> ~/.bashrc
-source ~/.bashrc
-
-# Example for OpenAI
-echo 'export OPENAI_API_KEY=your_api_key_here' >> ~/.bashrc
-source ~/.bashrc
+sf world init     # Create from template
+sf world edit     # Open in $EDITOR (creates if missing)
+sf world show     # Display current contents
+sf world path     # Show file location
 ```
 
-## Usage
+The template includes sections for **Characters**, **Places**, **Rules & Lore**, **Relationships**, and **Tone & Style Notes**. You fill in what matters for your stories — keep it concise since it counts against the token budget.
 
-### Basic Story Generation
+**HTML comments** (`<!-- ... -->`) are stripped before prompt injection, so you can leave yourself notes that won't reach the LLM:
 
-```bash
-# Generate a story from a simple prompt
-storyforge "Tell me a story about a robot learning to make friends"
+```markdown
+## Characters
+
+### Luna
+A curious 7-year-old with curly red hair and bright green eyes.
+Always wears purple rain boots, even on sunny days.
+<!-- TODO: decide if she has a pet yet -->
 ```
 
-### Continue an Existing Story
+**File location:** `./context/world.md` if a local `context/` directory exists, otherwise `~/.local/share/storyforge/context/world.md`.
 
-```bash
-# Extend a previously generated story
-storyforge extend
-```
+## Story Chains
 
-### Resume a Previous Session
+When you extend stories multiple times, StoryForge tracks the full chain. During extension, the chain lineage is displayed. Use `sf export-chain` to combine all parts into a single file.
 
-```bash
-# Resume from an interrupted or completed session
-storyforge continue
-```
-
-### Interactive prompts
-
-The CLI is interactive and will ask for confirmation and decisions during the run (for images, story refinements, etc.).
-
-### Advanced Options
-
-```bash
-storyforge "A brave mouse goes on an adventure" \
-  --age-range preschool \
-  --length short \
-  --tone exciting \
-  --image-style cartoon \
-  --setting "enchanted forest" \
-  --character "Luna the wise owl" \
-  --character "Max the brave mouse" \
-  --output-dir my_story \
-  -n 3
-```
-
-#### Available Options
-
-- **Age Range**: `toddler`, `preschool`, `early_reader`, `middle_grade`
-- **Length**: `flash`, `short`, `medium`, `bedtime`
-- **Style**: `adventure`, `comedy`, `fantasy`, `fairy_tale`, `friendship`, `random`
-- **Tone**: `gentle`, `exciting`, `silly`, `heartwarming`, `magical`, `random`
-- **Theme**: `courage`, `kindness`, `teamwork`, `problem_solving`, `creativity`, `random`
-- **Image Style**: `chibi`, `realistic`, `cartoon`, `watercolor`, `sketch`
-- **Setting**: Free text (e.g., `enchanted forest`, `space station`)
-- **Characters**: Repeatable flag (e.g., `--character "Luna the owl" --character "Max the mouse"`)
-
-### All Available Commands
-
-```bash
-# Generate a new story
-storyforge "Your story prompt here" [options]
-
-# Continue/extend an existing story
-storyforge extend
-
-# Export a complete story chain
-storyforge export-chain [-c CONTEXT_NAME] [-o OUTPUT_FILE]
-
-# Resume a previous session
-storyforge continue
-
-# Initialize configuration file
-storyforge config init [--force] [--path PATH]
-
-# Show help
-storyforge --help
-storyforge extend --help
-storyforge export-chain --help
-storyforge continue --help
-storyforge config --help
-```
-
-## Tab Completion
-
-Enable tab completion for easier CLI usage:
-
-```bash
-storyforge --install-completion
-```
-
-Or manually for bash/zsh:
-
-```bash
-eval "$(storyforge --show-completion)"
-```
+See [**docs/STORY_CHAIN_TRACKING.md**](docs/STORY_CHAIN_TRACKING.md) for details.
 
 ## Output
 
-StoryForge creates timestamped directories containing:
-- `story.txt` - The generated story
-- `*.png` - AI-generated illustrations
-- Organized by creation date/time
+Stories are saved to timestamped directories containing `story.txt` and `*.png` illustrations.
+
+## Tips
+
+- **Tab completion:** `sf --install-completion` (or `eval "$(sf --show-completion)"` for manual setup)
+- **Offline dev mode:** `sf "any prompt" --debug` loads a test story instead of calling APIs
+- **Verbose output:** `sf "prompt" --verbose` for detailed generation logs
 
 ## Development
 
-For development setup, testing, and contributing guidelines, see [`DEV.md`](DEV.md).
+See [**DEV.md**](DEV.md) for setup, testing, and contributing.
 
 ## License
 
-MIT License - see [`LICENSE`](LICENSE) file for details.
+MIT — see [LICENSE](LICENSE).
