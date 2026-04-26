@@ -607,9 +607,13 @@ def extend_story(
             age_range=metadata.get("age_group") or config.get_field_value("story", "age_range") or "preschool",
             tone=metadata.get("tone") or config.get_field_value("story", "tone") or "heartwarming",
             voice=metadata.get("voice") or config.get_field_value("story", "voice") or None,
-            length=config.get_field_value("story", "length") or "short",
-            style=config.get_field_value("story", "style") or "adventure",
-            image_style=metadata.get("art_style") or config.get_field_value("story", "image_style") or "chibi",
+            length=metadata.get("length") or config.get_field_value("story", "length") or "short",
+            style=metadata.get("style") or config.get_field_value("story", "style") or "adventure",
+            image_style=metadata.get("art_style") or config.get_field_value("images", "image_style") or "chibi",
+            setting=metadata.get("setting") or config.get_field_value("story", "setting") or None,
+            learning_focus=(
+                metadata.get("learning_focus") or config.get_field_value("story", "learning_focus") or None
+            ),
             context=story_content,
             continuation_mode=True,
             ending_type=ending_type,
@@ -639,6 +643,8 @@ def extend_story(
             "image_style": prompt.image_style,
             "theme": prompt.theme,
             "characters": prompt.characters,
+            "setting": prompt.setting,
+            "learning_focus": prompt.learning_focus,
             "continuation_direction": continuation_direction,
         }
 
@@ -656,6 +662,8 @@ def extend_story(
             "tone": prompt.tone,
             "voice": prompt.voice,
             "image_style": prompt.image_style,
+            "setting": prompt.setting,
+            "learning_focus": prompt.learning_focus,
             "continuation_direction": continuation_direction,
             "source_context_file": str(selected_context["filepath"]),
         }

@@ -341,6 +341,12 @@ class Prompt:
         voice_instruction = self._get_voice_instruction()
         if voice_instruction:
             parts.append(f"\nMaintain the voice / narrator style: {voice_instruction}")
+        if self.theme:
+            parts.append(f"\nPreserve the theme of {self.theme}.")
+        if self.characters:
+            parts.append(f"\nKeep these characters consistent: {', '.join(self.characters)}.")
+        if self.setting:
+            parts.append(f"\nMaintain the setting: {self.setting}.")
         parts.append(f"\nAge-appropriate constraints: {self._get_age_appropriate_guidance()}")
         parts.append("\n\nThe refined story must remain:")
         parts.append("\n- Completely safe and appropriate for children")
@@ -444,6 +450,19 @@ class Prompt:
             voice_instruction = self._get_voice_instruction()
             if voice_instruction:
                 prompt_parts.append(f"\n\nVOICE / NARRATOR STYLE: {voice_instruction}")
+
+            # Preserve story parameters in continuation
+            if self.setting:
+                prompt_parts.append(f"\n\nMaintain the setting: {self.setting}")
+            if self.characters:
+                char_list = ", ".join(self.characters)
+                prompt_parts.append(f"\nKeep these characters consistent: {char_list}")
+            if self.theme:
+                prompt_parts.append(f"\nPreserve the theme of {self.theme}")
+            if self.learning_focus:
+                prompt_parts.append(
+                    f"\nContinue incorporating learning about {self.learning_focus} naturally into the story"
+                )
 
             # Add age-appropriate guidance
             prompt_parts.append(f"\n\nAge-appropriate guidelines: {self._get_age_appropriate_guidance()}")

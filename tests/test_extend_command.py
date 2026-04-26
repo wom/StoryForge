@@ -87,6 +87,43 @@ Story content here..."""
         assert metadata.get("tone") == "exciting"
         assert metadata.get("art_style") == "cartoon"
 
+    def test_parse_context_metadata_all_parameters(self, tmp_path):
+        """Test parsing context file metadata includes all story parameters."""
+        ctx_file = tmp_path / "full_params.md"
+        ctx_file.write_text(
+            """# Story Context: Full Params
+**Generated:** 2026-04-26 00:00:00
+**Original Prompt:** A wizard's quest
+**Characters:** Wizard, Dragon
+**Setting:** enchanted forest
+**Tone:** whimsical
+**Style:** fable
+**Voice:** sage
+**Theme:** perseverance
+**Age Group:** early_reader
+**Art Style:** watercolor
+**Length:** bedtime
+**Learning Focus:** counting
+
+## Story
+Once upon a time in an enchanted forest..."""
+        )
+
+        mgr = ContextManager()
+        metadata = mgr.parse_context_metadata(ctx_file)
+
+        assert metadata.get("characters") == "Wizard, Dragon"
+        assert metadata.get("setting") == "enchanted forest"
+        assert metadata.get("tone") == "whimsical"
+        assert metadata.get("style") == "fable"
+        assert metadata.get("voice") == "sage"
+        assert metadata.get("theme") == "perseverance"
+        assert metadata.get("age_group") == "early_reader"
+        assert metadata.get("art_style") == "watercolor"
+        assert metadata.get("length") == "bedtime"
+        assert metadata.get("learning_focus") == "counting"
+        assert metadata.get("prompt") == "A wizard's quest"
+
     def test_parse_context_metadata_with_story_preview(self, tmp_path):
         """Test that metadata includes story preview."""
         ctx_file = tmp_path / "test.md"
@@ -200,6 +237,62 @@ class TestPromptContinuation:
 
         assert "exciting" in story_prompt
         assert "adventure" in story_prompt  # This is the style, which defaults to "adventure"
+
+    def test_continuation_mode_includes_all_preserved_parameters(self):
+        """Test that continuation prompt text includes theme, setting, characters, and learning_focus."""
+        prompt = Prompt(
+            prompt="",
+            characters=["Wizard", "Dragon"],
+            theme="courage",
+            tone="silly",
+            style="fantasy",
+            voice="lyrical",
+            age_range="early_reader",
+            setting="enchanted forest",
+            learning_focus="counting",
+            context="Once upon a time in an enchanted forest...",
+            continuation_mode=True,
+            ending_type="wrap_up",
+        )
+
+        story_prompt = prompt.story
+
+        # Core parameters (already tested)
+        assert "silly" in story_prompt
+        assert "fantasy" in story_prompt
+
+        # Newly preserved parameters in continuation prompt
+        assert "enchanted forest" in story_prompt
+        assert "Wizard" in story_prompt
+        assert "Dragon" in story_prompt
+        assert "courage" in story_prompt
+        assert "counting" in story_prompt
+
+    def test_continuation_mode_omits_none_parameters(self):
+        """Test that continuation prompt gracefully omits parameters that are None."""
+        prompt = Prompt(
+            prompt="",
+            characters=None,
+            theme=None,
+            tone="heartwarming",
+            style="adventure",
+            setting=None,
+            learning_focus=None,
+            context="A simple story...",
+            continuation_mode=True,
+            ending_type="cliffhanger",
+        )
+
+        story_prompt = prompt.story
+
+        # Should not contain the parameter labels when values are None
+        assert "Maintain the setting" not in story_prompt
+        assert "Keep these characters" not in story_prompt
+        assert "Preserve the theme" not in story_prompt
+        assert "incorporating learning" not in story_prompt
+        # But core params should still be there
+        assert "heartwarming" in story_prompt
+        assert "adventure" in story_prompt
 
 
 class TestExtendCommandIntegration:
@@ -333,6 +426,163 @@ class TestExtendCommandIntegration:
             extend_story(backend=None, verbose=False, debug=False)
 
         assert exc_info.value.exit_code == 0
+
+    @patch("storyforge.StoryForge.ContextManager")
+    @patch("storyforge.StoryForge.PhaseExecutor")
+    @patch("storyforge.StoryForge.load_config")
+    @patch("storyforge.StoryForge.CheckpointManager")
+    @patch("storyforge.StoryForge.pick_story")
+    @patch("typer.prompt")
+    def test_extend_preserves_all_parameters_from_metadata(
+        self,
+        mock_prompt,
+        mock_pick_story,
+        mock_checkpoint_mgr,
+        mock_load_config,
+        mock_executor,
+        mock_context_mgr,
+    ):
+        """Test that extend_story creates a Prompt preserving all parameters from metadata."""
+        all_metadata = {
+            "filepath": Path("/tmp/story1.md"),
+            "filename": "story1",
+            "timestamp": "2026-04-26",
+            "characters": "Wizard, Dragon",
+            "theme": "courage",
+            "tone": "silly",
+            "style": "fantasy",
+            "voice": "lyrical",
+            "age_group": "early_reader",
+            "art_style": "watercolor",
+            "length": "bedtime",
+            "learning_focus": "counting",
+            "setting": "enchanted forest",
+        }
+
+        mock_mgr = Mock()
+        mock_mgr.list_available_contexts.return_value = [all_metadata]
+        mock_mgr.load_chain_for_extension.return_value = (
+            "Full story chain content...",
+            all_metadata,
+        )
+        mock_mgr.get_story_chain.return_value = [all_metadata]
+        mock_context_mgr.return_value = mock_mgr
+
+        mock_pick_story.return_value = 0
+        mock_prompt.side_effect = [1, ""]  # wrap-up ending, no direction
+
+        mock_config = Mock()
+        mock_config.get_field_value.return_value = None
+        mock_load_config.return_value = mock_config
+
+        mock_checkpoint_mgr.return_value = Mock()
+        mock_exec = Mock()
+        mock_executor.return_value = mock_exec
+
+        from storyforge.StoryForge import extend_story
+
+        extend_story(backend=None, verbose=False, debug=False)
+
+        call_args = mock_exec.execute_new_session.call_args
+        prompt_obj = call_args.kwargs.get("prompt_obj")
+
+        # Verify every parameter was passed through from metadata
+        assert prompt_obj.continuation_mode is True
+        assert prompt_obj.theme == "courage"
+        assert prompt_obj.tone == "silly"
+        assert prompt_obj.style == "fantasy"
+        assert prompt_obj.voice == "lyrical"
+        assert prompt_obj.age_range == "early_reader"
+        assert prompt_obj.image_style == "watercolor"
+        assert prompt_obj.length == "bedtime"
+        assert prompt_obj.learning_focus == "counting"
+        assert prompt_obj.setting == "enchanted forest"
+        assert prompt_obj.characters == ["Wizard", "Dragon"]
+        assert "Full story chain content" in prompt_obj.context
+
+        # Also verify cli_arguments and resolved_config include all params
+        cli_args = call_args[0][1]  # second positional arg
+        assert cli_args["setting"] == "enchanted forest"
+        assert cli_args["learning_focus"] == "counting"
+        assert cli_args["length"] == "bedtime"
+
+        resolved = call_args[0][2]  # third positional arg
+        assert resolved["setting"] == "enchanted forest"
+        assert resolved["learning_focus"] == "counting"
+        assert resolved["length"] == "bedtime"
+
+    @patch("storyforge.StoryForge.ContextManager")
+    @patch("storyforge.StoryForge.PhaseExecutor")
+    @patch("storyforge.StoryForge.load_config")
+    @patch("storyforge.StoryForge.CheckpointManager")
+    @patch("storyforge.StoryForge.pick_story")
+    @patch("typer.prompt")
+    def test_extend_falls_back_to_config_for_missing_metadata(
+        self,
+        mock_prompt,
+        mock_pick_story,
+        mock_checkpoint_mgr,
+        mock_load_config,
+        mock_executor,
+        mock_context_mgr,
+    ):
+        """Test extend falls back to config when metadata is missing (backward compat)."""
+        # Old-format metadata missing length, learning_focus, setting
+        sparse_metadata = {
+            "filepath": Path("/tmp/old_story.md"),
+            "filename": "old_story",
+            "timestamp": "2025-01-01",
+            "characters": "Alice",
+            "theme": "courage",
+            "tone": "heartwarming",
+        }
+
+        mock_mgr = Mock()
+        mock_mgr.list_available_contexts.return_value = [sparse_metadata]
+        mock_mgr.load_chain_for_extension.return_value = (
+            "Old story content...",
+            sparse_metadata,
+        )
+        mock_mgr.get_story_chain.return_value = [sparse_metadata]
+        mock_context_mgr.return_value = mock_mgr
+
+        mock_pick_story.return_value = 0
+        mock_prompt.side_effect = [1, ""]
+
+        # Config provides fallback values
+        mock_config = Mock()
+
+        def config_get(section, field):
+            config_values = {
+                ("story", "length"): "medium",
+                ("story", "setting"): "a magical kingdom",
+                ("story", "learning_focus"): "colors",
+                ("images", "image_style"): "chibi",
+            }
+            return config_values.get((section, field))
+
+        mock_config.get_field_value.side_effect = config_get
+        mock_load_config.return_value = mock_config
+
+        mock_checkpoint_mgr.return_value = Mock()
+        mock_exec = Mock()
+        mock_executor.return_value = mock_exec
+
+        from storyforge.StoryForge import extend_story
+
+        extend_story(backend=None, verbose=False, debug=False)
+
+        call_args = mock_exec.execute_new_session.call_args
+        prompt_obj = call_args.kwargs.get("prompt_obj")
+
+        # Falls back to config values when metadata is missing
+        assert prompt_obj.length == "medium"
+        assert prompt_obj.setting == "a magical kingdom"
+        assert prompt_obj.learning_focus == "colors"
+        assert prompt_obj.image_style == "chibi"
+        # But metadata values are still used when present
+        assert prompt_obj.theme == "courage"
+        assert prompt_obj.tone == "heartwarming"
 
 
 class TestOutputDirectoryNaming:
