@@ -6,7 +6,7 @@ from typing import cast
 
 import pytest
 
-from storyforge.prompt import Prompt
+from storyforge.prompt import VOICE_DESCRIPTIONS, Prompt
 from storyforge.schema import STORYFORGE_SCHEMA, SchemaValidator
 
 
@@ -788,6 +788,116 @@ class TestRefinementMode:
                 original_story="",
                 refinement_instructions="Make it funnier.",
             )
+
+
+class TestVoiceArchetypes:
+    """Test the voice archetype feature."""
+
+    def test_voice_none_by_default(self):
+        """Voice defaults to None (no voice applied)."""
+        prompt = Prompt(prompt="Test story")
+        assert prompt.voice is None
+
+    def test_voice_not_in_story_when_none(self):
+        """No voice instruction should appear when voice is None."""
+        prompt = Prompt(prompt="A little rabbit adventure")
+        story = prompt.story
+        assert "VOICE / NARRATOR STYLE" not in story
+
+    def test_valid_voice_accepted(self):
+        """Valid voice values should be accepted."""
+        for voice_name in VOICE_DESCRIPTIONS:
+            prompt = Prompt(prompt="Test", voice=voice_name)
+            assert prompt.voice == voice_name
+
+    def test_invalid_voice_rejected(self):
+        """Invalid voice values should be rejected."""
+        with pytest.raises(ValueError, match="Invalid value.*invalid_voice"):
+            Prompt(prompt="Test", voice="invalid_voice")
+
+    def test_voice_description_in_story_prompt(self):
+        """Voice description should appear in the story prompt."""
+        prompt = Prompt(prompt="A brave mouse adventure", voice="anapestic")
+        story = prompt.story
+        assert "VOICE / NARRATOR STYLE" in story
+        assert "anapestic tetrameter" in story.lower()
+
+    def test_all_voices_have_descriptions(self):
+        """Every valid voice should map to a non-empty description."""
+        valid_voices = [
+            v
+            for v in STORYFORGE_SCHEMA.story.fields["voice"].valid_values
+            if v and v != "random"
+        ]
+        for voice_name in valid_voices:
+            assert voice_name in VOICE_DESCRIPTIONS, f"Missing description for {voice_name}"
+            assert len(VOICE_DESCRIPTIONS[voice_name]) > 20, f"Description too short for {voice_name}"
+
+    def test_voice_in_continuation_mode(self):
+        """Voice instruction should appear in continuation mode."""
+        prompt = Prompt(
+            prompt="",
+            context="A story about a knight...",
+            continuation_mode=True,
+            ending_type="wrap_up",
+            voice="sardonic",
+        )
+        story = prompt.story
+        assert "VOICE / NARRATOR STYLE" in story
+        assert "conspiratorial" in story.lower()
+
+    def test_voice_in_refinement_mode(self):
+        """Voice should be maintained in refinement mode."""
+        prompt = Prompt(
+            prompt="A dragon tale",
+            voice="gothic",
+            refinement_mode=True,
+            original_story="A mysterious castle loomed.",
+            refinement_instructions="Add more atmosphere.",
+        )
+        story = prompt.story
+        assert "gothic fairy tale" in story.lower()
+
+    def test_random_voice_resolution(self):
+        """Random voice should resolve to a valid voice archetype."""
+        prompt = Prompt(prompt="Test story", voice="random")
+        valid_voices = Prompt.get_valid_values()["voice"]
+        assert prompt.voice in valid_voices
+        assert prompt.voice != "random"
+
+    def test_voice_in_get_valid_values(self):
+        """Voice should appear in get_valid_values output."""
+        valid_values = Prompt.get_valid_values()
+        assert "voice" in valid_values
+        assert "anapestic" in valid_values["voice"]
+        assert "sardonic" in valid_values["voice"]
+        assert "lyrical" in valid_values["voice"]
+
+    def test_empty_string_voice_treated_as_none(self):
+        """Empty string voice should not add voice instruction."""
+        prompt = Prompt(prompt="A little rabbit adventure", voice="")
+        story = prompt.story
+        assert "VOICE / NARRATOR STYLE" not in story
+
+    def test_voice_with_all_story_parameters(self):
+        """Voice works alongside all other parameters."""
+        prompt = Prompt(
+            prompt="Friends help each other",
+            length="bedtime",
+            age_range="early_reader",
+            style="friendship",
+            tone="heartwarming",
+            voice="lyrical",
+            theme="kindness",
+            setting="a cozy village",
+            characters=["Luna", "Oliver"],
+            learning_focus="emotions",
+        )
+        story = prompt.story
+        assert "VOICE / NARRATOR STYLE" in story
+        assert "lullaby" in story.lower() or "bedtime" in story.lower()
+        assert "heartwarming tone" in story
+        assert "theme of kindness" in story
 
 
 class TestContinuationDirection:

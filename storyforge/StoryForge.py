@@ -74,6 +74,7 @@ def show_prompt_summary_and_confirm(
     characters: list[str] | None,
     learning_focus: str | None,
     image_style: str = "chibi",
+    voice: str | None = None,
     generation_type: str = "story",
     backend_name: str | None = None,
 ) -> bool:
@@ -84,6 +85,8 @@ def show_prompt_summary_and_confirm(
     console.print(f"[bold]Length:[/bold] {length}")
     console.print(f"[bold]Style:[/bold] {style}")
     console.print(f"[bold]Tone:[/bold] {tone}")
+    if voice:
+        console.print(f"[bold]Voice:[/bold] {voice}")
     if theme and theme != "random":
         console.print(f"[bold]Theme:[/bold] {theme}")
     if learning_focus:
@@ -280,6 +283,7 @@ def main(
     age_range: str | None = generate_cli_option("age_range"),
     style: str | None = generate_cli_option("style"),
     tone: str | None = generate_cli_option("tone"),
+    voice: str | None = generate_cli_option("voice"),
     theme: str | None = generate_cli_option("theme"),
     learning_focus: str | None = generate_cli_option("learning_focus"),
     setting: str | None = generate_cli_option("setting"),
@@ -309,6 +313,7 @@ def main(
         "age_range": age_range,
         "style": style,
         "tone": tone,
+        "voice": voice,
         "theme": theme,
         "learning_focus": learning_focus,
         "setting": setting,
@@ -370,6 +375,7 @@ def main(
         age_range = age_range if age_range is not None else config.get_field_value("story", "age_range")
         style = style if style is not None else config.get_field_value("story", "style")
         tone = tone if tone is not None else config.get_field_value("story", "tone")
+        voice = voice if voice is not None else config.get_field_value("story", "voice")
         theme = theme if theme is not None else config.get_field_value("story", "theme")
         learning_focus = (
             learning_focus if learning_focus is not None else config.get_field_value("story", "learning_focus")
@@ -431,6 +437,7 @@ def main(
             "age_range": age_range,
             "style": style,
             "tone": tone,
+            "voice": voice,
             "theme": theme,
             "learning_focus": learning_focus,
             "setting": setting,
@@ -456,6 +463,7 @@ def main(
             "age_range": age_range,
             "style": style,
             "tone": tone,
+            "voice": voice,
             "theme": theme,
             "image_style": image_style,
         }
@@ -598,6 +606,7 @@ def extend_story(
             theme=metadata.get("theme"),  # None is valid - will use default
             age_range=metadata.get("age_group") or config.get_field_value("story", "age_range") or "preschool",
             tone=metadata.get("tone") or config.get_field_value("story", "tone") or "heartwarming",
+            voice=metadata.get("voice") or config.get_field_value("story", "voice") or None,
             length=config.get_field_value("story", "length") or "short",
             style=config.get_field_value("story", "style") or "adventure",
             image_style=metadata.get("art_style") or config.get_field_value("story", "image_style") or "chibi",
@@ -626,6 +635,7 @@ def extend_story(
             "length": prompt.length,
             "style": prompt.style,
             "tone": prompt.tone,
+            "voice": prompt.voice,
             "image_style": prompt.image_style,
             "theme": prompt.theme,
             "characters": prompt.characters,
@@ -644,6 +654,7 @@ def extend_story(
             "length": prompt.length,
             "style": prompt.style,
             "tone": prompt.tone,
+            "voice": prompt.voice,
             "image_style": prompt.image_style,
             "continuation_direction": continuation_direction,
             "source_context_file": str(selected_context["filepath"]),
