@@ -35,6 +35,7 @@ make console    # Start Textual debug server
 make lint       # Lint and format code (auto-fixes issues)
 make lint-check # Check linting without auto-fixes
 make typecheck  # Run type checking only
+make coverage   # Run tests with coverage report (xml + html + term)
 make clean      # Clean up build artifacts, caches, and remove .venv
 ```
 
@@ -78,8 +79,10 @@ storyforge/
 ├── openai_backend.py    # OpenAI API integration (GPT + image models)
 ├── phase_executor.py    # Phase-based execution engine
 ├── prompt.py            # Prompt handling and validation
+├── py.typed             # PEP 561 type marker
 ├── story_picker.py      # Interactive TUI story picker (Textual)
 ├── test_story.txt       # Test story for debug mode
+├── world_template.py    # World definition template for world.md
 └── schema/              # Validation schema and CLI integration
     ├── __init__.py
     ├── cli_integration.py
@@ -153,20 +156,10 @@ uv venv .venv && source .venv/bin/activate && uv pip install .[dev]
 
 ## Troubleshooting
 
-### Release Process
-
-1. **Update version** in both `pyproject.toml` and `storyforge/__init__.py`
-2. **Update CHANGELOG.md** — move `[Unreleased]` items into a new versioned section with today's date
-3. **Validate**: `make lint && make test && make coverage`
-4. **Commit**: `git commit -am "release: v0.0.X"`
-5. **Tag**: `git tag v0.0.X`
-6. **Push**: `git push origin main --tags`
-
 ### Common Issues
 
 - **"uv not found"**: Install uv first, then run `make install`
 - **Import errors**: Run `make clean` then `make install`
-- **Test failures**: Ensure at least one API key is set (see README.md)
 - **Pre-commit issues**: Run `make lint` to fix formatting
 
 ### Development Tips
@@ -175,3 +168,12 @@ uv venv .venv && source .venv/bin/activate && uv pip install .[dev]
 - Use `--debug` flag for offline development
 - Use `make clean` if you encounter dependency issues
 - Check generated output directories for saved files
+
+## Release Process
+
+1. **Update version** in both `pyproject.toml` and `storyforge/__init__.py`
+2. **Update CHANGELOG.md** — move `[Unreleased]` items into a new versioned section with today's date
+3. **Validate**: `make lint && make test && make coverage`
+4. **Commit**: `git commit -am "release: v0.0.X"`
+5. **Tag**: `git tag v0.0.X`
+6. **Push**: `git push origin main --tags`

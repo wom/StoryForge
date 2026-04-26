@@ -72,6 +72,9 @@ Below is a concise reference of available configuration options, their defaults,
   - Free-text setting description (e.g., `enchanted forest`).
 - `characters` (list) — Default: empty
   - Comma-separated list of character descriptions or names.
+- `voice` (string) — Default: `` (empty, no voice applied)
+  - Options: `anapestic`, `sardonic`, `picaresque`, `iambic`, `fable`, `gothic`, `nonsense`, `lyrical`, `epistolary`, `random` or empty for none
+  - Description: Writing voice archetype that shapes the narrator's style and rhythm. Each voice produces a distinct literary feel (e.g., anapestic = whimsical rhyming verse, sardonic = darkly humorous narrator).
 
 ### [images]
 - `image_style` (string) — Default: `chibi`
@@ -111,6 +114,9 @@ age_range = early_reader
 style = fantasy
 
 tone = heartwarming
+
+# Writing voice archetype (leave empty for none): anapestic, sardonic, picaresque, iambic, fable, gothic, nonsense, lyrical, epistolary, random
+voice =
 
 theme = kindness
 

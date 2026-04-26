@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Voice archetype system for narrator style with 9 distinct writing voices (`--voice` flag). (commit: 85780ab)
+- Story parameter preservation in extend flow — extended stories inherit all params from the original. (commit: f474468)
+
 ## [0.0.8] - 2026-04-06
 
 ### Added

@@ -1,19 +1,22 @@
 """
 StoryForge: AI-powered illustrated children's story generator.
 
-A CLI tool that generates illustrated children's stories using multiple AI backends
-(Gemini, Claude, OpenAI) with schema-driven configuration and checkpoint support.
+A CLI/TUI tool that generates illustrated children's stories using multiple AI backends
+(Gemini, OpenAI, Anthropic) with schema-driven configuration and checkpoint support.
 
 Main Features:
 - Schema-driven configuration system
 - Phase-based execution with checkpoints
-- Multiple AI backend support
+- Multiple AI backend support (Gemini, OpenAI, Anthropic)
 - Context management for character consistency
-- Resumable execution with --continue flag
+- World definitions for persistent world-building
+- Voice archetypes for narrator style control
+- Resumable execution via `storyforge continue`
 
 CLI Usage:
     $ storyforge "A brave mouse goes on an adventure"
-    $ storyforge --continue  # Resume from checkpoint
+    $ storyforge continue  # Resume from checkpoint
+    $ storyforge extend    # Extend a previous story
     $ python -m storyforge "A brave mouse goes on an adventure"
 """
 
