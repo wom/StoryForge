@@ -25,7 +25,7 @@ class OpenAIBackend(LLMBackend):
     Requires OPENAI_API_KEY environment variable to be set.
 
     Uses configurable models for story and image generation:
-    - Story model: Defaults to gpt-5.2 (configurable via system.openai_story_model)
+    - Story model: Defaults to gpt-5.4 (configurable via system.openai_story_model)
     - Image model: Defaults to gpt-image-1.5 (configurable via system.openai_image_model)
     """
 
@@ -43,6 +43,9 @@ class OpenAIBackend(LLMBackend):
         "gpt-4.1-nano": 1047576,
         "gpt-5": 128000,
         "gpt-5.2": 128000,
+        "gpt-5.3": 128000,
+        "gpt-5.4": 128000,
+        "gpt-5.5": 128000,
         "gpt-image-1": 128000,
         "gpt-image-1.5": 128000,
         "o1": 200000,

@@ -54,99 +54,65 @@ def list_gemini_models(api_key: str | None = None) -> list[dict[str, Any]]:
 def find_image_generation_model(models: list[dict[str, Any]] | None = None) -> str:
     """Find the best available image generation model.
 
-    Searches for models that support 'generateContent' and are suitable
-    for image generation. Prioritizes newer models.
+    Uses version-aware ranking when models are available, falling back to
+    the cross-generation alias `gemini-flash-latest`.
 
     Args:
         models: Optional list of models from list_gemini_models(). If not
             provided, will call list_gemini_models() automatically.
 
     Returns:
-        Model name string (e.g., "gemini-2.5-flash-image"). Falls back to
-        "gemini-2.5-flash-image" if no suitable model is found.
+        Model name string. Falls back to "gemini-flash-latest" if no
+        suitable model is found via ranking.
     """
+    from storyforge.model_ranking import rank_models
+
     if models is None:
         try:
             models = list_gemini_models()
         except Exception:
             logger.debug("Could not list models for image model discovery, using default")
-            return "gemini-2.5-flash-image"
+            return "gemini-flash-latest"
 
-    # Priority order of model name patterns to search for
-    # Prefer stable models over preview models to avoid quota issues
-    # Based on Gemini API documentation showing gemini-2.5-flash-image as current
-    priority_patterns = [
-        "gemini-2.5-flash-image",  # Stable model (preferred)
-        "gemini-2.0-flash-image",  # Potential future stable model
-        "imagen-",  # Legacy imagen models
-    ]
+    # Filter to models that support generateContent
+    eligible = [m for m in models if "generateContent" in m.get("supported_generation_methods", [])]
 
-    for pattern in priority_patterns:
-        for model in models:
-            name = model.get("name", "")
-            methods = model.get("supported_generation_methods", [])
+    best = rank_models(eligible, "gemini", "image")
+    if best:
+        return best
 
-            # Skip preview models to avoid quota issues on free tier
-            if "preview" in name.lower():
-                logger.debug(f"Skipping preview model for stability: {name}")
-                continue
-
-            # Check if model name matches pattern and supports generateContent
-            if pattern in name and "generateContent" in methods:
-                # Extract just the model ID (remove "models/" prefix if present)
-                if name.startswith("models/"):
-                    model_id: str = name[7:]
-                    return model_id
-                result: str = name
-                return result
-
-    # Fallback to documented default
-    return "gemini-2.5-flash-image"
+    return "gemini-flash-latest"
 
 
 def find_text_generation_model(models: list[dict[str, Any]] | None = None) -> str:
     """Find the best available text generation model.
 
+    Uses version-aware ranking when models are available, falling back to
+    the cross-generation alias `gemini-pro-latest`.
+
     Args:
         models: Optional list of models from list_gemini_models().
 
     Returns:
-        Model name string. Falls back to "gemini-2.5-pro" if no model found.
+        Model name string. Falls back to "gemini-pro-latest" if no model found.
     """
+    from storyforge.model_ranking import rank_models
+
     if models is None:
         try:
             models = list_gemini_models()
         except Exception:
             logger.debug("Could not list models for text model discovery, using default")
-            return "gemini-2.5-pro"
+            return "gemini-pro-latest"
 
-    # Priority order for text models
-    # Prefer stable models over preview models to avoid quota issues
-    priority_patterns = [
-        "gemini-2.5-pro",  # Current flagship model
-        "gemini-2.5-flash",  # Fast stable model
-        "gemini-2.0-pro",  # Potential future model
-        "gemini-pro",  # Legacy fallback
-    ]
+    # Filter to models that support generateContent
+    eligible = [m for m in models if "generateContent" in m.get("supported_generation_methods", [])]
 
-    for pattern in priority_patterns:
-        for model in models:
-            name = model.get("name", "")
-            methods = model.get("supported_generation_methods", [])
+    best = rank_models(eligible, "gemini", "text")
+    if best:
+        return best
 
-            # Skip preview models to avoid quota issues on free tier
-            if "preview" in name.lower():
-                logger.debug(f"Skipping preview model for stability: {name}")
-                continue
-
-            if pattern in name and "generateContent" in methods:
-                if name.startswith("models/"):
-                    model_id: str = name[7:]
-                    return model_id
-                result: str = name
-                return result
-
-    return "gemini-2.5-pro"
+    return "gemini-pro-latest"
 
 
 def list_openai_models(api_key: str | None = None) -> list[dict[str, Any]]:
@@ -195,41 +161,36 @@ def list_openai_models(api_key: str | None = None) -> list[dict[str, Any]]:
 def find_openai_text_model(models: list[dict[str, Any]] | None = None) -> str:
     """Find the best available OpenAI text generation model.
 
+    Uses version-aware ranking when models are available, falling back to
+    the highest known versionless alias `gpt-5.4`.
+
     Args:
         models: Optional list of models from list_openai_models().
 
     Returns:
-        Model name string. Falls back to "gpt-5.2" if no model found.
+        Model name string. Falls back to "gpt-5.4" if no model found.
     """
+    from storyforge.model_ranking import rank_models
+
     if models is None:
         try:
             models = list_openai_models()
         except Exception:
             logger.debug("Could not list models for OpenAI text model discovery, using default")
-            return "gpt-5.2"
+            return "gpt-5.4"
 
-    priority_patterns = [
-        "gpt-5.2",
-        "gpt-5",
-        "gpt-4o",
-        "gpt-4-turbo",
-        "gpt-4",
-    ]
+    best = rank_models(models, "openai", "text")
+    if best:
+        return best
 
-    for pattern in priority_patterns:
-        for model in models:
-            name: str = model.get("name", "")
-            if "mini" in name.lower() or "nano" in name.lower():
-                logger.debug(f"Skipping small model: {name}")
-                continue
-            if pattern in name:
-                return name
-
-    return "gpt-5.2"
+    return "gpt-5.4"
 
 
 def find_openai_image_model(models: list[dict[str, Any]] | None = None) -> str:
     """Find the best available OpenAI image generation model.
+
+    Uses version-aware ranking when models are available, falling back to
+    "gpt-image-1.5".
 
     Args:
         models: Optional list of models from list_openai_models().
@@ -237,6 +198,8 @@ def find_openai_image_model(models: list[dict[str, Any]] | None = None) -> str:
     Returns:
         Model name string. Falls back to "gpt-image-1.5" if no model found.
     """
+    from storyforge.model_ranking import rank_models
+
     if models is None:
         try:
             models = list_openai_models()
@@ -244,18 +207,9 @@ def find_openai_image_model(models: list[dict[str, Any]] | None = None) -> str:
             logger.debug("Could not list models for OpenAI image model discovery, using default")
             return "gpt-image-1.5"
 
-    priority_patterns = [
-        "gpt-image-1.5",
-        "gpt-image-1",
-        "dall-e-3",
-        "dall-e-2",
-    ]
-
-    for pattern in priority_patterns:
-        for model in models:
-            name: str = model.get("name", "")
-            if pattern in name:
-                return name
+    best = rank_models(models, "openai", "image")
+    if best:
+        return best
 
     return "gpt-image-1.5"
 
@@ -301,33 +255,26 @@ def list_anthropic_models(api_key: str | None = None) -> list[dict[str, Any]]:
 def find_anthropic_text_model(models: list[dict[str, Any]] | None = None) -> str:
     """Find the best available Anthropic text generation model.
 
+    Uses version-aware ranking when models are available, falling back to
+    the versionless alias `claude-sonnet-4-6`.
+
     Args:
         models: Optional list of models from list_anthropic_models().
 
     Returns:
-        Model name string. Falls back to "claude-3-5-sonnet-20241022" if no model found.
+        Model name string. Falls back to "claude-sonnet-4-6" if no model found.
     """
+    from storyforge.model_ranking import rank_models
+
     if models is None:
         try:
             models = list_anthropic_models()
         except Exception:
             logger.debug("Could not list models for Anthropic text model discovery, using default")
-            return "claude-3-5-sonnet-20241022"
+            return "claude-sonnet-4-6"
 
-    priority_patterns = [
-        "claude-4-sonnet",
-        "claude-4-opus",
-        "claude-3-5-sonnet",
-        "claude-3-opus",
-    ]
+    best = rank_models(models, "anthropic", "text")
+    if best:
+        return best
 
-    for pattern in priority_patterns:
-        for model in models:
-            name: str = model.get("name", "")
-            if "haiku" in name.lower():
-                logger.debug(f"Skipping low-quality model: {name}")
-                continue
-            if pattern in name:
-                return name
-
-    return "claude-3-5-sonnet-20241022"
+    return "claude-sonnet-4-6"
