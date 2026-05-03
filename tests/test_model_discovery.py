@@ -274,7 +274,7 @@ class TestOpenAIDiscovery:
     def test_find_openai_text_model_fallback(self):
         """Empty list returns default."""
         result = find_openai_text_model([])
-        assert result == "gpt-5.4"
+        assert result == "gpt-5.5"
 
     def test_find_openai_image_model(self):
         """Finds best image model by version ranking."""
