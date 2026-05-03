@@ -54,6 +54,9 @@ app.add_typer(config_app, name="config")
 world_app = typer.Typer(help="World definition file management (characters, places, lore)")
 app.add_typer(world_app, name="world")
 
+models_app = typer.Typer(help="Manage the model discovery cache")
+app.add_typer(models_app, name="models")
+
 
 def generate_default_output_dir(extended: bool = False) -> str:
     """Generate a timestamped output directory name."""
@@ -153,6 +156,69 @@ def init_config(
     except Exception as e:
         console.print(f"[red]Error creating configuration file:[/red] {e}", style="bold")
         raise typer.Exit(1) from None
+
+
+@models_app.command(name="list", help="Show cached models per backend")
+def models_list() -> None:
+    """Display cached model lists with cache age."""
+    import json
+    from datetime import UTC, datetime
+
+    from .model_cache import ModelCache
+
+    cache = ModelCache()
+    backends = ["gemini", "openai", "anthropic"]
+    found_any = False
+
+    for backend in backends:
+        path = cache.cache_path(backend)
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            models = data.get("models", [])
+            timestamp = data.get("timestamp", "")
+            age_str = ""
+            if timestamp:
+                cached_at = datetime.fromisoformat(timestamp)
+                age = datetime.now(UTC) - cached_at
+                hours = int(age.total_seconds() // 3600)
+                if hours < 24:
+                    age_str = f"{hours}h ago"
+                else:
+                    age_str = f"{age.days}d ago"
+
+            found_any = True
+            console.print(f"\n[bold]{backend}[/bold] ({len(models)} models, cached {age_str})")
+            for model in models:
+                name = model.get("name", model.get("id", "unknown"))
+                console.print(f"  • {name}")
+        except (OSError, json.JSONDecodeError, KeyError):
+            continue
+
+    if not found_any:
+        console.print("[dim]No cached model data found.[/dim]")
+
+
+@models_app.command(name="refresh", help="Force-refresh all model caches")
+def models_refresh() -> None:
+    """Invalidate all caches so next run re-discovers models."""
+    from .model_cache import ModelCache
+
+    cache = ModelCache()
+    for backend in ["gemini", "openai", "anthropic"]:
+        cache.invalidate(backend)
+    console.print("[green]✅ All model caches invalidated.[/green] Models will be re-discovered on next run.")
+
+
+@models_app.command(name="clear", help="Clear all cached model data")
+def models_clear() -> None:
+    """Remove all cached model files."""
+    from .model_cache import ModelCache
+
+    cache = ModelCache()
+    cache.clear_all()
+    console.print("[green]✅ All cached model data cleared.[/green]")
 
 
 def _resolve_world_file_path() -> Path:
@@ -874,6 +940,7 @@ if __name__ == "__main__":
             "extend",
             "export-chain",
             "world",
+            "models",
         ]
     ):
         sys.argv.insert(1, "main")
@@ -895,6 +962,7 @@ def cli_entry() -> None:
         "extend",
         "export-chain",
         "world",
+        "models",
     ]:
         sys.argv.insert(1, "main")
     app()

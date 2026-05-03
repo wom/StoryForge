@@ -11,6 +11,17 @@ from storyforge.anthropic_backend import AnthropicBackend
 from storyforge.llm_backend import ERROR_STORY_SENTINEL
 from storyforge.prompt import Prompt
 
+# Auto-mock model discovery for all tests so __init__ doesn't hit real APIs
+_DISCOVERY_PATCH = "storyforge.anthropic_backend.list_anthropic_models"
+_DEFAULT_MODEL = "claude-3-5-sonnet-20241022"
+
+
+@pytest.fixture(autouse=True)
+def _mock_model_discovery():
+    """Prevent model discovery from making real API calls in all tests."""
+    with patch(_DISCOVERY_PATCH, return_value=[{"name": _DEFAULT_MODEL, "display_name": "Claude 3.5 Sonnet"}]):
+        yield
+
 
 @patch.dict("os.environ", {"ANTHROPIC_API_KEY": "test_key"})
 @patch("storyforge.anthropic_backend.anthropic.Anthropic")

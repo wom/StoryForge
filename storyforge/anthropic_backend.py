@@ -11,6 +11,8 @@ from typing import Any
 import anthropic
 
 from .llm_backend import ERROR_STORY_SENTINEL, LLMBackend
+from .model_cache import ModelCache
+from .model_discovery import find_anthropic_text_model, list_anthropic_models
 from .prompt import Prompt
 
 logger = logging.getLogger(__name__)
@@ -44,7 +46,7 @@ class AnthropicBackend(LLMBackend):
         Initialize the Anthropic client using the API key from environment variables.
 
         Args:
-            config: Optional Config object (currently unused, for API consistency).
+            config: Optional Config object for model configuration.
 
         Raises:
             RuntimeError: If ANTHROPIC_API_KEY is not set.
@@ -53,10 +55,97 @@ class AnthropicBackend(LLMBackend):
         if not api_key:
             raise RuntimeError("ANTHROPIC_API_KEY environment variable not set.")
         self.client = anthropic.Anthropic(api_key=api_key)
+        self._cache = ModelCache()
 
-        # Set text input limit (Claude models all have 200K context)
-        self._text_input_limit = self.DEFAULT_TEXT_INPUT_LIMIT
-        self._story_model = "claude-3-5-sonnet-20241022"
+        # Get model from config or use discovery
+        configured_model = ""
+        if config is not None:
+            configured_model = config.get_field_value("system", "anthropic_story_model") or ""
+
+        if configured_model:
+            self._story_model = configured_model
+        else:
+            self._story_model = self._discover_model()
+
+        # Set text input limit using dynamic lookup with static fallback
+        self._text_input_limit = self._get_model_limit(self._story_model)
+
+    def _get_model_limit(self, model_name: str) -> int:
+        """Get the token limit for a given model name.
+
+        Checks cached model metadata for dynamic token limits first, then
+        falls back to the static MODEL_TOKEN_LIMITS dict with prefix matching,
+        and finally to DEFAULT_TEXT_INPUT_LIMIT.
+
+        Args:
+            model_name: The model name to look up.
+
+        Returns:
+            int: The token limit for the model.
+        """
+        # Check cached models for token limit metadata from the Anthropic API
+        cached_models = self._cache.get("anthropic")
+        if cached_models:
+            for model in cached_models:
+                model_id = model.get("id", "") or model.get("name", "")
+                if model_id == model_name:
+                    token_limit = model.get("input_token_limit") or model.get("context_window")
+                    if token_limit and isinstance(token_limit, int):
+                        return int(token_limit)
+                    break
+
+        # Exact match in static dict
+        if model_name in self.MODEL_TOKEN_LIMITS:
+            return self.MODEL_TOKEN_LIMITS[model_name]
+
+        # Prefix match for versioned models (e.g., "claude-3-5-sonnet-20241022")
+        for prefix, limit in self.MODEL_TOKEN_LIMITS.items():
+            if model_name.startswith(prefix):
+                return limit
+
+        logger.warning(
+            "Unknown Anthropic model '%s', using default limit of %d tokens",
+            model_name,
+            self.DEFAULT_TEXT_INPUT_LIMIT,
+        )
+        return self.DEFAULT_TEXT_INPUT_LIMIT
+
+    def _discover_model(self) -> str:
+        """Discover the best available Anthropic text model, using cache when possible."""
+        cached = self._cache.get("anthropic")
+        if cached is not None:
+            return find_anthropic_text_model(cached)
+
+        models = list_anthropic_models()
+        if models:
+            self._cache.set("anthropic", models)
+        return find_anthropic_text_model(models)
+
+    def _is_model_not_found_error(self, error: Exception) -> bool:
+        """Check if an error indicates the model is no longer available."""
+        if isinstance(error, anthropic.NotFoundError):
+            return True
+        error_str = str(error).lower()
+        return any(
+            phrase in error_str
+            for phrase in (
+                "model_not_found",
+                "not_found_error",
+                "does not exist",
+                "decommissioned",
+                "deprecated",
+                "invalid_model",
+            )
+        )
+
+    def _handle_model_not_found(self, error: Exception) -> str:
+        """Handle a model-not-found error by invalidating cache and re-discovering."""
+        old_model = self._story_model
+        self._cache.invalidate("anthropic")
+        new_model = self._discover_model()
+        self._story_model = new_model
+        logger.warning("Model '%s' is no longer available, falling back to '%s'", old_model, new_model)
+        return new_model
 
     def get_model_info(self) -> dict[str, str | None]:
         """Return model information for the Anthropic backend.
@@ -99,7 +188,7 @@ class AnthropicBackend(LLMBackend):
 
             def _call() -> str:
                 response = self.client.messages.create(
-                    model="claude-3-5-sonnet-20241022",
+                    model=self._story_model,
                     max_tokens=4000,
                     temperature=0.7,
                     messages=[{"role": "user", "content": story_prompt}],
@@ -111,7 +200,13 @@ class AnthropicBackend(LLMBackend):
 
             return self._retry_transient(_call, operation="story generation")
         except Exception as e:
-            # Return a generic error message if generation fails
+            if self._is_model_not_found_error(e):
+                self._handle_model_not_found(e)
+                try:
+                    return self._retry_transient(_call, operation="story generation")
+                except Exception as retry_err:
+                    logger.warning("Story generation failed after model fallback: %s", retry_err)
+                    return f"{ERROR_STORY_SENTINEL}: {retry_err}"
             logger.warning("Story generation failed: %s", e)
             return f"{ERROR_STORY_SENTINEL}: {e}"
 
@@ -153,7 +248,7 @@ class AnthropicBackend(LLMBackend):
             name_prompt = prompt.image_name(story)
 
             response = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model=self._story_model,
                 max_tokens=100,
                 temperature=0.3,  # Lower temperature for more consistent naming
                 messages=[{"role": "user", "content": name_prompt}],
@@ -188,7 +283,7 @@ class AnthropicBackend(LLMBackend):
             image_prompt_request = self._build_image_prompt_request(story, context, num_prompts)
 
             response = self.client.messages.create(
-                model="claude-3-5-sonnet-20241022",
+                model=self._story_model,
                 max_tokens=2000,
                 temperature=0.5,
                 messages=[{"role": "user", "content": image_prompt_request}],

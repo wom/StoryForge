@@ -309,6 +309,47 @@ def _create_system_section() -> ConfigSection:
 
     section.add_field(
         ConfigField(
+            name="anthropic_story_model",
+            field_type=FieldType.STRING,
+            default="",
+            section="system",
+            description="Anthropic model for story generation (empty for auto-discovery)",
+            cli_help=(
+                "Anthropic story model (e.g., claude-4-sonnet, claude-3-5-sonnet). Leave empty for auto-discovery"
+            ),
+            example_values=["claude-4-sonnet", "claude-3-5-sonnet-20241022"],
+            ini_comment="Anthropic model for story generation (leave empty for auto-discovery)",
+        )
+    )
+
+    section.add_field(
+        ConfigField(
+            name="gemini_story_model",
+            field_type=FieldType.STRING,
+            default="",
+            section="system",
+            description="Gemini model for text generation (empty for auto-discovery)",
+            cli_help="Gemini text model (e.g., gemini-2.5-pro). Leave empty for auto-discovery",
+            example_values=["gemini-2.5-pro", "gemini-2.5-flash"],
+            ini_comment="Gemini model for text generation (leave empty for auto-discovery)",
+        )
+    )
+
+    section.add_field(
+        ConfigField(
+            name="gemini_image_model",
+            field_type=FieldType.STRING,
+            default="",
+            section="system",
+            description="Gemini model for image generation (empty for auto-discovery)",
+            cli_help="Gemini image model (e.g., gemini-2.5-flash-image). Leave empty for auto-discovery",
+            example_values=["gemini-2.5-flash-image"],
+            ini_comment="Gemini model for image generation (leave empty for auto-discovery)",
+        )
+    )
+
+    section.add_field(
+        ConfigField(
             name="verbose",
             field_type=FieldType.BOOLEAN,
             default=False,
