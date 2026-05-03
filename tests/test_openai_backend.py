@@ -496,3 +496,34 @@ class TestOpenAIRetryIntegration:
 
         assert result.startswith(ERROR_STORY_SENTINEL)
         assert mock_client_instance.chat.completions.create.call_count == 4  # 1 + 3 retries
+
+
+class TestOpenAIModelInfo:
+    """Test cases for OpenAI get_model_info and MODEL_TOKEN_LIMITS."""
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    @patch("openai.OpenAI")
+    def test_get_model_info_defaults(self, mock_openai):
+        """Test get_model_info returns default models."""
+        backend = OpenAIBackend()
+        info = backend.get_model_info()
+        assert info["story_model"] == "gpt-5.2"
+        assert info["image_model"] == "gpt-image-1.5"
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    @patch("openai.OpenAI")
+    def test_get_model_info_with_config(self, mock_openai):
+        """Test get_model_info with custom config models."""
+        config = Mock()
+        config.get_field_value = Mock(side_effect=lambda s, f: "gpt-4o" if "story" in f else "dall-e-3")
+        backend = OpenAIBackend(config=config)
+        info = backend.get_model_info()
+        assert info["story_model"] == "gpt-4o"
+        assert info["image_model"] == "dall-e-3"
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)
+    @patch("openai.OpenAI")
+    def test_model_token_limits_includes_defaults(self, mock_openai):
+        """Test that MODEL_TOKEN_LIMITS includes the default models."""
+        assert "gpt-5.2" in OpenAIBackend.MODEL_TOKEN_LIMITS
+        assert "gpt-image-1.5" in OpenAIBackend.MODEL_TOKEN_LIMITS

@@ -288,6 +288,78 @@ class TestBackwardCompatibility:
         story_prompt = Prompt(prompt="Test adventure", style="adventure")
         result1 = simulate_backend_usage(story_prompt)
         assert isinstance(result1, str)
+
+
+class TestRandomResolution:
+    """Test random parameter resolution tracking."""
+
+    def test_random_voice_tracked(self):
+        """Test that random voice resolution is tracked."""
+        prompt = Prompt(prompt="Test story", voice="random")
+        assert "voice" in prompt.random_resolved
+        assert prompt.random_resolved["voice"] == prompt.voice
+
+    def test_random_style_tracked(self):
+        """Test that random style resolution is tracked."""
+        prompt = Prompt(prompt="Test story", style="random")
+        assert "style" in prompt.random_resolved
+        assert prompt.random_resolved["style"] == prompt.style
+
+    def test_random_tone_tracked(self):
+        """Test that random tone resolution is tracked."""
+        prompt = Prompt(prompt="Test story", tone="random")
+        assert "tone" in prompt.random_resolved
+        assert prompt.random_resolved["tone"] == prompt.tone
+
+    def test_random_theme_tracked(self):
+        """Test that random theme resolution is tracked."""
+        prompt = Prompt(prompt="Test story", theme="random")
+        assert "theme" in prompt.random_resolved
+        assert prompt.random_resolved["theme"] == prompt.theme
+
+    def test_random_learning_focus_tracked(self):
+        """Test that random learning_focus resolution is tracked."""
+        prompt = Prompt(prompt="Test story", learning_focus="random")
+        assert "learning_focus" in prompt.random_resolved
+        assert prompt.random_resolved["learning_focus"] == prompt.learning_focus
+
+    def test_non_random_values_not_tracked(self):
+        """Test that explicit values are not in random_resolved."""
+        prompt = Prompt(prompt="Test story", style="adventure", tone="gentle")
+        assert "style" not in prompt.random_resolved
+        assert "tone" not in prompt.random_resolved
+
+    def test_multiple_random_fields_tracked(self):
+        """Test that multiple random fields are all tracked."""
+        prompt = Prompt(prompt="Test story", style="random", tone="random", voice="random")
+        assert "style" in prompt.random_resolved
+        assert "tone" in prompt.random_resolved
+        assert "voice" in prompt.random_resolved
+        assert len(prompt.random_resolved) == 3
+
+    def test_random_resolved_empty_when_no_random(self):
+        """Test that random_resolved is empty when no fields are random."""
+        prompt = Prompt(prompt="Test story")
+        assert prompt.random_resolved == {}
+
+
+class TestBackwardCompatibilityLegacy:
+    """Test legacy backward compatibility."""
+
+    def test_story_prompt_string_alternative(self):
+        """Test that Prompt can be used where strings were used before."""
+
+        def simulate_backend_usage(prompt_input, context=None):
+            if isinstance(prompt_input, Prompt):
+                return prompt_input.story
+            else:
+                if context:
+                    return f"Legacy: {prompt_input} with context: {context}"
+                return f"Legacy: {prompt_input}"
+
+        # Test with Prompt
+        story_prompt = Prompt(prompt="Test adventure", style="adventure")
+        result1 = simulate_backend_usage(story_prompt)
         assert "Test adventure" in result1
 
         # Test with legacy string
@@ -850,11 +922,7 @@ class TestVoiceArchetypes:
 
     def test_all_voices_have_descriptions(self):
         """Every valid voice should map to a non-empty description."""
-        valid_voices = [
-            v
-            for v in STORYFORGE_SCHEMA.story.fields["voice"].valid_values
-            if v and v != "random"
-        ]
+        valid_voices = [v for v in STORYFORGE_SCHEMA.story.fields["voice"].valid_values if v and v != "random"]
         for voice_name in valid_voices:
             assert voice_name in VOICE_DESCRIPTIONS, f"Missing description for {voice_name}"
             assert len(VOICE_DESCRIPTIONS[voice_name]) > 20, f"Description too short for {voice_name}"

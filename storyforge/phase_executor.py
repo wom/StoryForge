@@ -772,11 +772,133 @@ class PhaseExecutor:
 
         console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
 
+        # Always write generation metadata to output directory
+        self._write_generation_metadata(output_dir)
+
         # Dump all context and session info when --verbose or --debug is set
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
         debug = self.checkpoint_data.resolved_config.get("debug", False)
         if verbose or debug:
             self._dump_session_context(output_dir)
+
+    def _get_parameter_source(self, field_name: str) -> tuple[str, str | None]:
+        """Determine the source and value of a generation parameter.
+
+        Checks in priority order: random resolution, CLI argument, config file,
+        schema default.
+
+        Args:
+            field_name: The parameter field name (e.g., 'voice', 'style').
+
+        Returns:
+            Tuple of (source_label, value) where source_label is one of
+            'Random', 'CLI', 'Config', 'Default'. Value may be None.
+        """
+        if self.checkpoint_data is None:
+            return ("Default", None)
+
+        cli_args = self.checkpoint_data.original_inputs.get("cli_arguments", {}) or {}
+        resolved_config = self.checkpoint_data.resolved_config or {}
+
+        # Check if this field was randomly resolved
+        if self.story_prompt and hasattr(self.story_prompt, "random_resolved"):
+            random_resolved = self.story_prompt.random_resolved
+            if field_name in random_resolved:
+                return ("Random", random_resolved[field_name])
+
+        # Check CLI arguments
+        cli_val = cli_args.get(field_name)
+        if cli_val is not None:
+            return ("CLI", str(cli_val))
+
+        # Check config file value
+        cfg_val = resolved_config.get(field_name)
+        if cfg_val is not None:
+            return ("Config", str(cfg_val))
+
+        # Fall back to default (get from prompt object if available)
+        if self.story_prompt:
+            val = getattr(self.story_prompt, field_name, None)
+            if val is not None:
+                return ("Default", str(val))
+
+        return ("Default", None)
+
+    def _build_generation_metadata(self) -> str:
+        """Build generation metadata content as markdown.
+
+        Returns:
+            Markdown string with backend/model info and parameter sources.
+        """
+        if self.checkpoint_data is None:
+            return ""
+
+        sections: list[str] = []
+        sections.append("# Generation Metadata\n\n")
+        sections.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+
+        # Backend and model info
+        if self.llm_backend:
+            sections.append(f"**Backend:** {self.llm_backend.name}\n")
+            model_info = self.llm_backend.get_model_info()
+            if model_info.get("story_model"):
+                sections.append(f"**Story Model:** {model_info['story_model']}\n")
+            if model_info.get("image_model"):
+                sections.append(f"**Image Model:** {model_info['image_model']}\n")
+            sections.append("\n")
+
+        # Parameters with source tracking
+        sections.append("## Parameters\n\n")
+        sections.append("| Parameter | Value | Source |\n")
+        sections.append("|-----------|-------|--------|\n")
+
+        param_fields = [
+            ("length", "Length"),
+            ("age_range", "Age Range"),
+            ("style", "Style"),
+            ("tone", "Tone"),
+            ("voice", "Voice"),
+            ("theme", "Theme"),
+            ("setting", "Setting"),
+            ("learning_focus", "Learning Focus"),
+            ("image_style", "Image Style"),
+            ("ending_type", "Ending Type"),
+        ]
+
+        for field_name, display_name in param_fields:
+            source, value = self._get_parameter_source(field_name)
+            if value is not None:
+                if source == "Random":
+                    sections.append(f"| {display_name} | {value} | Random ({value}) |\n")
+                else:
+                    sections.append(f"| {display_name} | {value} | {source} |\n")
+
+        # Characters (special handling - list type)
+        cli_args = self.checkpoint_data.original_inputs.get("cli_arguments", {}) or {}
+        if cli_args.get("characters"):
+            sections.append(f"| Characters | {', '.join(cli_args['characters'])} | CLI |\n")
+
+        sections.append("\n")
+        return "".join(sections)
+
+    def _write_generation_metadata(self, output_dir: str) -> None:
+        """Write generation_metadata.md to the story output directory.
+
+        Args:
+            output_dir: The story output directory path.
+        """
+        if self.checkpoint_data is None:
+            return
+
+        metadata_path = os.path.join(output_dir, "generation_metadata.md")
+        content = self._build_generation_metadata()
+
+        try:
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            console.print(f"[dim]📋 Generation metadata saved: {metadata_path}[/dim]")
+        except Exception as e:
+            console.print(f"[dim]Warning: Could not save generation metadata: {e}[/dim]")
 
     def _dump_session_context(self, output_dir: str) -> None:
         """Dump all context, prompt details, and config to the output directory.
@@ -1100,37 +1222,42 @@ class PhaseExecutor:
                     parent_file = Path(source_file).stem
                     context_content += f"**Extended From:** {parent_file}\n\n"
 
-                # Add story parameters if available
+                # Add backend and model information
+                if self.llm_backend:
+                    context_content += f"**Backend:** {self.llm_backend.name}\n\n"
+                    model_info = self.llm_backend.get_model_info()
+                    if model_info.get("story_model"):
+                        context_content += f"**Story Model:** {model_info['story_model']}\n\n"
+                    if model_info.get("image_model"):
+                        context_content += f"**Image Model:** {model_info['image_model']}\n\n"
+
+                # Add story parameters with source tracking
                 cli_args = self.checkpoint_data.original_inputs.get("cli_arguments", {})
-                resolved = self.checkpoint_data.resolved_config or {}
-                if cli_args and cli_args.get("characters"):
-                    context_content += f"**Characters:** {', '.join(cli_args['characters'])}\n\n"
-                if cli_args and cli_args.get("setting"):
-                    context_content += f"**Setting:** {cli_args['setting']}\n\n"
-                tone_val = (cli_args or {}).get("tone") or resolved.get("tone")
-                if tone_val:
-                    context_content += f"**Tone:** {tone_val}\n\n"
-                style_val = (cli_args or {}).get("style") or resolved.get("style")
-                if style_val:
-                    context_content += f"**Style:** {style_val}\n\n"
-                voice_val = (cli_args or {}).get("voice") or resolved.get("voice")
-                if voice_val:
-                    context_content += f"**Voice:** {voice_val}\n\n"
-                theme_val = (cli_args or {}).get("theme") or resolved.get("theme")
-                if theme_val:
-                    context_content += f"**Theme:** {theme_val}\n\n"
-                age_val = (cli_args or {}).get("age_range") or resolved.get("age_range")
-                if age_val:
-                    context_content += f"**Age Group:** {age_val}\n\n"
-                img_val = (cli_args or {}).get("image_style") or resolved.get("image_style")
-                if img_val:
-                    context_content += f"**Art Style:** {img_val}\n\n"
-                length_val = (cli_args or {}).get("length") or resolved.get("length")
-                if length_val:
-                    context_content += f"**Length:** {length_val}\n\n"
-                learning_val = (cli_args or {}).get("learning_focus") or resolved.get("learning_focus")
-                if learning_val:
-                    context_content += f"**Learning Focus:** {learning_val}\n\n"
+                param_fields = [
+                    ("characters", "Characters"),
+                    ("setting", "Setting"),
+                    ("tone", "Tone"),
+                    ("style", "Style"),
+                    ("voice", "Voice"),
+                    ("theme", "Theme"),
+                    ("age_range", "Age Group"),
+                    ("image_style", "Art Style"),
+                    ("length", "Length"),
+                    ("learning_focus", "Learning Focus"),
+                ]
+
+                for field_name, display_name in param_fields:
+                    if field_name == "characters":
+                        if cli_args and cli_args.get("characters"):
+                            context_content += f"**{display_name}:** {', '.join(cli_args['characters'])}\n\n"
+                        continue
+
+                    source, value = self._get_parameter_source(field_name)
+                    if value is not None:
+                        if source == "Random":
+                            context_content += f"**{display_name}:** Random ({value})\n\n"
+                        else:
+                            context_content += f"**{display_name}:** {value} ({source})\n\n"
 
                 context_content += "## Story\n\n"
                 context_content += self.story or ""
