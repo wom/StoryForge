@@ -162,13 +162,13 @@ def find_openai_text_model(models: list[dict[str, Any]] | None = None) -> str:
     """Find the best available OpenAI text generation model.
 
     Uses version-aware ranking when models are available, falling back to
-    the highest known versionless alias `gpt-5.4`.
+    the highest known versionless alias `gpt-5.5`.
 
     Args:
         models: Optional list of models from list_openai_models().
 
     Returns:
-        Model name string. Falls back to "gpt-5.4" if no model found.
+        Model name string. Falls back to "gpt-5.5" if no model found.
     """
     from storyforge.model_ranking import rank_models
 
@@ -177,13 +177,13 @@ def find_openai_text_model(models: list[dict[str, Any]] | None = None) -> str:
             models = list_openai_models()
         except Exception:
             logger.debug("Could not list models for OpenAI text model discovery, using default")
-            return "gpt-5.4"
+            return "gpt-5.5"
 
     best = rank_models(models, "openai", "text")
     if best:
         return best
 
-    return "gpt-5.4"
+    return "gpt-5.5"
 
 
 def find_openai_image_model(models: list[dict[str, Any]] | None = None) -> str:
