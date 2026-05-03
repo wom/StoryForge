@@ -31,13 +31,14 @@ class AnthropicBackend(LLMBackend):
 
     # Claude model context window sizes
     MODEL_TOKEN_LIMITS: dict[str, int] = {
+        "claude-opus-4": 200000,
+        "claude-sonnet-4": 200000,
+        "claude-haiku-4": 200000,
         "claude-3-5-sonnet": 200000,
         "claude-3-5-haiku": 200000,
         "claude-3-opus": 200000,
         "claude-3-sonnet": 200000,
         "claude-3-haiku": 200000,
-        "claude-4-sonnet": 200000,
-        "claude-4-opus": 200000,
     }
     DEFAULT_TEXT_INPUT_LIMIT = 200000
 

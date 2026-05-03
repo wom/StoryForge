@@ -4,7 +4,7 @@ This implementation uses dynamic model discovery to automatically select
 the best available models for text and image generation. It caches the
 model list on first use. Image model can be overridden via `GEMINI_IMAGE_MODEL`
 env var, otherwise it auto-discovers the best available image generation model
-(typically `gemini-2.5-flash-image`).
+(typically `gemini-flash-latest`).
 """
 
 import logging
@@ -119,10 +119,10 @@ class GeminiBackend(LLMBackend):
 
         if model_type == "text":
             GeminiBackend._text_model = find_text_generation_model(models)
-            return GeminiBackend._text_model or "gemini-2.5-flash"
+            return GeminiBackend._text_model or "gemini-flash-latest"
         else:
             GeminiBackend._image_model = find_image_generation_model(models)
-            return GeminiBackend._image_model or "gemini-2.5-flash-image"
+            return GeminiBackend._image_model or "gemini-flash-latest"
 
     def _get_model_input_limit(self, model_name: str | None, default_limit: int, model_type: str) -> int:
         """Get input token limit for a model with fallback.
@@ -202,7 +202,7 @@ class GeminiBackend(LLMBackend):
         )
 
         try:
-            model = self._text_model or "gemini-2.5-flash"
+            model = self._text_model or "gemini-flash-latest"
             response = self.client.models.generate_content(model=model, contents=compression_prompt)
             compressed = self._extract_text(response)
             if compressed:
@@ -235,7 +235,7 @@ class GeminiBackend(LLMBackend):
         """
         try:
             image_prompt_request = self._build_image_prompt_request(story, context, num_prompts)
-            model = self._text_model or "gemini-2.5-flash"
+            model = self._text_model or "gemini-flash-latest"
             response = self.client.models.generate_content(model=model, contents=image_prompt_request)
             text = self._extract_text(response)
             if text:
@@ -259,7 +259,7 @@ class GeminiBackend(LLMBackend):
                 target_tokens = int(self._text_input_limit * self.COMPRESSION_TARGET_RATIO)
                 contents = self._compress_prompt(contents, target_tokens)
 
-            model = self._text_model or "gemini-2.5-pro"
+            model = self._text_model or "gemini-pro-latest"
 
             def _call() -> str:
                 response = self.client.models.generate_content(model=model, contents=contents)
@@ -358,7 +358,7 @@ class GeminiBackend(LLMBackend):
         else:
             contents = text_prompt
 
-        model = self._image_model or "gemini-2.5-flash-image"
+        model = self._image_model or "gemini-flash-latest"
         try:
 
             def _call() -> Any:
@@ -380,7 +380,7 @@ class GeminiBackend(LLMBackend):
     def generate_image_name(self, prompt: Prompt, story: str) -> str:
         try:
             contents = prompt.image_name(story)
-            model = self._text_model or "gemini-2.5-flash"
+            model = self._text_model or "gemini-flash-latest"
             response = self.client.models.generate_content(model=model, contents=contents)
             text = self._extract_text(response)
             if text:

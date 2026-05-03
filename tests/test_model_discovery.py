@@ -37,33 +37,33 @@ def test_find_image_generation_model_with_gemini_2_5():
 
 
 def test_find_image_generation_model_fallback():
-    """Test fallback when no image model found."""
+    """Test fallback when no suitable image model found via ranking."""
     models = [
         {
-            "name": "models/gemini-2.5-pro",
-            "display_name": "Gemini 2.5 Pro",
+            "name": "models/some-unknown-model",
+            "display_name": "Unknown",
             "supported_generation_methods": ["generateContent"],
-            "description": "Text generation model",
+            "description": "Unknown model",
         }
     ]
 
     model = find_image_generation_model(models)
-    assert model == "gemini-2.5-flash-image"  # Falls back to default
+    assert model == "gemini-flash-latest"  # Falls back to cross-gen alias
 
 
-def test_find_image_generation_model_with_imagen():
-    """Test finding legacy imagen model."""
+def test_find_image_generation_model_with_flash():
+    """Test finding a flash model for image generation."""
     models = [
         {
-            "name": "models/imagen-4.0-generate-001",
-            "display_name": "Imagen 4.0",
+            "name": "models/gemini-3.0-flash",
+            "display_name": "Gemini 3.0 Flash",
             "supported_generation_methods": ["generateContent"],
-            "description": "Image generation model",
+            "description": "Fast generation model",
         }
     ]
 
     model = find_image_generation_model(models)
-    assert model == "imagen-4.0-generate-001"
+    assert model == "gemini-3.0-flash"
 
 
 def test_find_image_generation_model_skips_preview():
@@ -130,7 +130,7 @@ def test_find_text_generation_model_fallback():
     models = []
 
     model = find_text_generation_model(models)
-    assert model == "gemini-2.5-pro"  # Falls back to default
+    assert model == "gemini-pro-latest"  # Falls back to cross-gen alias
 
 
 @patch("storyforge.model_discovery.genai.Client")
@@ -262,25 +262,26 @@ class TestOpenAIDiscovery:
         assert result == "gpt-5.2"
 
     def test_find_openai_text_model_skips_mini(self):
-        """Mini models are skipped."""
+        """Mini models are skipped for text generation."""
         models = [
             {"name": "gpt-5.2-mini", "owned_by": "openai", "created": 1710000000},
-            {"name": "gpt-4o", "owned_by": "openai", "created": 1700000000},
+            {"name": "gpt-4.1", "owned_by": "openai", "created": 1700000000},
         ]
         result = find_openai_text_model(models)
-        assert result == "gpt-4o"
+        assert result == "gpt-4.1"
         assert "mini" not in result
 
     def test_find_openai_text_model_fallback(self):
         """Empty list returns default."""
         result = find_openai_text_model([])
-        assert result == "gpt-5.2"
+        assert result == "gpt-5.4"
 
     def test_find_openai_image_model(self):
-        """Finds best image model."""
+        """Finds best image model by version ranking."""
         models = [
             {"name": "dall-e-3", "owned_by": "openai", "created": 1690000000},
             {"name": "gpt-image-1.5", "owned_by": "openai", "created": 1710000000},
+            {"name": "gpt-image-1", "owned_by": "openai", "created": 1700000000},
         ]
         result = find_openai_image_model(models)
         assert result == "gpt-image-1.5"
@@ -352,16 +353,16 @@ class TestAnthropicDiscovery:
         assert result == "claude-3-5-sonnet-20241022"
 
     def test_find_anthropic_text_model_skips_haiku(self):
-        """Haiku models skipped."""
+        """Haiku models skipped for text generation."""
         models = [
-            {"name": "claude-3-haiku-20240307", "display_name": "Claude 3 Haiku", "created_at": None},
-            {"name": "claude-3-opus-20240229", "display_name": "Claude 3 Opus", "created_at": None},
+            {"name": "claude-haiku-4-5", "display_name": "Claude Haiku 4.5", "created_at": None},
+            {"name": "claude-opus-4-7", "display_name": "Claude Opus 4.7", "created_at": None},
         ]
         result = find_anthropic_text_model(models)
-        assert result == "claude-3-opus-20240229"
+        assert result == "claude-opus-4-7"
         assert "haiku" not in result
 
     def test_find_anthropic_text_model_fallback(self):
         """Empty list returns default."""
         result = find_anthropic_text_model([])
-        assert result == "claude-3-5-sonnet-20241022"
+        assert result == "claude-sonnet-4-6"
