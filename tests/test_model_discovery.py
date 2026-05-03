@@ -1,8 +1,18 @@
-"""Tests for Gemini model discovery functionality."""
+"""Tests for model discovery functionality across all providers."""
 
+import os
 from unittest.mock import MagicMock, patch
 
-from storyforge.model_discovery import find_image_generation_model, find_text_generation_model, list_gemini_models
+from storyforge.model_discovery import (
+    find_anthropic_text_model,
+    find_image_generation_model,
+    find_openai_image_model,
+    find_openai_text_model,
+    find_text_generation_model,
+    list_anthropic_models,
+    list_gemini_models,
+    list_openai_models,
+)
 
 
 def test_find_image_generation_model_with_gemini_2_5():
@@ -182,3 +192,176 @@ def test_list_gemini_models_no_api_key():
         # Restore API key
         if old_key:
             os.environ["GEMINI_API_KEY"] = old_key
+
+
+class TestOpenAIDiscovery:
+    """Tests for OpenAI model discovery functions."""
+
+    @patch.dict("sys.modules", {"openai": MagicMock()})
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
+    def test_list_openai_models(self):
+        """Mock openai client, verify filtering."""
+        import sys
+
+        mock_openai = sys.modules["openai"]
+        mock_client = MagicMock()
+        mock_openai.OpenAI.return_value = mock_client
+
+        mock_gpt = MagicMock()
+        mock_gpt.id = "gpt-4o"
+        mock_gpt.owned_by = "openai"
+        mock_gpt.created = 1700000000
+
+        mock_dalle = MagicMock()
+        mock_dalle.id = "dall-e-3"
+        mock_dalle.owned_by = "openai"
+        mock_dalle.created = 1690000000
+
+        mock_whisper = MagicMock()
+        mock_whisper.id = "whisper-1"
+        mock_whisper.owned_by = "openai"
+        mock_whisper.created = 1680000000
+
+        mock_client.models.list.return_value = [mock_gpt, mock_dalle, mock_whisper]
+
+        models = list_openai_models("test-key")
+        # whisper should be filtered out
+        model_names = [m["name"] for m in models]
+        assert "gpt-4o" in model_names
+        assert "dall-e-3" in model_names
+        assert "whisper-1" not in model_names
+
+    @patch.dict("sys.modules", {"openai": MagicMock()})
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"})
+    def test_list_openai_models_error_handling(self):
+        """Mock client to raise, verify empty list."""
+        import sys
+
+        mock_openai = sys.modules["openai"]
+        mock_client = MagicMock()
+        mock_openai.OpenAI.return_value = mock_client
+        mock_client.models.list.side_effect = Exception("API error")
+
+        models = list_openai_models("test-key")
+        assert models == []
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_list_openai_models_no_api_key(self, monkeypatch):
+        """No env var, returns empty."""
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        models = list_openai_models()
+        assert models == []
+
+    def test_find_openai_text_model(self):
+        """Given model list, finds best text model."""
+        models = [
+            {"name": "gpt-4o", "owned_by": "openai", "created": 1700000000},
+            {"name": "gpt-5.2", "owned_by": "openai", "created": 1710000000},
+        ]
+        result = find_openai_text_model(models)
+        assert result == "gpt-5.2"
+
+    def test_find_openai_text_model_skips_mini(self):
+        """Mini models are skipped."""
+        models = [
+            {"name": "gpt-5.2-mini", "owned_by": "openai", "created": 1710000000},
+            {"name": "gpt-4o", "owned_by": "openai", "created": 1700000000},
+        ]
+        result = find_openai_text_model(models)
+        assert result == "gpt-4o"
+        assert "mini" not in result
+
+    def test_find_openai_text_model_fallback(self):
+        """Empty list returns default."""
+        result = find_openai_text_model([])
+        assert result == "gpt-5.2"
+
+    def test_find_openai_image_model(self):
+        """Finds best image model."""
+        models = [
+            {"name": "dall-e-3", "owned_by": "openai", "created": 1690000000},
+            {"name": "gpt-image-1.5", "owned_by": "openai", "created": 1710000000},
+        ]
+        result = find_openai_image_model(models)
+        assert result == "gpt-image-1.5"
+
+    def test_find_openai_image_model_fallback(self):
+        """Empty list returns default."""
+        result = find_openai_image_model([])
+        assert result == "gpt-image-1.5"
+
+
+class TestAnthropicDiscovery:
+    """Tests for Anthropic model discovery functions."""
+
+    @patch.dict("sys.modules", {"anthropic": MagicMock()})
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
+    def test_list_anthropic_models(self):
+        """Mock anthropic client, verify model listing."""
+        import sys
+
+        mock_anthropic = sys.modules["anthropic"]
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+
+        mock_model1 = MagicMock()
+        mock_model1.id = "claude-3-5-sonnet-20241022"
+        mock_model1.display_name = "Claude 3.5 Sonnet"
+        mock_model1.created_at = "2024-10-22T00:00:00Z"
+
+        mock_model2 = MagicMock()
+        mock_model2.id = "claude-3-haiku-20240307"
+        mock_model2.display_name = "Claude 3 Haiku"
+        mock_model2.created_at = "2024-03-07T00:00:00Z"
+
+        mock_client.models.list.return_value = [mock_model1, mock_model2]
+
+        models = list_anthropic_models("test-key")
+        assert len(models) == 2
+        assert models[0]["name"] == "claude-3-5-sonnet-20241022"
+        assert models[1]["name"] == "claude-3-haiku-20240307"
+
+    @patch.dict("sys.modules", {"anthropic": MagicMock()})
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"})
+    def test_list_anthropic_models_error_handling(self):
+        """Mock to raise, verify empty list."""
+        import sys
+
+        mock_anthropic = sys.modules["anthropic"]
+        mock_client = MagicMock()
+        mock_anthropic.Anthropic.return_value = mock_client
+        mock_client.models.list.side_effect = Exception("API error")
+
+        models = list_anthropic_models("test-key")
+        assert models == []
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_list_anthropic_models_no_api_key(self, monkeypatch):
+        """No env var, returns empty."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        models = list_anthropic_models()
+        assert models == []
+
+    def test_find_anthropic_text_model(self):
+        """Given model list, finds best."""
+        models = [
+            {"name": "claude-3-5-sonnet-20241022", "display_name": "Claude 3.5 Sonnet", "created_at": None},
+            {"name": "claude-3-opus-20240229", "display_name": "Claude 3 Opus", "created_at": None},
+        ]
+        result = find_anthropic_text_model(models)
+        assert result == "claude-3-5-sonnet-20241022"
+
+    def test_find_anthropic_text_model_skips_haiku(self):
+        """Haiku models skipped."""
+        models = [
+            {"name": "claude-3-haiku-20240307", "display_name": "Claude 3 Haiku", "created_at": None},
+            {"name": "claude-3-opus-20240229", "display_name": "Claude 3 Opus", "created_at": None},
+        ]
+        result = find_anthropic_text_model(models)
+        assert result == "claude-3-opus-20240229"
+        assert "haiku" not in result
+
+    def test_find_anthropic_text_model_fallback(self):
+        """Empty list returns default."""
+        result = find_anthropic_text_model([])
+        assert result == "claude-3-5-sonnet-20241022"

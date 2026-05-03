@@ -17,6 +17,7 @@ from google.genai import types
 from PIL import Image
 
 from .llm_backend import ERROR_STORY_SENTINEL, LLMBackend
+from .model_cache import ModelCache
 from .model_discovery import find_image_generation_model, find_text_generation_model, list_gemini_models
 from .prompt import Prompt
 
@@ -25,7 +26,6 @@ logger = logging.getLogger(__name__)
 
 class GeminiBackend(LLMBackend):
     name = "gemini"
-    _cached_models: ClassVar[list[dict[str, Any]] | None] = None
     _image_model: ClassVar[str | None] = None
     _text_model: ClassVar[str | None] = None
 
@@ -39,32 +39,36 @@ class GeminiBackend(LLMBackend):
         """Initialize Gemini backend.
 
         Args:
-            config: Optional Config object (currently unused, for API consistency).
+            config: Optional Config object for model configuration.
         """
         api_key = os.environ.get("GEMINI_API_KEY")
         if not api_key:
             raise RuntimeError("GEMINI_API_KEY environment variable not set.")
         self.client = genai.Client(api_key=api_key)
+        self._cache = ModelCache()
 
-        # Discover and cache models on initialization
-        if GeminiBackend._cached_models is None:
-            try:
-                GeminiBackend._cached_models = list_gemini_models(api_key)
-            except Exception:
-                logger.warning("Model discovery failed, using defaults", exc_info=True)
-                GeminiBackend._cached_models = []
+        # Read configured models from config
+        configured_text = ""
+        configured_image = ""
+        if config is not None:
+            configured_text = config.get_field_value("system", "gemini_story_model") or ""
+            configured_image = config.get_field_value("system", "gemini_image_model") or ""
 
-        # Determine models to use
-        if GeminiBackend._image_model is None:
-            # Check environment variable override first
-            env_model = os.environ.get("GEMINI_IMAGE_MODEL")
-            if env_model:
-                GeminiBackend._image_model = env_model
+        # Env var override for image model (highest priority)
+        env_image = os.environ.get("GEMINI_IMAGE_MODEL")
+
+        if GeminiBackend._text_model is None or GeminiBackend._image_model is None:
+            if configured_text and (configured_image or env_image):
+                # Both models explicitly configured, no need for discovery
+                GeminiBackend._text_model = GeminiBackend._text_model or configured_text
+                GeminiBackend._image_model = GeminiBackend._image_model or (env_image or configured_image)
             else:
-                GeminiBackend._image_model = find_image_generation_model(GeminiBackend._cached_models)
-
-        if GeminiBackend._text_model is None:
-            GeminiBackend._text_model = find_text_generation_model(GeminiBackend._cached_models)
+                # Need discovery for at least one model
+                models = self._get_models(api_key)
+                if GeminiBackend._text_model is None:
+                    GeminiBackend._text_model = configured_text or find_text_generation_model(models)
+                if GeminiBackend._image_model is None:
+                    GeminiBackend._image_model = env_image or configured_image or find_image_generation_model(models)
 
         # Extract and cache token limits for the selected models
         self._image_input_limit = self._get_model_input_limit(
@@ -73,6 +77,52 @@ class GeminiBackend(LLMBackend):
         self._text_input_limit = self._get_model_input_limit(
             GeminiBackend._text_model, self.DEFAULT_TEXT_INPUT_LIMIT, "text"
         )
+
+    def _get_models(self, api_key: str) -> list[dict[str, Any]]:
+        """Get model list from disk cache or API discovery."""
+        cached = self._cache.get("gemini")
+        if cached is not None:
+            return cached
+
+        try:
+            models = list_gemini_models(api_key)
+            self._cache.set("gemini", models)
+            return models
+        except Exception:
+            logger.warning("Model discovery failed, using defaults", exc_info=True)
+            return []
+
+    def _is_model_not_found_error(self, error: Exception) -> bool:
+        """Check if an exception indicates a model-not-found error."""
+        error_str = str(error).lower()
+        return "not found" in error_str or "404" in error_str
+
+    def _handle_model_not_found(self, model_type: str) -> str:
+        """Invalidate cache, re-discover models, and return updated model name.
+
+        Args:
+            model_type: Either "text" or "image".
+
+        Returns:
+            The newly discovered model name.
+        """
+        logger.warning("Model not found for %s, invalidating cache and re-discovering", model_type)
+        self._cache.invalidate("gemini")
+
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        try:
+            models = list_gemini_models(api_key)
+            self._cache.set("gemini", models)
+        except Exception:
+            logger.warning("Re-discovery failed, using defaults", exc_info=True)
+            models = []
+
+        if model_type == "text":
+            GeminiBackend._text_model = find_text_generation_model(models)
+            return GeminiBackend._text_model or "gemini-2.5-flash"
+        else:
+            GeminiBackend._image_model = find_image_generation_model(models)
+            return GeminiBackend._image_model or "gemini-2.5-flash-image"
 
     def _get_model_input_limit(self, model_name: str | None, default_limit: int, model_type: str) -> int:
         """Get input token limit for a model with fallback.
@@ -85,7 +135,15 @@ class GeminiBackend(LLMBackend):
         Returns:
             int: Input token limit for the model.
         """
-        if not model_name or not GeminiBackend._cached_models:
+        if not model_name:
+            logger.warning(
+                f"⚠️  No model information available for {model_type} model, "
+                f"using fallback limit of {default_limit} tokens"
+            )
+            return default_limit
+
+        models = self._cache.get("gemini")
+        if not models:
             logger.warning(
                 f"⚠️  No model information available for {model_type} model, "
                 f"using fallback limit of {default_limit} tokens"
@@ -93,7 +151,7 @@ class GeminiBackend(LLMBackend):
             return default_limit
 
         # Search for the model in cached models
-        for model_info in GeminiBackend._cached_models:
+        for model_info in models:
             model_full_name = model_info.get("name", "")
             if model_name in model_full_name:
                 limit = model_info.get("input_token_limit")
