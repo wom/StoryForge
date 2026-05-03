@@ -56,6 +56,19 @@ class AnthropicBackend(LLMBackend):
 
         # Set text input limit (Claude models all have 200K context)
         self._text_input_limit = self.DEFAULT_TEXT_INPUT_LIMIT
+        self._story_model = "claude-3-5-sonnet-20241022"
+
+    def get_model_info(self) -> dict[str, str | None]:
+        """Return model information for the Anthropic backend.
+
+        Returns:
+            Dict with story_model set to the Claude model in use,
+            image_model is None since Anthropic cannot generate images.
+        """
+        return {
+            "story_model": self._story_model,
+            "image_model": None,
+        }
 
     @staticmethod
     def _extract_text(response: Any) -> str | None:

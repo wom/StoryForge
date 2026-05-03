@@ -41,6 +41,8 @@ class OpenAIBackend(LLMBackend):
         "gpt-4.1-nano": 1047576,
         "gpt-5": 128000,
         "gpt-5.2": 128000,
+        "gpt-image-1": 128000,
+        "gpt-image-1.5": 128000,
         "o1": 200000,
         "o1-mini": 128000,
         "o3": 200000,

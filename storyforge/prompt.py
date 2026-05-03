@@ -9,7 +9,7 @@ and image naming across different LLM backends.
 """
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 from .schema import STORYFORGE_SCHEMA, SchemaValidator
@@ -151,6 +151,7 @@ class Prompt:
     refinement_mode: bool = False
     original_story: str | None = None
     refinement_instructions: str | None = None
+    _random_resolved: dict[str, str] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         """Resolve random parameters and validate after initialization."""
@@ -158,28 +159,47 @@ class Prompt:
         self._validate_parameters()
 
     def _resolve_random_parameters(self) -> None:
-        """Replace 'random' values with randomly selected valid values."""
+        """Replace 'random' values with randomly selected valid values.
+
+        Populates _random_resolved dict with field names mapping to their
+        resolved values for any field that was set to "random".
+        """
         valid_values = self.get_valid_values()
 
         # Resolve random style
         if self.style == "random":
             self.style = random.choice(valid_values["style"])
+            self._random_resolved["style"] = self.style
 
         # Resolve random tone
         if self.tone == "random":
             self.tone = random.choice(valid_values["tone"])
+            self._random_resolved["tone"] = self.tone
 
         # Resolve random voice
         if self.voice is not None and self.voice == "random":
             self.voice = random.choice(valid_values["voice"])
+            self._random_resolved["voice"] = self.voice
 
         # Resolve random theme
         if self.theme == "random":
             self.theme = random.choice(valid_values["theme"])
+            self._random_resolved["theme"] = self.theme
 
         # Resolve random learning_focus
         if self.learning_focus is not None and self.learning_focus == "random":
             self.learning_focus = random.choice(valid_values["learning_focus"])
+            self._random_resolved["learning_focus"] = self.learning_focus
+
+    @property
+    def random_resolved(self) -> dict[str, str]:
+        """Fields that were set to 'random' and their resolved values.
+
+        Returns:
+            Dict mapping field names to the values they were randomly resolved to.
+            Empty dict if no fields used random selection.
+        """
+        return self._random_resolved
 
     def _validate_parameters(self) -> None:
         """Validate that all parameters have acceptable values using schema validation."""

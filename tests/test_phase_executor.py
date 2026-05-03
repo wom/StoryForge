@@ -278,22 +278,25 @@ class TestPhaseExecutorPhases:
         mock_dir.exists.return_value = True
         mock_path_class.return_value = mock_dir
 
-        written_content = None
+        written_files: dict[str, str] = {}
 
-        def capture_write(content):
-            nonlocal written_content
-            written_content = content
+        def mock_open_fn(path, *args, **kwargs):
+            mock_file = MagicMock()
+            mock_file.__enter__ = MagicMock(return_value=mock_file)
+            mock_file.__exit__ = MagicMock(return_value=False)
+            mock_file.write = lambda content: written_files.update({path: written_files.get(path, "") + content})
+            return mock_file
 
-        mock_file = MagicMock()
-        mock_file.__enter__ = MagicMock(return_value=mock_file)
-        mock_file.__exit__ = MagicMock(return_value=False)
-        mock_file.write = capture_write
-
-        with patch("builtins.open", return_value=mock_file):
+        with patch("builtins.open", side_effect=mock_open_fn):
             self.phase_executor._phase_story_save()
 
         # Verify story was written
-        assert written_content == "Test story content"
+        story_content = written_files.get("/tmp/output/story.txt", "")
+        assert "Test story content" in story_content
+
+        # Verify generation metadata was written
+        metadata_content = written_files.get("/tmp/output/generation_metadata.md", "")
+        assert "# Generation Metadata" in metadata_content
 
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.Confirm.ask")
@@ -970,6 +973,90 @@ class TestPhaseExecutorConstants:
     def test_max_filename_prefix_length_constant(self):
         """Test MAX_FILENAME_PREFIX_LENGTH is 30."""
         assert PhaseExecutor.MAX_FILENAME_PREFIX_LENGTH == 30
+
+
+class TestGenerationMetadata:
+    """Test generation metadata and parameter source tracking."""
+
+    def setup_method(self):
+        """Set up test fixtures."""
+        self.checkpoint_manager = MagicMock(spec=CheckpointManager)
+        self.phase_executor = PhaseExecutor(self.checkpoint_manager)
+
+        self.checkpoint_data = CheckpointData.create_new(
+            "Test story",
+            {"style": "adventure", "tone": "gentle", "voice": "random"},
+            {"backend": "openai", "verbose": False, "debug": False, "age_range": "preschool"},
+        )
+        self.phase_executor.checkpoint_data = self.checkpoint_data
+
+    def test_get_parameter_source_cli(self):
+        """Test _get_parameter_source identifies CLI source."""
+        source, value = self.phase_executor._get_parameter_source("style")
+        assert source == "CLI"
+        assert value == "adventure"
+
+    def test_get_parameter_source_config(self):
+        """Test _get_parameter_source identifies Config source."""
+        source, value = self.phase_executor._get_parameter_source("age_range")
+        assert source == "Config"
+        assert value == "preschool"
+
+    def test_get_parameter_source_random(self):
+        """Test _get_parameter_source identifies Random source."""
+        from storyforge.prompt import Prompt
+
+        prompt = Prompt(prompt="Test", voice="random")
+        self.phase_executor.story_prompt = prompt
+
+        source, value = self.phase_executor._get_parameter_source("voice")
+        assert source == "Random"
+        assert value == prompt.voice
+
+    def test_get_parameter_source_default(self):
+        """Test _get_parameter_source falls back to Default."""
+        from storyforge.prompt import Prompt
+
+        prompt = Prompt(prompt="Test")
+        self.phase_executor.story_prompt = prompt
+
+        source, value = self.phase_executor._get_parameter_source("image_style")
+        assert source == "Default"
+        assert value == "chibi"
+
+    @patch("storyforge.phase_executor.console")
+    def test_build_generation_metadata_includes_backend(self, mock_console):
+        """Test _build_generation_metadata includes backend and model info."""
+        mock_backend = MagicMock()
+        mock_backend.name = "openai"
+        mock_backend.get_model_info.return_value = {
+            "story_model": "gpt-5.2",
+            "image_model": "gpt-image-1.5",
+        }
+        self.phase_executor.llm_backend = mock_backend
+
+        content = self.phase_executor._build_generation_metadata()
+
+        assert "**Backend:** openai" in content
+        assert "**Story Model:** gpt-5.2" in content
+        assert "**Image Model:** gpt-image-1.5" in content
+
+    @patch("storyforge.phase_executor.console")
+    def test_build_generation_metadata_includes_parameters(self, mock_console):
+        """Test _build_generation_metadata includes parameter table."""
+        from storyforge.prompt import Prompt
+
+        prompt = Prompt(prompt="Test", style="random", tone="gentle")
+        self.phase_executor.story_prompt = prompt
+        self.phase_executor.llm_backend = None
+
+        content = self.phase_executor._build_generation_metadata()
+
+        assert "| Parameter | Value | Source |" in content
+        # Style was random
+        assert "Random" in content
+        # Tone was passed via CLI in setup
+        assert "gentle" in content
 
 
 class TestPhaseTrackingOnError:

@@ -115,6 +115,18 @@ class LLMBackend(ABC):
         """
         return int(self.text_input_limit * self.CONTEXT_BUDGET_RATIO)
 
+    def get_model_info(self) -> dict[str, str | None]:
+        """Return information about which models this backend is using.
+
+        Returns:
+            Dict with keys 'story_model' and 'image_model', values are
+            model name strings or None if not applicable.
+        """
+        return {
+            "story_model": getattr(self, "story_model", None) or getattr(self, "_text_model", None),
+            "image_model": getattr(self, "image_model", None) or getattr(self, "_image_model", None),
+        }
+
     def _check_and_truncate_prompt(self, contents: str) -> str:
         """Check prompt size against model limits and truncate if necessary.
 
