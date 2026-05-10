@@ -3,6 +3,7 @@
 import os
 from unittest.mock import MagicMock, patch
 
+from storyforge.context import ContextManager
 from storyforge.llm_backend import LLMBackend
 
 # ---------------------------------------------------------------------------
@@ -27,7 +28,7 @@ class DummyVideoBackend(LLMBackend):
     def generate_image_prompt(self, story, context, num_prompts):
         raise NotImplementedError
 
-    def generate_video_prompt(self, story, context, num_scenes):
+    def generate_video_prompt(self, story, context, num_scenes, character_descriptions=""):
         raise NotImplementedError
 
 
@@ -257,3 +258,126 @@ class TestAnthropicVideoPrompt:
         result = backend.generate_video_prompt("A story.", "", 2)
 
         assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# extract_world_characters tests
+# ---------------------------------------------------------------------------
+
+
+class TestExtractWorldCharacters:
+    """Test ContextManager.extract_world_characters static method."""
+
+    def test_extracts_characters_section(self):
+        world = (
+            "# Story World\n\n"
+            "## Characters\n\n"
+            "### Donut\n"
+            "A playful golden retriever puppy with floppy ears.\n\n"
+            "### Ethan\n"
+            "A 9-year-old boy with messy brown hair and round glasses.\n\n"
+            "## Places\n\n"
+            "### The Park\n"
+            "A sunny neighborhood park.\n"
+        )
+        result = ContextManager.extract_world_characters(world)
+        assert "Donut" in result
+        assert "golden retriever" in result
+        assert "Ethan" in result
+        assert "brown hair" in result
+        assert "round glasses" in result
+        # Should not include content from Places section
+        assert "The Park" not in result
+
+    def test_returns_empty_when_no_characters_section(self):
+        world = "# Story World\n\n## Places\n\nThe forest.\n"
+        result = ContextManager.extract_world_characters(world)
+        assert result == ""
+
+    def test_characters_at_end_of_file(self):
+        world = "# Story World\n\n## Characters\n\n### Isaac\nA shy 8-year-old with curly black hair.\n"
+        result = ContextManager.extract_world_characters(world)
+        assert "Isaac" in result
+        assert "curly black hair" in result
+
+    def test_empty_characters_section(self):
+        world = "# Story World\n\n## Characters\n\n## Places\n\nThe forest.\n"
+        result = ContextManager.extract_world_characters(world)
+        assert result == ""
+
+
+# ---------------------------------------------------------------------------
+# Backend generate_video_prompt character_descriptions forwarding tests
+# ---------------------------------------------------------------------------
+
+
+class TestVideoPromptCharacterDescriptions:
+    """Test that character_descriptions flows through backend generate_video_prompt."""
+
+    @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
+    @patch("storyforge.gemini_backend.genai.Client")
+    def test_gemini_forwards_character_descriptions(self, mock_client_class):
+        from storyforge.gemini_backend import GeminiBackend
+
+        mock_client = MagicMock()
+        mock_client_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_response.text = "1. Scene one.\n2. Scene two."
+        mock_client.models.generate_content.return_value = mock_response
+
+        backend = GeminiBackend()
+        backend.generate_video_prompt("A story.", "", 2, character_descriptions="Donut: golden retriever puppy")
+
+        call_args = mock_client.models.generate_content.call_args
+        prompt_text = call_args[1].get("contents") or call_args[0][0]
+        assert "Donut: golden retriever puppy" in prompt_text
+        assert "CHARACTER VISUAL DESCRIPTIONS" in prompt_text
+
+    @patch.dict(os.environ, {"OPENAI_API_KEY": "test_key"})
+    @patch("storyforge.openai_backend.openai.OpenAI")
+    def test_openai_forwards_character_descriptions(self, mock_openai_class):
+        from storyforge.openai_backend import OpenAIBackend
+
+        mock_client = MagicMock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_choice = MagicMock()
+        mock_choice.message.content = "1. Scene one.\n2. Scene two."
+        mock_response.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = mock_response
+
+        backend = OpenAIBackend()
+        backend.generate_video_prompt(
+            "A story.", "", 2, character_descriptions="Ethan: messy brown hair, round glasses"
+        )
+
+        call_args = mock_client.chat.completions.create.call_args
+        messages = call_args[1].get("messages") or call_args[0][0]
+        prompt_text = messages[0]["content"]
+        assert "Ethan: messy brown hair, round glasses" in prompt_text
+        assert "CHARACTER VISUAL DESCRIPTIONS" in prompt_text
+
+    @patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test_key"})
+    @patch("storyforge.anthropic_backend.anthropic.Anthropic")
+    def test_anthropic_forwards_character_descriptions(self, mock_anthropic_class):
+        from storyforge.anthropic_backend import AnthropicBackend
+
+        mock_client = MagicMock()
+        mock_anthropic_class.return_value = mock_client
+
+        mock_response = MagicMock()
+        mock_block = MagicMock()
+        mock_block.text = "1. Scene one.\n2. Scene two."
+        mock_response.content = [mock_block]
+        mock_client.messages.create.return_value = mock_response
+
+        backend = AnthropicBackend()
+        backend.generate_video_prompt("A story.", "", 2, character_descriptions="Isaac: curly black hair")
+
+        call_args = mock_client.messages.create.call_args
+        messages = call_args[1].get("messages") or call_args[0][0]
+        prompt_text = messages[0]["content"]
+        assert "Isaac: curly black hair" in prompt_text
+        assert "CHARACTER VISUAL DESCRIPTIONS" in prompt_text
