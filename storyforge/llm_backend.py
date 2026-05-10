@@ -367,6 +367,24 @@ class LLMBackend(ABC):
         """
         raise NotImplementedError("Subclass must implement generate_image_prompt method")
 
+    @abstractmethod
+    def generate_video_prompt(self, story: str, context: str, num_scenes: int) -> list[str]:
+        """Break the story into scene-by-scene video prompts with rich visual descriptors.
+
+        Each prompt includes camera angles, lighting, character appearances,
+        setting details, action/movement, and mood — ready for direct use with
+        video generation tools (Sora, Runway, Kling, etc.).
+
+        Args:
+            story: The generated story text.
+            context: Additional context for the story.
+            num_scenes: The number of scene prompts to return.
+
+        Returns:
+            List of video scene prompts, each describing a detailed scene.
+        """
+        raise NotImplementedError("Subclass must implement generate_video_prompt method")
+
     def _build_image_prompt_request(
         self, story: str, context: str, num_prompts: int, character_descriptions: str = ""
     ) -> str:
@@ -576,6 +594,132 @@ class LLMBackend(ABC):
             prompts.append(prompt)
 
         return prompts
+
+    def _build_video_prompt_request(
+        self, story: str, context: str, num_scenes: int, character_descriptions: str = ""
+    ) -> str:
+        """Build a standardized LLM instruction for generating video scene prompts.
+
+        Constructs a detailed instruction asking the LLM to break the story into
+        scene-by-scene video prompts with cinematic visual descriptors suitable
+        for video generation tools (Sora, Runway, Kling, etc.).
+
+        Args:
+            story: The generated story text.
+            context: Additional story context.
+            num_scenes: Number of scene prompts to generate.
+            character_descriptions: Formatted character visual descriptions.
+
+        Returns:
+            The instruction text to send to the LLM.
+        """
+        scene_labels = self._get_scene_labels(num_scenes)
+        scene_guidance = "\n".join(f"  - Scene {i + 1}: {label}" for i, label in enumerate(scene_labels))
+
+        parts = [
+            f"Break this story into exactly {num_scenes} detailed, progressive video scene prompts "
+            f"for AI video generation. Each prompt must describe a DIFFERENT moment in the story, "
+            f"progressing from beginning to end.\n",
+        ]
+
+        if character_descriptions:
+            parts.append(
+                "\n=== CHARACTER VISUAL DESCRIPTIONS ===\n"
+                "Use these descriptions to ensure characters look consistent across ALL scenes. "
+                "Include these visual details in every scene where the character appears:\n"
+                f"{character_descriptions}\n"
+            )
+
+        parts.append(f"\n=== STORY ===\n{story}\n")
+
+        if context:
+            parts.append(f"\n=== CONTEXT ===\n{context}\n")
+
+        parts.append(
+            "\n=== INSTRUCTIONS ===\n"
+            f"Create {num_scenes} video scene prompts following this progression:\n"
+            f"{scene_guidance}\n\n"
+            "Each scene prompt MUST include:\n"
+            "- **Camera**: angle, movement, and framing (e.g., wide establishing shot, "
+            "close-up, tracking shot, slow pan)\n"
+            "- **Setting**: detailed environment description (location, time of day, weather, "
+            "key objects)\n"
+            "- **Characters**: full visual appearance (hair, clothing, accessories, build, "
+            "distinguishing features) and body language\n"
+            "- **Action**: what is happening, character movements, gestures, interactions\n"
+            "- **Lighting**: type, direction, color temperature, shadows, "
+            "atmospheric effects\n"
+            "- **Mood/Atmosphere**: emotional tone, color palette, visual feeling\n\n"
+            "Write each scene as a single, dense paragraph of visual description — "
+            "no dialogue, no narrative prose, just what the camera sees. "
+            "Ensure the scenes are child-friendly and suitable for AI video generation.\n\n"
+            f"Return exactly {num_scenes} prompts, each on a new line, numbered 1-{num_scenes}. "
+            "Do not include any other text, headers, or explanations."
+        )
+
+        return "".join(parts)
+
+    def _generate_fallback_video_prompts(self, story: str, context: str, num_scenes: int) -> list[str]:
+        """Generate fallback video prompts when the LLM API fails.
+
+        Splits the story into segments and creates scene-labeled video
+        prompts with basic visual descriptors. Used as a reliable mechanical
+        fallback when the LLM-based approach is unavailable.
+
+        Args:
+            story: The story text.
+            context: Additional context (may include character descriptions).
+            num_scenes: Number of prompts needed.
+
+        Returns:
+            Simple fallback video scene prompts with scene labels and context.
+        """
+        segments = self._segment_story(story, num_scenes)
+        scene_labels = self._get_scene_labels(num_scenes)
+        prompts = []
+
+        for i in range(num_scenes):
+            label = scene_labels[i].split("—")[0].strip()
+            segment = segments[i]
+            prompt = (
+                f"A cinematic {label.lower()} scene: {segment}\n"
+                "Camera: medium shot. Lighting: natural, warm tones. "
+                "Child-friendly, animated style."
+            )
+            if context:
+                prompt += f"\nVisual context: {context}"
+            prompts.append(prompt)
+
+        return prompts
+
+    @staticmethod
+    def format_video_prompt_file(prompts: list[str], story_prompt: str = "") -> str:
+        """Format a list of video scene prompts into a structured text file.
+
+        Args:
+            prompts: List of scene prompt strings.
+            story_prompt: The original story prompt/description for the header.
+
+        Returns:
+            Formatted text ready to write to video_prompt.txt.
+        """
+        scene_labels = LLMBackend._get_scene_labels(len(prompts))
+        lines = []
+
+        if story_prompt:
+            lines.append(f"Video Prompt — {story_prompt}")
+        else:
+            lines.append("Video Prompt")
+        lines.append("Generated by StoryForge")
+        lines.append("")
+
+        for i, prompt in enumerate(prompts):
+            label = scene_labels[i].split("—")[0].strip()
+            lines.append(f"=== SCENE {i + 1}: {label} ===")
+            lines.append(prompt.strip())
+            lines.append("")
+
+        return "\n".join(lines)
 
     @staticmethod
     def estimate_token_count(text: str) -> int:
