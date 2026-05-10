@@ -247,6 +247,31 @@ class GeminiBackend(LLMBackend):
             logger.debug("Image prompt generation failed, using fallback", exc_info=True)
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
+    def generate_video_prompt(self, story: str, context: str, num_scenes: int) -> list[str]:
+        """Break the story into scene-by-scene video prompts using Gemini's text model.
+
+        Args:
+            story: The generated story text.
+            context: Additional context (may include character descriptions).
+            num_scenes: Number of scene prompts to generate.
+
+        Returns:
+            List of detailed video scene prompts.
+        """
+        try:
+            video_prompt_request = self._build_video_prompt_request(story, context, num_scenes)
+            model = self._text_model or "gemini-flash-latest"
+            response = self.client.models.generate_content(model=model, contents=video_prompt_request)
+            text = self._extract_text(response)
+            if text:
+                parsed = self._parse_numbered_prompts(text, num_scenes)
+                if parsed:
+                    return parsed
+            return self._generate_fallback_video_prompts(story, context, num_scenes)
+        except Exception:
+            logger.debug("Video prompt generation failed, using fallback", exc_info=True)
+            return self._generate_fallback_video_prompts(story, context, num_scenes)
+
     def generate_story(self, prompt: Prompt) -> str:
         try:
             contents = prompt.story

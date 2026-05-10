@@ -290,7 +290,9 @@ class PhaseExecutor:
             ExecutionPhase.PROMPT_BUILD,
             ExecutionPhase.STORY_GENERATE,
             ExecutionPhase.STORY_SAVE,
+            ExecutionPhase.VIDEO_DECISION,
             ExecutionPhase.IMAGE_DECISION,
+            ExecutionPhase.VIDEO_PROMPT_GENERATE,
             ExecutionPhase.IMAGE_GENERATE,
             ExecutionPhase.CONTEXT_SAVE,
         ]
@@ -374,6 +376,10 @@ class PhaseExecutor:
                 self._phase_story_generate()
             elif phase == ExecutionPhase.STORY_SAVE:
                 self._phase_story_save()
+            elif phase == ExecutionPhase.VIDEO_DECISION:
+                self._phase_video_decision()
+            elif phase == ExecutionPhase.VIDEO_PROMPT_GENERATE:
+                self._phase_video_prompt_generate()
             elif phase == ExecutionPhase.IMAGE_DECISION:
                 self._phase_image_decision()
             elif phase == ExecutionPhase.IMAGE_GENERATE:
@@ -1027,6 +1033,94 @@ class PhaseExecutor:
             console.print(f"[dim]📋 Context dump saved: {dump_path}[/dim]")
         except Exception as e:
             console.print(f"[dim]Warning: Could not save context dump: {e}[/dim]")
+
+    def _phase_video_decision(self) -> None:
+        """Video prompt generation decision phase."""
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
+        # Check if decision already made
+        if self.checkpoint_data.user_decisions.get("wants_video_prompt") is not None:
+            return
+
+        wants_video = Confirm.ask("Would you like to generate a video prompt for the story?")
+        self.checkpoint_data.user_decisions["wants_video_prompt"] = wants_video
+
+        if wants_video:
+            num_scenes = typer.prompt("How many scenes for the video prompt?", type=int, default=3)
+            self.checkpoint_data.user_decisions["num_video_scenes"] = num_scenes
+
+    def _phase_video_prompt_generate(self) -> None:
+        """Video prompt generation phase."""
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
+        wants_video = self.checkpoint_data.user_decisions.get("wants_video_prompt", False)
+        if not wants_video:
+            console.print("[yellow]Video prompt generation skipped by user.[/yellow]")
+            return
+
+        num_scenes = self.checkpoint_data.user_decisions.get("num_video_scenes", 3)
+        if num_scenes <= 0:
+            console.print("[yellow]No video scenes requested.[/yellow]")
+            return
+
+        output_dir = self.checkpoint_data.resolved_config.get("output_directory")
+        if not output_dir:
+            console.print("[red]No output directory configured.[/red]")
+            return
+
+        verbose = self.checkpoint_data.resolved_config.get("verbose", False)
+
+        # Build context for video prompts (same as image prompts)
+        video_context = ""
+        if self.context:
+            video_context = self.context
+
+        # Inject character descriptions from registry
+        try:
+            max_tokens = self.llm_backend.get_context_token_budget()
+            ctx_mgr = ContextManager(max_tokens=max_tokens)
+            char_descriptions = ctx_mgr.format_registry_for_image_prompt()
+            if char_descriptions:
+                video_context = f"Character Appearances:\n{char_descriptions}\n\n{video_context}".strip()
+                if verbose:
+                    console.print("[dim]Injected character descriptions into video prompts[/dim]")
+        except Exception:
+            logging.getLogger(__name__).debug("Could not load character descriptions for video prompts", exc_info=True)
+
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[bold blue]Generating video prompt..."),
+            console=console,
+            transient=True,
+        ) as progress:
+            progress.add_task("video_prompt", total=None)
+
+            video_prompts = self.llm_backend.generate_video_prompt(
+                story=self.story or "",
+                context=video_context,
+                num_scenes=num_scenes,
+            )
+
+        if not video_prompts:
+            console.print("[yellow]Failed to generate video prompts.[/yellow]")
+            return
+
+        # Format and save video_prompt.txt
+        from .llm_backend import LLMBackend
+
+        prompt_text = str(self.checkpoint_data.original_inputs.get("prompt", ""))
+        formatted = LLMBackend.format_video_prompt_file(video_prompts, prompt_text)
+
+        video_path = os.path.join(output_dir, "video_prompt.txt")
+        os.makedirs(output_dir, exist_ok=True)
+
+        with open(video_path, "w", encoding="utf-8") as f:
+            f.write(formatted)
+
+        console.print(f"[bold green]✅ Video prompt saved as:[/bold green] {video_path}")
+
+        # Store in checkpoint
+        self.checkpoint_data.generated_content["video_prompts"] = video_prompts
 
     def _phase_image_decision(self) -> None:
         """Image generation decision phase."""

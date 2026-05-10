@@ -232,6 +232,38 @@ class OpenAIBackend(LLMBackend):
             logger.debug("Image prompt generation failed, using fallback", exc_info=True)
             return self._generate_fallback_image_prompts(story, context, num_prompts)
 
+    def generate_video_prompt(self, story: str, context: str, num_scenes: int) -> list[str]:
+        """Break the story into scene-by-scene video prompts using OpenAI's text model.
+
+        Args:
+            story: The generated story text.
+            context: Additional context (may include character descriptions).
+            num_scenes: Number of scene prompts to generate.
+
+        Returns:
+            List of detailed video scene prompts.
+        """
+        try:
+            video_prompt_request = self._build_video_prompt_request(story, context, num_scenes)
+
+            response = self.client.chat.completions.create(
+                model=self.story_model,
+                messages=[{"role": "user", "content": video_prompt_request}],
+                temperature=0.5,
+            )
+
+            text = self._extract_text(response)
+            if text:
+                parsed = self._parse_numbered_prompts(text, num_scenes)
+                if parsed:
+                    return parsed
+
+            return self._generate_fallback_video_prompts(story, context, num_scenes)
+
+        except Exception:
+            logger.debug("Video prompt generation failed, using fallback", exc_info=True)
+            return self._generate_fallback_video_prompts(story, context, num_scenes)
+
     def generate_story(self, prompt: Prompt) -> str:
         """
         Generate a story based on the given Prompt object using OpenAI LLM.
