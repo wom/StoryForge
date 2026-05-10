@@ -278,6 +278,28 @@ class ContextManager:
             logging.getLogger(__name__).warning("Failed to read world file: %s", world_path, exc_info=True)
             return None
 
+    @staticmethod
+    def extract_world_characters(world_content: str) -> str:
+        """Extract the Characters section from world markdown content.
+
+        Parses the ``## Characters`` heading and returns everything beneath it
+        up to the next ``##`` heading (or end of file).
+
+        Args:
+            world_content: The full world definition text (HTML comments already stripped).
+
+        Returns:
+            The raw character descriptions text, or empty string if not found.
+        """
+        match = re.search(
+            r"^##\s+Characters\s*\n(.*?)(?=^##\s|\Z)",
+            world_content,
+            re.MULTILINE | re.DOTALL,
+        )
+        if not match:
+            return ""
+        return match.group(1).strip()
+
     def _select_context_files(self, files: list[Path]) -> list[Path]:
         """Select a representative subset of context files using temporal stratified sampling.
 

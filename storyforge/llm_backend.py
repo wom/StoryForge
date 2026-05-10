@@ -368,7 +368,9 @@ class LLMBackend(ABC):
         raise NotImplementedError("Subclass must implement generate_image_prompt method")
 
     @abstractmethod
-    def generate_video_prompt(self, story: str, context: str, num_scenes: int) -> list[str]:
+    def generate_video_prompt(
+        self, story: str, context: str, num_scenes: int, character_descriptions: str = ""
+    ) -> list[str]:
         """Break the story into scene-by-scene video prompts with rich visual descriptors.
 
         Each prompt includes camera angles, lighting, character appearances,
@@ -379,6 +381,8 @@ class LLMBackend(ABC):
             story: The generated story text.
             context: Additional context for the story.
             num_scenes: The number of scene prompts to return.
+            character_descriptions: Formatted character visual descriptions from
+                world file and/or character registry for cross-scene consistency.
 
         Returns:
             List of video scene prompts, each describing a detailed scene.

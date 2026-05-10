@@ -1075,17 +1075,32 @@ class PhaseExecutor:
         if self.context:
             video_context = self.context
 
+        # Include world definition for setting/lore context
+        if self.world:
+            video_context = f"Story World:\n{self.world}\n\n{video_context}".strip()
+
+        # Build character descriptions from world file and registry
+        char_descriptions_parts: list[str] = []
+
+        # Extract character descriptions from world file (authoritative source)
+        if self.world:
+            world_chars = ContextManager.extract_world_characters(self.world)
+            if world_chars:
+                char_descriptions_parts.append(world_chars)
+
         # Inject character descriptions from registry
         try:
             max_tokens = self.llm_backend.get_context_token_budget()
             ctx_mgr = ContextManager(max_tokens=max_tokens)
-            char_descriptions = ctx_mgr.format_registry_for_image_prompt()
-            if char_descriptions:
-                video_context = f"Character Appearances:\n{char_descriptions}\n\n{video_context}".strip()
+            registry_descriptions = ctx_mgr.format_registry_for_image_prompt()
+            if registry_descriptions:
+                char_descriptions_parts.append(registry_descriptions)
                 if verbose:
                     console.print("[dim]Injected character descriptions into video prompts[/dim]")
         except Exception:
             logging.getLogger(__name__).debug("Could not load character descriptions for video prompts", exc_info=True)
+
+        char_descriptions = "\n".join(char_descriptions_parts)
 
         with Progress(
             SpinnerColumn(),
@@ -1099,6 +1114,7 @@ class PhaseExecutor:
                 story=self.story or "",
                 context=video_context,
                 num_scenes=num_scenes,
+                character_descriptions=char_descriptions,
             )
 
         if not video_prompts:
@@ -1169,8 +1185,13 @@ class PhaseExecutor:
                 console.print("[red]No LLM backend available for image generation.[/red]")
                 return
 
-            # Enrich context with character visual descriptions for consistent depiction
+            # Enrich context with world file and character visual descriptions
             image_context = self.context or ""
+
+            # Include world definition for setting/lore/character context
+            if self.world:
+                image_context = f"Story World:\n{self.world}\n\n{image_context}".strip()
+
             try:
                 max_tokens = self.llm_backend.get_context_token_budget()
                 ctx_mgr = ContextManager(max_tokens=max_tokens)
