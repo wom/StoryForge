@@ -310,10 +310,7 @@ class PhaseExecutor:
 
         # Execute critical init phases that come BEFORE start_phase
         for phase in critical_init_phases:
-            try:
-                phase_index = phase_order.index(phase)
-            except ValueError:
-                continue
+            phase_index = phase_order.index(phase)
 
             # Only execute if this phase is before our start phase and hasn't been initialized yet
             if phase_index < start_index and phase not in self._initialized_phases:
@@ -413,8 +410,6 @@ class PhaseExecutor:
 
     def _phase_init(self) -> None:
         """Initialize phase - validate CLI arguments and setup."""
-        # CLI arguments are already validated in main(), nothing to do here
-        pass
 
     def _phase_config_load(self) -> None:
         """Load configuration phase."""

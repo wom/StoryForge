@@ -337,10 +337,10 @@ def world_path_cmd() -> None:
 @app.command(
     "main",  # Keep it named "main" but we'll make it default via entry point
     context_settings={"help_option_names": ["-h", "--help"]},
+    no_args_is_help=True,
     help="Generate an illustrated story from a prompt",
 )
 def main(
-    ctx: typer.Context,
     prompt: str | None = typer.Argument(
         None,
         help="The story prompt to generate from (positional, required unless using --init-config or --continue)",
@@ -475,18 +475,6 @@ def main(
 
     # Check if prompt is required (not needed for --continue)
     if not continue_session and (prompt is None or not str(prompt).strip()):
-        # Check if user provided no arguments at all - if so, show help instead of error
-        import sys
-
-        # Get command line args, excluding the script name
-        args = sys.argv[1:]
-
-        # If no arguments provided, show help
-        if not args:
-            # Use the context to show help
-            console.print(ctx.get_help())
-            raise typer.Exit(0)
-
         console.print("[red]Error:[/red] Please provide a non-empty story prompt.", style="bold")
         raise typer.Exit(1)
 

@@ -21,7 +21,7 @@ from rich.prompt import Confirm, IntPrompt
 from .console import console
 
 
-def _multiline_str_representer(dumper: yaml.Dumper, data: str) -> yaml.ScalarNode:
+def _multiline_str_representer(dumper: yaml.SafeDumper, data: str) -> yaml.ScalarNode:
     """Use literal block style (|) for multiline strings to avoid YAML escaping issues."""
     if "\n" in data:
         return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
@@ -214,9 +214,7 @@ class CheckpointManager:
             yaml_content += f"# Generated: {checkpoint_data.updated_at}\n\n"
 
             # Write to temp file then atomically rename to prevent corruption
-            fd, tmp_path = tempfile.mkstemp(
-                suffix=".yaml.tmp", prefix="checkpoint_", dir=self.checkpoint_dir
-            )
+            fd, tmp_path = tempfile.mkstemp(suffix=".yaml.tmp", prefix="checkpoint_", dir=self.checkpoint_dir)
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     f.write(yaml_content)
@@ -465,71 +463,6 @@ class CheckpointManager:
         except (ValueError, KeyboardInterrupt):
             console.print("[yellow]Selection cancelled.[/yellow]")
             return None
-
-    def get_checkpoint_stats(self) -> dict[str, int]:
-        """
-        Get statistics about checkpoint files.
-
-        Returns:
-            dict: Statistics including total count, completed count, failed count
-        """
-        try:
-            checkpoint_files = list(self.checkpoint_dir.glob("checkpoint_*.yaml"))
-
-            stats = {
-                "total": len(checkpoint_files),
-                "completed": 0,
-                "failed": 0,
-                "active": 0,
-            }
-
-            for file_path in checkpoint_files:
-                try:
-                    info = self.get_checkpoint_info(file_path)
-                    status = info.get("status", "unknown")
-                    if status == "completed":
-                        stats["completed"] += 1
-                    elif status == "failed":
-                        stats["failed"] += 1
-                    elif status == "active":
-                        stats["active"] += 1
-                except Exception:
-                    logging.getLogger(__name__).debug("Skipping unreadable checkpoint %s", file_path)
-                    continue
-
-            return stats
-
-        except Exception:
-            logging.getLogger(__name__).debug("Failed to gather checkpoint stats", exc_info=True)
-            return {"total": 0, "completed": 0, "failed": 0, "active": 0}
-
-    def cleanup_failed_sessions(self) -> int:
-        """
-        Remove all failed checkpoint sessions.
-
-        Returns:
-            int: Number of failed sessions cleaned up
-        """
-        try:
-            checkpoint_files = list(self.checkpoint_dir.glob("checkpoint_*.yaml"))
-            deleted_count = 0
-
-            for file_path in checkpoint_files:
-                try:
-                    info = self.get_checkpoint_info(file_path)
-                    if info.get("status") == "failed":
-                        file_path.unlink()
-                        deleted_count += 1
-                        console.print(f"[dim]Removed failed session: {file_path.name}[/dim]")
-                except Exception:
-                    logging.getLogger(__name__).debug("Skipping unprocessable checkpoint %s", file_path)
-                    continue
-
-            return deleted_count
-
-        except Exception:
-            logging.getLogger(__name__).debug("Failed to cleanup failed sessions", exc_info=True)
-            return 0
 
     def cleanup_stale_active_sessions(self, max_age_hours: int = 24) -> int:
         """

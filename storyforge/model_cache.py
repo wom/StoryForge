@@ -70,7 +70,7 @@ class ModelCache:
                 try:
                     os.unlink(tmp_path)
                 except OSError:
-                    pass
+                    logger.debug("Failed to remove temp file %s during cleanup", tmp_path, exc_info=True)
                 raise
         except OSError as e:
             logger.warning("Failed to write model cache for %s: %s", backend_name, e)
