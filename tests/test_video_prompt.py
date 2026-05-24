@@ -25,7 +25,7 @@ class DummyVideoBackend(LLMBackend):
     def generate_image_name(self, prompt, story):
         raise NotImplementedError
 
-    def generate_image_prompt(self, story, context, num_prompts):
+    def generate_image_prompt(self, story, context, num_prompts, character_descriptions=""):
         raise NotImplementedError
 
     def generate_video_prompt(self, story, context, num_scenes, character_descriptions=""):

@@ -1046,7 +1046,7 @@ class PhaseExecutor:
         self.checkpoint_data.user_decisions["wants_video_prompt"] = wants_video
 
         if wants_video:
-            num_scenes = typer.prompt("How many scenes for the video prompt?", type=int, default=3)
+            num_scenes = typer.prompt("How many scenes for the video prompt?", type=int, default=2)
             self.checkpoint_data.user_decisions["num_video_scenes"] = num_scenes
 
     def _phase_video_prompt_generate(self) -> None:
@@ -1192,21 +1192,33 @@ class PhaseExecutor:
             if self.world:
                 image_context = f"Story World:\n{self.world}\n\n{image_context}".strip()
 
+            # Build character descriptions from world file and registry
+            char_descriptions_parts: list[str] = []
+
+            # Extract character descriptions from world file (authoritative source)
+            if self.world:
+                world_chars = ContextManager.extract_world_characters(self.world)
+                if world_chars:
+                    char_descriptions_parts.append(world_chars)
+
             try:
                 max_tokens = self.llm_backend.get_context_token_budget()
                 ctx_mgr = ContextManager(max_tokens=max_tokens)
-                char_descriptions = ctx_mgr.format_registry_for_image_prompt()
-                if char_descriptions:
-                    image_context = f"Character Appearances:\n{char_descriptions}\n\n{image_context}".strip()
+                registry_descriptions = ctx_mgr.format_registry_for_image_prompt()
+                if registry_descriptions:
+                    char_descriptions_parts.append(registry_descriptions)
                     if verbose:
                         console.print("[dim]Injected character descriptions into image prompts[/dim]")
             except Exception:
                 logging.getLogger(__name__).debug("Could not load character descriptions for images", exc_info=True)
 
+            char_descriptions = "\n".join(char_descriptions_parts)
+
             image_prompts = self.llm_backend.generate_image_prompt(
                 story=self.story or "",
                 context=image_context,
                 num_prompts=num_images,
+                character_descriptions=char_descriptions,
             )
 
             if not image_prompts:

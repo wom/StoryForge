@@ -265,7 +265,9 @@ class AnthropicBackend(LLMBackend):
             logger.debug("Image name generation failed, using fallback", exc_info=True)
             return "story_image"
 
-    def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
+    def generate_image_prompt(
+        self, story: str, context: str, num_prompts: int, character_descriptions: str = ""
+    ) -> list[str]:
         """Break the story into detailed image prompts using Claude's text model.
 
         Uses the shared LLM-based approach: builds a standardized instruction,
@@ -276,12 +278,15 @@ class AnthropicBackend(LLMBackend):
             story: The generated story text.
             context: Additional context (may include character descriptions).
             num_prompts: Number of image prompts to generate.
+            character_descriptions: Formatted character visual descriptions.
 
         Returns:
             List of detailed image prompts, one per requested image.
         """
         try:
-            image_prompt_request = self._build_image_prompt_request(story, context, num_prompts)
+            image_prompt_request = self._build_image_prompt_request(
+                story, context, num_prompts, character_descriptions=character_descriptions
+            )
 
             response = self.client.messages.create(
                 model=self._story_model,
