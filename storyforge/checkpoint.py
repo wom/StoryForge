@@ -6,6 +6,8 @@ StoryForge execution from any phase using the --continue CLI parameter.
 """
 
 import logging
+import os
+import tempfile
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from enum import Enum
@@ -26,8 +28,11 @@ def _multiline_str_representer(dumper: yaml.Dumper, data: str) -> yaml.ScalarNod
     return dumper.represent_scalar("tag:yaml.org,2002:str", data)
 
 
-class _SafeMultilineDumper(yaml.Dumper):
-    """YAML dumper that uses literal block style for multiline strings."""
+class _SafeMultilineDumper(yaml.SafeDumper):
+    """YAML dumper that uses literal block style for multiline strings.
+
+    Extends SafeDumper to ensure output is always compatible with safe_load.
+    """
 
     pass
 
@@ -192,7 +197,11 @@ class CheckpointManager:
             self.auto_cleanup_on_start()
 
     def save_checkpoint(self, checkpoint_data: CheckpointData) -> Path:
-        """Save checkpoint data to YAML file."""
+        """Save checkpoint data to YAML file.
+
+        Uses atomic write (temp file + rename) to prevent corruption from
+        process interrupts during write.
+        """
         filename = f"checkpoint_{checkpoint_data.session_id}.yaml"
         checkpoint_path = self.checkpoint_dir / filename
 
@@ -204,11 +213,27 @@ class CheckpointManager:
             yaml_content = f"# StoryForge Checkpoint - Session {checkpoint_data.session_id}\n"
             yaml_content += f"# Generated: {checkpoint_data.updated_at}\n\n"
 
-            with open(checkpoint_path, "w", encoding="utf-8") as f:
-                f.write(yaml_content)
-                yaml.dump(
-                    data_dict, f, Dumper=_SafeMultilineDumper, default_flow_style=False, indent=2, sort_keys=False
-                )
+            # Write to temp file then atomically rename to prevent corruption
+            fd, tmp_path = tempfile.mkstemp(
+                suffix=".yaml.tmp", prefix="checkpoint_", dir=self.checkpoint_dir
+            )
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(yaml_content)
+                    yaml.dump(
+                        data_dict, f, Dumper=_SafeMultilineDumper, default_flow_style=False, indent=2, sort_keys=False
+                    )
+                    f.flush()
+                    os.fsync(f.fileno())
+                # Atomic rename
+                os.replace(tmp_path, checkpoint_path)
+            except BaseException:
+                # Clean up temp file on any failure
+                try:
+                    os.unlink(tmp_path)
+                except OSError:
+                    pass
+                raise
 
             return checkpoint_path
 
