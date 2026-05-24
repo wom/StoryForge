@@ -19,10 +19,14 @@ class DummyBackend(LLMBackend):
     def generate_image_name(self, prompt: Prompt, story: str) -> str:
         raise NotImplementedError("Test implementation")
 
-    def generate_image_prompt(self, story: str, context: str, num_prompts: int) -> list[str]:
+    def generate_image_prompt(
+        self, story: str, context: str, num_prompts: int, character_descriptions: str = ""
+    ) -> list[str]:
         raise NotImplementedError("Test implementation")
 
-    def generate_video_prompt(self, story: str, context: str, num_scenes: int) -> list[str]:
+    def generate_video_prompt(
+        self, story: str, context: str, num_scenes: int, character_descriptions: str = ""
+    ) -> list[str]:
         raise NotImplementedError("Test implementation")
 
 
