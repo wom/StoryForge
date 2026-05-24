@@ -213,7 +213,9 @@ class CheckpointManager:
             yaml_content = f"# StoryForge Checkpoint - Session {checkpoint_data.session_id}\n"
             yaml_content += f"# Generated: {checkpoint_data.updated_at}\n\n"
 
-            # Write to temp file then atomically rename to prevent corruption
+            # Write to temp file then atomically rename to prevent corruption.
+            # mkstemp is called before the inner try so tmp_path is always
+            # defined when the except BaseException cleanup runs.
             fd, tmp_path = tempfile.mkstemp(suffix=".yaml.tmp", prefix="checkpoint_", dir=self.checkpoint_dir)
             try:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
@@ -226,11 +228,12 @@ class CheckpointManager:
                 # Atomic rename
                 os.replace(tmp_path, checkpoint_path)
             except BaseException:
-                # Clean up temp file on any failure
                 try:
                     os.unlink(tmp_path)
                 except OSError:
-                    pass
+                    logging.getLogger(__name__).debug(
+                        "Failed to remove temp file %s during cleanup", tmp_path, exc_info=True
+                    )
                 raise
 
             return checkpoint_path
