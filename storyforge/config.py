@@ -147,6 +147,7 @@ class Config:
             validation_errors = self.validator.validate_config(config_dict)
             return [str(error) for error in validation_errors]
         except Exception as e:
+            logging.getLogger(__name__).warning("Unexpected error during config validation", exc_info=True)
             return [f"Configuration validation error: {e}"]
 
     def get_default_config_path(self) -> Path:

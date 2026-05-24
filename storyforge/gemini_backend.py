@@ -92,38 +92,6 @@ class GeminiBackend(LLMBackend):
             logger.warning("Model discovery failed, using defaults", exc_info=True)
             return []
 
-    def _is_model_not_found_error(self, error: Exception) -> bool:
-        """Check if an exception indicates a model-not-found error."""
-        error_str = str(error).lower()
-        return "not found" in error_str or "404" in error_str
-
-    def _handle_model_not_found(self, model_type: str) -> str:
-        """Invalidate cache, re-discover models, and return updated model name.
-
-        Args:
-            model_type: Either "text" or "image".
-
-        Returns:
-            The newly discovered model name.
-        """
-        logger.warning("Model not found for %s, invalidating cache and re-discovering", model_type)
-        self._cache.invalidate("gemini")
-
-        api_key = os.environ.get("GEMINI_API_KEY", "")
-        try:
-            models = list_gemini_models(api_key)
-            self._cache.set("gemini", models)
-        except Exception:
-            logger.warning("Re-discovery failed, using defaults", exc_info=True)
-            models = []
-
-        if model_type == "text":
-            GeminiBackend._text_model = find_text_generation_model(models)
-            return GeminiBackend._text_model or "gemini-flash-latest"
-        else:
-            GeminiBackend._image_model = find_image_generation_model(models)
-            return GeminiBackend._image_model or "gemini-flash-latest"
-
     def _get_model_input_limit(self, model_name: str | None, default_limit: int, model_type: str) -> int:
         """Get input token limit for a model with fallback.
 
@@ -360,7 +328,7 @@ class GeminiBackend(LLMBackend):
                     if text:
                         logger.warning("API returned text instead of image: %s", text[:200])
         except Exception:
-            pass
+            logger.debug("Could not extract text from candidates for diagnostic logging", exc_info=True)
 
         return None, None
 

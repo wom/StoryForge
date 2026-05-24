@@ -1109,7 +1109,7 @@ class ContextManager:
         """Whether old-era context files were included via temporal sampling."""
         return self._has_old_context
 
-    def clear_cache(self):
+    def clear_cache(self) -> None:
         """Clear all cached context data (raw and summarized)."""
         self._cached_context = None
         self._summary_cache.clear()

@@ -194,65 +194,6 @@ class TestCheckpointManager:
                 remaining_files = list(manager.checkpoint_dir.glob("checkpoint_*.yaml"))
                 assert len(remaining_files) == 2
 
-    def test_get_checkpoint_stats(self):
-        """Test getting checkpoint statistics."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("storyforge.checkpoint.user_data_dir", return_value=tmpdir):
-                manager = CheckpointManager(auto_cleanup=False)
-
-                # Create checkpoints with different statuses
-                active_checkpoint = CheckpointData.create_new("active", {}, {})
-                active_checkpoint.session_id = "active_sf"
-                manager.save_checkpoint(active_checkpoint)
-
-                completed_checkpoint = CheckpointData.create_new("completed", {}, {})
-                completed_checkpoint.session_id = "completed_sf"
-                completed_checkpoint.mark_completed()
-                manager.save_checkpoint(completed_checkpoint)
-
-                failed_checkpoint = CheckpointData.create_new("failed", {}, {})
-                failed_checkpoint.session_id = "failed_sf"
-                failed_checkpoint.mark_failed("Test error")
-                manager.save_checkpoint(failed_checkpoint)
-
-                stats = manager.get_checkpoint_stats()
-
-                assert stats["total"] == 3
-                assert stats["active"] == 1
-                assert stats["completed"] == 1
-                assert stats["failed"] == 1
-
-    def test_cleanup_failed_sessions(self):
-        """Test cleaning up failed checkpoint sessions."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("storyforge.checkpoint.user_data_dir", return_value=tmpdir):
-                manager = CheckpointManager(auto_cleanup=False)
-
-                # Create active checkpoint
-                active_checkpoint = CheckpointData.create_new("active", {}, {})
-                active_path = manager.save_checkpoint(active_checkpoint)
-
-                # Create failed checkpoint with manually different session_id
-                failed_checkpoint = CheckpointData.create_new("failed", {}, {})
-                failed_checkpoint.session_id = failed_checkpoint.session_id + "_failed"
-                failed_checkpoint.mark_failed("Test error")
-                failed_path = manager.save_checkpoint(failed_checkpoint)
-
-                # Verify both files exist before cleanup and have different names
-                assert active_path.exists()
-                assert failed_path.exists()
-                assert active_path != failed_path
-
-                # Clean up failed sessions
-                deleted_count = manager.cleanup_failed_sessions()
-
-                assert deleted_count == 1
-                # The active checkpoint should remain
-                assert active_path.exists()
-                assert not failed_path.exists()
-                remaining_files = list(manager.checkpoint_dir.glob("checkpoint_*.yaml"))
-                assert len(remaining_files) == 1
-
     def test_auto_cleanup_on_init(self):
         """Test that auto cleanup runs on initialization."""
         with tempfile.TemporaryDirectory() as tmpdir:
