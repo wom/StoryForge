@@ -4,9 +4,38 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.0.9] - 2026-05-24
+
 ### Added
-- Voice archetype system for narrator style with 9 distinct writing voices (`--voice` flag). (commit: 85780ab)
-- Story parameter preservation in extend flow — extended stories inherit all params from the original. (commit: f474468)
+- Video prompt generation — new `VIDEO_DECISION` and `VIDEO_PROMPT_GENERATE` phases produce a `video_prompt.txt` with scene-by-scene visual descriptors (camera angles, lighting, character appearances, mood) ready for Sora, Runway, and similar tools. (commit: [2995270](https://github.com/wom/StoryForge/commit/2995270))
+- Voice archetype system for narrator style with 9 distinct writing voices (`--voice` flag). (commit: [85780ab](https://github.com/wom/StoryForge/commit/85780ab))
+- Dynamic model discovery with 7-day disk cache for all backends — models are discovered lazily on first use, with automatic cache invalidation and re-discovery on model-not-found errors. New `storyforge models list/refresh/clear` CLI commands. (commit: [c69a05a](https://github.com/wom/StoryForge/commit/c69a05a))
+- Version-aware model ranking — new `model_ranking.py` auto-prefers newer model versions without code changes (e.g. `gpt-6.0 > gpt-5.4` automatically). Composite scoring: version × 10 + tier score, with purpose-aware filtering. (commit: [0c8246d](https://github.com/wom/StoryForge/commit/0c8246d))
+- Character description forwarding — character visuals extracted from the world file and character registry are now passed explicitly to `generate_image_prompt()` and `generate_video_prompt()` across all backends for cross-image and cross-scene consistency. (commits: [ff4b2c1](https://github.com/wom/StoryForge/commit/ff4b2c1), [35399c8](https://github.com/wom/StoryForge/commit/35399c8))
+- Generation metadata tracking — model name, token counts, and timing are captured and saved alongside each story output. (commit: [54a28f8](https://github.com/wom/StoryForge/commit/54a28f8))
+- Story parameter preservation in extend flow — extended stories now inherit all parameters from the original. (commit: [f474468](https://github.com/wom/StoryForge/commit/f474468))
+
+### Fixed
+- **Checkpoint corruption on interrupt** — writes now use a temp file + `os.replace()` (atomic rename) with `fsync()` before rename. A killed or crashed process can no longer leave a partially-written YAML file. Also switched from `yaml.Dumper` to `yaml.SafeDumper` for `safe_load` compatibility. (commit: [4696f5e](https://github.com/wom/StoryForge/commit/4696f5e))
+- **`LLM_BACKEND` env var ignored** — the `LLM_BACKEND` environment variable was checked after API key auto-detection, silently ignoring it whenever any API key was present. Fixed priority: explicit param → `LLM_BACKEND` env var → config file → API key detection. (commit: [b25c3b1](https://github.com/wom/StoryForge/commit/b25c3b1))
+- Checkpoint temp file cleanup no longer raises `NameError` if `mkstemp()` itself fails. (commit: [5dd20eb](https://github.com/wom/StoryForge/commit/5dd20eb))
+
+### Changed
+- OpenAI default model updated to `gpt-5.5` (released April 23, 2026). (commit: [dc70434](https://github.com/wom/StoryForge/commit/dc70434))
+- Gemini defaults updated to cross-generation aliases (`gemini-pro-latest` / `gemini-flash-latest`) that auto-update indefinitely, replacing deprecated `gemini-2.5-*` references. (commit: [0c8246d](https://github.com/wom/StoryForge/commit/0c8246d))
+
+### Refactored
+- Removed dead code: `CheckpointManager.get_checkpoint_stats`, `cleanup_failed_sessions`; `GeminiBackend._is_model_not_found_error`, `_handle_model_not_found`; no-op `_phase_init()` body; unreachable `ValueError` catch in `_execute_phase_sequence`. (commit: [b25c3b1](https://github.com/wom/StoryForge/commit/b25c3b1))
+- Replaced brittle `sys.argv` help check with `no_args_is_help=True` on the Typer command. (commit: [b25c3b1](https://github.com/wom/StoryForge/commit/b25c3b1))
+- Silent `except: pass` blocks replaced with debug-level logging. (commit: [b25c3b1](https://github.com/wom/StoryForge/commit/b25c3b1))
+
+### Tests
+- +1,657 lines of new tests. 723 tests passing. (commits: [2995270](https://github.com/wom/StoryForge/commit/2995270), [c69a05a](https://github.com/wom/StoryForge/commit/c69a05a), [0c8246d](https://github.com/wom/StoryForge/commit/0c8246d), [ff4b2c1](https://github.com/wom/StoryForge/commit/ff4b2c1))
+
+### Docs
+- README trimmed and updated to reflect current features and CLI surface. (commit: [21dba66](https://github.com/wom/StoryForge/commit/21dba66))
+
+**Full Changelog**: [v0.0.8...v0.0.9](https://github.com/wom/StoryForge/compare/v0.0.8...v0.0.9)
 
 ## [0.0.8] - 2026-04-06
 
