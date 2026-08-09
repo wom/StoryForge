@@ -58,8 +58,8 @@ dev = [
 ]
 
 [project.scripts]
-storyforge = "storyforge.StoryForge:cli_entry"
-sf = "storyforge.StoryForge:cli_entry"
+storyforge = "storyforge.cli:main"
+sf = "storyforge.cli:main"
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]
