@@ -1,9 +1,9 @@
 repos:
   - repo: local
     hooks:
-      - id: make-lint
+      - id: make-lint-check
         name: Lint with Makefile
-        entry: make lint
+        entry: make lint-check
         language: system
         types: [python]
         pass_filenames: false

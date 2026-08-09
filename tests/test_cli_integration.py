@@ -1,10 +1,10 @@
 import typer
 from typer.testing import CliRunner
 
-from storyforge.StoryForge import main
+from storyforge.StoryForge import generate
 
 cli_app = typer.Typer()
-cli_app.command()(main)
+cli_app.command()(generate)
 
 
 class TestCLIIntegration:

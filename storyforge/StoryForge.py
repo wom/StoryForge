@@ -336,12 +336,12 @@ def world_path_cmd() -> None:
 
 
 @app.command(
-    "main",  # Keep it named "main" but we'll make it default via entry point
+    "generate",
     context_settings={"help_option_names": ["-h", "--help"]},
     no_args_is_help=True,
     help="Generate an illustrated story from a prompt",
 )
-def main(
+def generate(
     prompt: str | None = typer.Argument(
         None,
         help="The story prompt to generate from (positional, required unless using --init-config or --continue)",
@@ -553,7 +553,7 @@ def main(
     "continue",
     help="Resume execution from a previous StoryForge session. "
     "Displays the last 5 sessions and allows you to choose which phase to resume from. "
-    "Same as 'storyforge main --continue'.",
+    "Use this command instead of the generate command's --continue option.",
 )
 def continue_session():
     """Resume execution from a previous checkpoint session."""
@@ -921,46 +921,3 @@ def export_chain(
     except Exception as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise typer.Exit(1) from e
-
-
-if __name__ == "__main__":
-    import sys
-
-    # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
-    if (
-        len(sys.argv) > 1
-        and not sys.argv[1].startswith("-")
-        and sys.argv[1]
-        not in [
-            "main",
-            "config",
-            "continue",
-            "extend",
-            "export-chain",
-            "world",
-            "models",
-        ]
-    ):
-        sys.argv.insert(1, "main")
-    app()
-
-
-def cli_entry() -> None:
-    """Entry point for the CLI that handles default command routing."""
-    import sys
-
-    # Show help if no arguments provided
-    if len(sys.argv) == 1:
-        sys.argv.append("--help")
-    # If first argument doesn't look like a subcommand or flag, assume it's a prompt for main command
-    elif not sys.argv[1].startswith("-") and sys.argv[1] not in [
-        "main",
-        "config",
-        "continue",
-        "extend",
-        "export-chain",
-        "world",
-        "models",
-    ]:
-        sys.argv.insert(1, "main")
-    app()

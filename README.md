@@ -39,8 +39,11 @@ StoryForge auto-detects the backend from available keys. Override with `LLM_BACK
 ## Quick Start
 
 ```bash
-# Generate a story
+# Generate a story (the bare-prompt shortcut)
 sf "A brave mouse named Max finds a magic acorn"
+
+# The explicit, script-friendly command is also available
+sf generate "A brave mouse named Max finds a magic acorn"
 
 # With options
 sf "A dragon learns to fly" \
@@ -78,7 +81,8 @@ sf export-chain
 ### All Commands
 
 ```bash
-sf "prompt" [options]           # Generate a new story
+sf ["prompt"] [options]         # Generate a new story (bare-prompt shortcut)
+sf generate "prompt" [options]  # Explicit generation command
 sf continue                     # Resume a previous session
 sf extend                       # Extend a previous story
 sf export-chain [-c NAME] [-o FILE]  # Export story chain
