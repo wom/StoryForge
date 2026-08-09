@@ -10,6 +10,7 @@ preserving semantic content and respecting token budgets.
 
 import json
 import logging
+import os
 import random
 import re
 from collections.abc import Callable
@@ -193,29 +194,15 @@ class ContextManager:
         if self.context_file_path:
             return [Path(self.context_file_path)]
 
-        import os
-
+        # Keep the test override authoritative even when a caller temporarily
+        # replaces ``get_context_directory`` (as integration tests do).
         test_context_dir = os.environ.get("STORYFORGE_TEST_CONTEXT_DIR")
-        if test_context_dir:
-            context_dir = Path(test_context_dir)
-            if context_dir.exists() and context_dir.is_dir():
-                files = sorted(context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
-                return [f for f in files if f.name != WORLD_FILENAME]
+        context_dir = Path(test_context_dir) if test_context_dir else self.get_context_directory()
+        if not context_dir.exists() or not context_dir.is_dir():
             return []
 
-        # Prefer ./context/ in the current working directory if it exists
-        local_context_dir = Path("context")
-        if local_context_dir.exists() and local_context_dir.is_dir():
-            files = sorted(local_context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
-            return [f for f in files if f.name != WORLD_FILENAME]
-
-        # Use lowercase 'storyforge' for normalized cross-platform paths
-        user_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
-        if user_dir.exists() and user_dir.is_dir():
-            files = sorted(user_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
-            return [f for f in files if f.name != WORLD_FILENAME]
-
-        return []
+        files = sorted(context_dir.glob("*.md"), key=lambda p: p.stat().st_mtime)
+        return [f for f in files if f.name != WORLD_FILENAME]
 
     def _discover_world_file(self) -> Path | None:
         """Discover the world definition file.
@@ -1116,12 +1103,64 @@ class ContextManager:
 
     def get_context_directory(self) -> Path:
         """
-        Get the context directory path.
+        Resolve the active context directory consistently across all features.
 
         Returns:
-            Path: The context directory (user data directory).
+            Path: Test override, existing local ``./context`` directory, or the
+                XDG user-data context directory.
         """
+        import os
+
+        test_context_dir = os.environ.get("STORYFORGE_TEST_CONTEXT_DIR")
+        if test_context_dir:
+            return Path(test_context_dir)
+
+        local_context_dir = Path("context")
+        if local_context_dir.exists() and local_context_dir.is_dir():
+            return local_context_dir
+
         return Path(user_data_dir("storyforge", "storyforge")) / "context"
+
+    @staticmethod
+    def _normalize_saved_parameter(value: str) -> str:
+        """Return the raw value from current or historical context metadata.
+
+        Older versions stored provenance in the value itself, such as
+        ``short (CLI)`` or ``Random (magical)``.  These strings cannot be passed
+        back to the strict prompt schema, so normalize them at the persistence
+        boundary while retaining compatibility with existing context files.
+        """
+        value = value.strip()
+        random_match = re.fullmatch(r"Random\s*\((.+)\)", value, flags=re.IGNORECASE)
+        if random_match:
+            return random_match.group(1).strip()
+
+        source_match = re.fullmatch(r"(.+?)\s*\((CLI|Config|Default)\)", value, flags=re.IGNORECASE)
+        if source_match:
+            return source_match.group(1).strip()
+
+        return value
+
+    @staticmethod
+    def extract_story_body(content: str) -> str:
+        """Extract story prose from current and legacy context-file formats."""
+        current_match = re.search(
+            r"^##\s*Story\s*$\n?(.*?)(?=^##\s*Refinements Applied\s*$|\Z)",
+            content,
+            re.MULTILINE | re.DOTALL,
+        )
+        if current_match:
+            return current_match.group(1).strip()
+
+        legacy_marker = "---\n## Story Preview\n\n"
+        if legacy_marker in content:
+            return content.split(legacy_marker, 1)[1].strip()
+
+        legacy_parts = content.split("---", 2)
+        if len(legacy_parts) > 2:
+            return legacy_parts[2].strip()
+
+        return content.strip()
 
     def list_available_contexts(self) -> list[dict[str, Any]]:
         """
@@ -1192,32 +1231,32 @@ class ContextManager:
             # Extract theme from **Theme:** field
             theme_match = re.search(r"\*\*Theme:\*\*\s*(.+)", content)
             if theme_match:
-                metadata["theme"] = theme_match.group(1).strip()
+                metadata["theme"] = self._normalize_saved_parameter(theme_match.group(1))
 
             # Extract age group from **Age Group:** field
             age_match = re.search(r"\*\*Age Group:\*\*\s*(.+)", content)
             if age_match:
-                metadata["age_group"] = age_match.group(1).strip()
+                metadata["age_group"] = self._normalize_saved_parameter(age_match.group(1))
 
             # Extract tone from **Tone:** field
             tone_match = re.search(r"\*\*Tone:\*\*\s*(.+)", content)
             if tone_match:
-                metadata["tone"] = tone_match.group(1).strip()
+                metadata["tone"] = self._normalize_saved_parameter(tone_match.group(1))
 
             # Extract art style from **Art Style:** field
             art_style_match = re.search(r"\*\*Art Style:\*\*\s*(.+)", content)
             if art_style_match:
-                metadata["art_style"] = art_style_match.group(1).strip()
+                metadata["art_style"] = self._normalize_saved_parameter(art_style_match.group(1))
 
             # Extract voice archetype from **Voice:** field
             voice_match = re.search(r"\*\*Voice:\*\*\s*(.+)", content)
             if voice_match:
-                metadata["voice"] = voice_match.group(1).strip()
+                metadata["voice"] = self._normalize_saved_parameter(voice_match.group(1))
 
             # Extract style from **Style:** field
             style_match = re.search(r"\*\*Style:\*\*\s*(.+)", content)
             if style_match:
-                metadata["style"] = style_match.group(1).strip()
+                metadata["style"] = self._normalize_saved_parameter(style_match.group(1))
 
             # Extract setting from **Setting:** field
             setting_match = re.search(r"\*\*Setting:\*\*\s*(.+)", content)
@@ -1227,12 +1266,12 @@ class ContextManager:
             # Extract length from **Length:** field
             length_match = re.search(r"\*\*Length:\*\*\s*(.+)", content)
             if length_match:
-                metadata["length"] = length_match.group(1).strip()
+                metadata["length"] = self._normalize_saved_parameter(length_match.group(1))
 
             # Extract learning focus from **Learning Focus:** field
             learning_focus_match = re.search(r"\*\*Learning Focus:\*\*\s*(.+)", content)
             if learning_focus_match:
-                metadata["learning_focus"] = learning_focus_match.group(1).strip()
+                metadata["learning_focus"] = self._normalize_saved_parameter(learning_focus_match.group(1))
 
             # Extract original prompt from **Original Prompt:** field
             prompt_match = re.search(r"\*\*Original Prompt:\*\*\s*(.+)", content)
@@ -1244,28 +1283,9 @@ class ContextManager:
             if extended_from_match:
                 metadata["extended_from"] = extended_from_match.group(1).strip()
 
-            # Extract story preview - find the story section after metadata
-            # Look for "## Story" or just get text after multiple newlines
-            story_match = re.search(r"##\s*Story\s*\n+(.+)", content, re.DOTALL)
-            if story_match:
-                story_text = story_match.group(1).strip()
-                # Get first 200 characters
+            story_text = self.extract_story_body(content)
+            if story_text:
                 metadata["preview"] = story_text[:200].replace("\n", " ")
-            else:
-                # Fallback: get first 200 chars after metadata section
-                lines = content.split("\n")
-                story_lines = []
-                in_story = False
-                for line in lines:
-                    if in_story:
-                        story_lines.append(line)
-                    elif line and not line.startswith("#") and not line.startswith("**"):
-                        in_story = True
-                        story_lines.append(line)
-
-                if story_lines:
-                    preview_text = " ".join(story_lines)
-                    metadata["preview"] = preview_text[:200]
 
         except OSError as e:
             # Return basic metadata if file can't be read
@@ -1457,14 +1477,7 @@ class ContextManager:
             if story_path and Path(story_path).exists():
                 with open(story_path, encoding="utf-8") as f:
                     content = f.read()
-                    # Extract just the story content (skip metadata header)
-                    story_start = content.find("---\n## Story Preview")
-                    if story_start != -1:
-                        story_content = content[story_start + len("---\n## Story Preview\n\n") :]
-                    else:
-                        parts = content.split("---", 2)
-                        story_content = parts[2] if len(parts) > 2 else content
-                    combined_content.append(story_content.strip())
+                    combined_content.append(self.extract_story_body(content))
             else:
                 combined_content.append(f"[Story content not found: {story_path}]")
             combined_content.append("\n")

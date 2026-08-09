@@ -1,6 +1,7 @@
 """Tests for the world file feature (world.md — always-included context)."""
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from storyforge.context import ContextManager
@@ -129,6 +130,15 @@ class TestWorldFileDiscovery:
         result = mgr._discover_world_file()
         assert result is not None
         assert result.name == WORLD_FILENAME
+
+    def test_context_directory_uses_existing_local_directory(self, tmp_path, monkeypatch):
+        """All context features should use the same local project directory."""
+        monkeypatch.chdir(tmp_path)
+        context_dir = tmp_path / "context"
+        context_dir.mkdir()
+        monkeypatch.delenv("STORYFORGE_TEST_CONTEXT_DIR", raising=False)
+
+        assert ContextManager().get_context_directory() == Path("context")
 
     def test_test_context_dir_env(self, tmp_path, monkeypatch):
         """Finds world.md via STORYFORGE_TEST_CONTEXT_DIR env var."""

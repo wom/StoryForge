@@ -93,8 +93,8 @@ Below is a concise reference of available configuration options, their defaults,
 ### [system]
 - `backend` (string) — Default: `` (auto-detect)
   - Options: `gemini`, `openai`, `anthropic` or empty for auto-detection.
-- `openai_story_model` (string) — Default: `gpt-5.2`
-  - Description: OpenAI model used for story generation (e.g., `gpt-5.2`, `gpt-4o`).
+- `openai_story_model` (string) — Default: `gpt-5.5`
+  - Description: OpenAI model used for story generation (e.g., `gpt-5.5`, `gpt-4o`).
 - `openai_image_model` (string) — Default: `gpt-image-1.5`
   - Description: OpenAI model used for image generation (e.g., `gpt-image-1.5`, `dall-e-3`).
 - `verbose` (boolean) — Default: `false`

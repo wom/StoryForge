@@ -42,6 +42,7 @@ lint: install
 # Lint check only (no auto-fixes)
 lint-check: install
 	$(VENV_ACTIVATE) ruff check storyforge tests
+	$(VENV_ACTIVATE) ruff format --check storyforge tests
 	$(VENV_ACTIVATE) mypy storyforge
 
 # Type check only
@@ -58,7 +59,6 @@ clean:
 		.venv \
 		build/ \
 		dist \
-		uv.lock \
 		.pytest_cache
 
 # Pre-release validation gate

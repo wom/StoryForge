@@ -279,6 +279,12 @@ class TestPhaseExecutor:
         assert content_for_early_phase["story"] is None
         assert content_for_early_phase["refinements"] is None
 
+        # Video-prompt generation also requires the saved story.
+        content_for_video_phase = self.phase_executor._get_content_up_to_phase(
+            original_checkpoint, ExecutionPhase.VIDEO_PROMPT_GENERATE
+        )
+        assert content_for_video_phase["story"] == "Generated story"
+
     def test_get_decisions_up_to_phase(self):
         """Test preserving user decisions up to specific phases."""
         original_checkpoint = CheckpointData.create_new("test", {}, {})
@@ -304,6 +310,36 @@ class TestPhaseExecutor:
         )
 
         assert all(decision is None for decision in decisions_for_early_phase.values())
+
+    def test_resume_preserves_required_later_phase_decisions(self):
+        """Resuming a generation phase retains the decision that gates it."""
+        original_checkpoint = CheckpointData.create_new("test", {}, {})
+        original_checkpoint.user_decisions.update(
+            {
+                "story_accepted": True,
+                "wants_video_prompt": True,
+                "num_video_scenes": 4,
+                "wants_images": True,
+                "num_images_requested": 3,
+            }
+        )
+
+        video_decisions = self.phase_executor._get_decisions_up_to_phase(
+            original_checkpoint, ExecutionPhase.VIDEO_PROMPT_GENERATE
+        )
+        assert video_decisions["wants_video_prompt"] is True
+        assert video_decisions["num_video_scenes"] == 4
+
+        image_decisions = self.phase_executor._get_decisions_up_to_phase(
+            original_checkpoint, ExecutionPhase.IMAGE_GENERATE
+        )
+        assert image_decisions["wants_images"] is True
+        assert image_decisions["num_images_requested"] == 3
+
+    def test_session_ids_are_unique(self):
+        """Rapid checkpoint creation must not overwrite a previous session."""
+        session_ids = {CheckpointData.create_new("test", {}, {}).session_id for _ in range(20)}
+        assert len(session_ids) == 20
 
     def test_should_skip_phase_skips_completed_phases(self):
         """Test that phases are skipped when marked as completed in the current session."""

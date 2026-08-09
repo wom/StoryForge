@@ -204,6 +204,7 @@ def _create_images_section() -> ConfigSection:
             description="Number of images to generate for the story",
             cli_help="Number of images to generate (1-5)",
             cli_short="-n",
+            validator=lambda value: 1 <= int(value) <= 5,
             example_values=["3", "5"],
             ini_comment="Number of images to generate (default: 3, range: 1-5)",
         )
@@ -285,12 +286,12 @@ def _create_system_section() -> ConfigSection:
         ConfigField(
             name="openai_story_model",
             field_type=FieldType.STRING,
-            default="gpt-5.2",
+            default="gpt-5.5",
             section="system",
             description="OpenAI model to use for story generation",
-            cli_help="OpenAI story model (e.g., gpt-5.2, gpt-4o)",
-            example_values=["gpt-5.2", "gpt-4o"],
-            ini_comment="OpenAI model for story generation (default: gpt-5.2)",
+            cli_help="OpenAI story model (e.g., gpt-5.5, gpt-4o)",
+            example_values=["gpt-5.5", "gpt-4o"],
+            ini_comment="OpenAI model for story generation (default: gpt-5.5)",
         )
     )
 

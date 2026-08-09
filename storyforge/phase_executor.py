@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 import typer
-from platformdirs import user_data_dir
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.prompt import Confirm
 
@@ -105,7 +104,7 @@ class PhaseExecutor:
     ) -> CheckpointData:
         """Create a new checkpoint session based on original session, starting from resume_phase."""
         now = datetime.now().isoformat() + "Z"
-        new_session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_sf_resumed"
+        new_session_id = CheckpointData.create_session_id("_sf_resumed")
 
         # Don't pre-mark phases as completed - start fresh to avoid skip logic issues
         # Only preserve generated content and decisions up to resume point
@@ -181,7 +180,9 @@ class PhaseExecutor:
         # Preserve story if resuming from a phase after story generation
         story_phases = [
             ExecutionPhase.STORY_SAVE,
+            ExecutionPhase.VIDEO_DECISION,
             ExecutionPhase.IMAGE_DECISION,
+            ExecutionPhase.VIDEO_PROMPT_GENERATE,
             ExecutionPhase.IMAGE_GENERATE,
             ExecutionPhase.CONTEXT_SAVE,
         ]
@@ -199,17 +200,33 @@ class PhaseExecutor:
         """Get user decisions that should be preserved up to the resume phase."""
         decisions = {
             "story_accepted": None,
+            "wants_video_prompt": None,
+            "num_video_scenes": None,
             "wants_images": None,
             "num_images_requested": None,
             "save_as_context": None,
         }
 
-        # Only preserve story_accepted if resuming from phases after story generation
-        # but before image decision (so we don't re-ask for story refinement)
-        if resume_phase in [ExecutionPhase.STORY_SAVE]:
+        post_story_phases = {
+            ExecutionPhase.STORY_SAVE,
+            ExecutionPhase.VIDEO_DECISION,
+            ExecutionPhase.IMAGE_DECISION,
+            ExecutionPhase.VIDEO_PROMPT_GENERATE,
+            ExecutionPhase.IMAGE_GENERATE,
+            ExecutionPhase.CONTEXT_SAVE,
+        }
+        if resume_phase in post_story_phases:
             decisions["story_accepted"] = original_checkpoint.user_decisions.get("story_accepted")
 
-        # Don't preserve any other decisions - let user make fresh choices
+        if resume_phase == ExecutionPhase.VIDEO_PROMPT_GENERATE:
+            decisions["wants_video_prompt"] = original_checkpoint.user_decisions.get("wants_video_prompt")
+            decisions["num_video_scenes"] = original_checkpoint.user_decisions.get("num_video_scenes")
+
+        if resume_phase == ExecutionPhase.IMAGE_GENERATE:
+            decisions["wants_images"] = original_checkpoint.user_decisions.get("wants_images")
+            decisions["num_images_requested"] = original_checkpoint.user_decisions.get("num_images_requested")
+
+        # Decisions at earlier phases are deliberately re-asked.
         return decisions
 
     def execute_new_session(
@@ -423,6 +440,7 @@ class PhaseExecutor:
         if self.checkpoint_data is None:
             raise RuntimeError("Checkpoint data must be initialized")
         backend_name = self.checkpoint_data.resolved_config.get("backend")
+        config_backend = self.checkpoint_data.resolved_config.get("config_backend")
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
         if verbose:
@@ -430,16 +448,20 @@ class PhaseExecutor:
 
         # Better error handling for backend initialization
         try:
-            self.llm_backend = get_backend(config_backend=backend_name, config=self.config)
+            self.llm_backend = get_backend(
+                backend_name=backend_name,
+                config_backend=config_backend,
+                config=self.config,
+            )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to initialize {backend_name or 'default'} backend. "
+                f"Failed to initialize {backend_name or config_backend or 'default'} backend. "
                 f"Please check that your API key is set correctly in environment variables. "
                 f"Error: {e}"
             ) from e
 
         if not self.llm_backend:
-            backend_display = backend_name or "auto-detected backend"
+            backend_display = backend_name or config_backend or "auto-detected backend"
             raise RuntimeError(
                 f"Backend initialization returned None for '{backend_display}'. "
                 f"Please verify your API key is set and valid."
@@ -1048,7 +1070,9 @@ class PhaseExecutor:
         """Video prompt generation phase."""
         if self.checkpoint_data is None:
             raise RuntimeError("Checkpoint data must be initialized")
-        wants_video = self.checkpoint_data.user_decisions.get("wants_video_prompt", False)
+        wants_video = self.checkpoint_data.user_decisions.get("wants_video_prompt")
+        if wants_video is None:
+            raise RuntimeError("Video prompt decision is missing; resume from the video decision phase.")
         if not wants_video:
             console.print("[yellow]Video prompt generation skipped by user.[/yellow]")
             return
@@ -1145,14 +1169,17 @@ class PhaseExecutor:
         self.checkpoint_data.user_decisions["wants_images"] = wants_images
 
         if wants_images:
-            num_images = typer.prompt("How many images would you like to generate?", type=int, default=1)
+            default_images = self.checkpoint_data.resolved_config.get("image_count", 3)
+            num_images = typer.prompt("How many images would you like to generate?", type=int, default=default_images)
             self.checkpoint_data.user_decisions["num_images_requested"] = num_images
 
     def _phase_image_generate(self) -> None:
         """Image generation phase."""
         if self.checkpoint_data is None:
             raise RuntimeError("Checkpoint data must be initialized")
-        wants_images = self.checkpoint_data.user_decisions.get("wants_images", False)
+        wants_images = self.checkpoint_data.user_decisions.get("wants_images")
+        if wants_images is None:
+            raise RuntimeError("Image generation decision is missing; resume from the image decision phase.")
         if not wants_images:
             console.print("[yellow]Image generation skipped by user.[/yellow]")
             return
@@ -1314,8 +1341,8 @@ class PhaseExecutor:
 
         if save_as_context:
             try:
-                # Get context directory (normalized to lowercase 'storyforge')
-                context_dir = Path(user_data_dir("storyforge", "storyforge")) / "context"
+                # Use the same root used for discovery, extension, and registry.
+                context_dir = ContextManager().get_context_directory()
                 context_dir.mkdir(parents=True, exist_ok=True)
 
                 # Generate context filename based on story prompt
@@ -1376,10 +1403,10 @@ class PhaseExecutor:
 
                     source, value = self._get_parameter_source(field_name)
                     if value is not None:
-                        if source == "Random":
-                            context_content += f"**{display_name}:** Random ({value})\n\n"
-                        else:
-                            context_content += f"**{display_name}:** {value} ({source})\n\n"
+                        # Keep metadata machine-readable.  Source information is
+                        # stored separately so saved contexts can be extended.
+                        context_content += f"**{display_name}:** {value}\n\n"
+                        context_content += f"**{display_name} Source:** {source}\n\n"
 
                 context_content += "## Story\n\n"
                 context_content += self.story or ""

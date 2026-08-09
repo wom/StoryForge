@@ -49,7 +49,7 @@ class TestOpenAIBackend:
 
         assert result == "A wonderful test story about friendship."
         mock_client_instance.chat.completions.create.assert_called_once_with(
-            model="gpt-5.2",
+            model="gpt-5.5",
             messages=[{"role": "user", "content": "Tell me a story about friendship"}],
             temperature=1,
         )
@@ -299,7 +299,7 @@ class TestOpenAIBackend:
 
         assert result == "friendship_adventure"
         mock_client_instance.chat.completions.create.assert_called_once_with(
-            model="gpt-5.2",
+            model="gpt-5.5",
             messages=[{"role": "user", "content": "Generate a name for this image"}],
             temperature=1,
         )
@@ -507,7 +507,7 @@ class TestOpenAIModelInfo:
         """Test get_model_info returns default models."""
         backend = OpenAIBackend()
         info = backend.get_model_info()
-        assert info["story_model"] == "gpt-5.2"
+        assert info["story_model"] == "gpt-5.5"
         assert info["image_model"] == "gpt-image-1.5"
 
     @patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}, clear=False)

@@ -167,6 +167,9 @@ def test_write_chain_to_file_single_story(context_manager, context_dir, tmp_path
     assert "PART 1 of 1" in content
     assert "Original prompt: Standalone tale" in content
     assert "END OF STORY CHAIN" in content
+    assert "# Story Context:" not in content
+    assert "**Generated on:**" not in content
+    assert "This is a test story about {prompt}." in content
 
 
 def test_write_chain_to_file_multiple_stories(context_manager, context_dir, tmp_path):
@@ -197,6 +200,25 @@ def test_write_chain_to_file_multiple_stories(context_manager, context_dir, tmp_
     assert "Source: part3" in content
     assert "Extended from: part1" in content
     assert "Extended from: part2" in content
+    assert "# Story Context:" not in content
+
+
+def test_extract_story_body_excludes_refinement_metadata(context_manager):
+    """Current-format export should contain only the story body."""
+    content = """# Story Context: Test
+
+**Tone:** gentle
+
+## Story
+
+The story body.
+
+## Refinements Applied
+
+Made gentler.
+"""
+
+    assert context_manager.extract_story_body(content) == "The story body."
 
 
 def test_write_chain_to_file_creates_directory(context_manager, context_dir, tmp_path):

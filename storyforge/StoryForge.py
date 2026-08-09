@@ -6,6 +6,7 @@ Supports Google Gemini, Anthropic Claude, and OpenAI backends.
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
+from uuid import uuid4
 
 import typer
 from rich.prompt import Confirm
@@ -60,9 +61,9 @@ app.add_typer(models_app, name="models")
 
 def generate_default_output_dir(extended: bool = False) -> str:
     """Generate a timestamped output directory name."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     suffix = "_extended" if extended else ""
-    output_dir = f"storyforge_output_{timestamp}{suffix}"
+    output_dir = f"storyforge_output_{timestamp}_{uuid4().hex[:8]}{suffix}"
     return output_dir
 
 
@@ -358,6 +359,7 @@ def main(
         generate_multi_option("characters", "--character"),
     ] = None,
     image_style: str | None = generate_cli_option("image_style"),
+    image_count: int | None = generate_cli_option("image_count"),
     output_dir: str | None = generate_cli_option("output_dir"),
     use_context: bool | None = generate_boolean_cli_option("use_context", "--use-context/--no-use-context"),
     world_file: str | None = generate_cli_option("world_file"),
@@ -385,6 +387,7 @@ def main(
         "setting": setting,
         "characters": characters,
         "image_style": image_style,
+        "image_count": image_count,
         "output_dir": output_dir,
         "use_context": use_context,
         "world_file": world_file,
@@ -454,14 +457,15 @@ def main(
             characters = config_characters
 
         image_style = image_style if image_style is not None else config.get_field_value("images", "image_style")
+        image_count = image_count if image_count is not None else config.get_field_value("images", "image_count")
         output_dir = output_dir if output_dir is not None else config.get_field_value("output", "output_dir")
         use_context = use_context if use_context is not None else config.get_field_value("output", "use_context")
         world_file = world_file if world_file is not None else config.get_field_value("output", "world_file")
         verbose = verbose if verbose is not None else config.get_field_value("system", "verbose")
         debug = debug if debug is not None else config.get_field_value("system", "debug")
 
-        # Get backend from CLI or configuration (CLI takes precedence)
-        config_backend = backend if backend is not None else config.get_field_value("system", "backend")
+        # Retain each source so an explicit CLI backend always wins at initialization.
+        config_backend = config.get_field_value("system", "backend")
 
     except ConfigError as e:
         console.print(f"[red]Configuration Error:[/red] {e}", style="bold")
@@ -497,17 +501,19 @@ def main(
             "setting": setting,
             "characters": characters,
             "image_style": image_style,
+            "image_count": image_count,
             "output_dir": output_dir,
             "use_context": use_context,
             "world_file": world_file,
             "verbose": verbose,
             "debug": debug,
-            "backend": config_backend,
+            "backend": backend,
         }
 
         # Prepare resolved configuration
         resolved_config = {
-            "backend": config_backend,
+            "backend": backend,
+            "config_backend": config_backend,
             "output_directory": output_dir,
             "use_context": use_context,
             "world_file": world_file,
@@ -520,6 +526,7 @@ def main(
             "voice": voice,
             "theme": theme,
             "image_style": image_style,
+            "image_count": image_count,
         }
 
         # Execute new session with checkpointing
@@ -695,6 +702,7 @@ def extend_story(
             "tone": prompt.tone,
             "voice": prompt.voice,
             "image_style": prompt.image_style,
+            "image_count": config.get_field_value("images", "image_count"),
             "theme": prompt.theme,
             "characters": prompt.characters,
             "setting": prompt.setting,
@@ -704,7 +712,8 @@ def extend_story(
 
         # Prepare resolved configuration
         resolved_config = {
-            "backend": backend or config.get_field_value("system", "backend"),
+            "backend": backend,
+            "config_backend": config.get_field_value("system", "backend"),
             "output_directory": output_dir,
             "verbose": verbose,
             "debug": debug,
@@ -716,6 +725,7 @@ def extend_story(
             "tone": prompt.tone,
             "voice": prompt.voice,
             "image_style": prompt.image_style,
+            "image_count": config.get_field_value("images", "image_count"),
             "setting": prompt.setting,
             "learning_focus": prompt.learning_focus,
             "continuation_direction": continuation_direction,

@@ -13,6 +13,7 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import yaml
 from platformdirs import user_data_dir
@@ -103,6 +104,12 @@ class CheckpointData:
     last_error: str | None = None
     recovery_possible: bool = True
 
+    @staticmethod
+    def create_session_id(suffix: str = "_sf") -> str:
+        """Return a collision-resistant session identifier."""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        return f"{timestamp}_{uuid4().hex[:8]}{suffix}"
+
     @classmethod
     def create_new(
         _cls,
@@ -112,7 +119,7 @@ class CheckpointData:
     ) -> "CheckpointData":
         """Create a new checkpoint data structure."""
         now = datetime.now().isoformat() + "Z"
-        session_id = datetime.now().strftime("%Y%m%d_%H%M%S") + "_sf"
+        session_id = CheckpointData.create_session_id()
 
         return CheckpointData(
             session_id=session_id,
@@ -133,6 +140,8 @@ class CheckpointData:
             },
             user_decisions={
                 "story_accepted": None,
+                "wants_video_prompt": None,
+                "num_video_scenes": None,
                 "wants_images": None,
                 "num_images_requested": None,
                 "save_as_context": None,

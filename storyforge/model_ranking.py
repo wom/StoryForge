@@ -40,14 +40,17 @@ SKIP_PATTERNS = re.compile(r"(preview|experimental|exp|thinking|search)", re.IGN
 # Image-capable model patterns
 IMAGE_PATTERNS = re.compile(r"(image|imagen|dall-e|flash-image)", re.IGNORECASE)
 
+Version = tuple[int, int]
+ModelScore = tuple[int, int, int]
 
-def extract_gemini_info(name: str) -> tuple[float, str] | None:
+
+def extract_gemini_info(name: str) -> tuple[Version, str] | None:
     """Extract version and tier from a Gemini model name.
 
     Examples:
-        gemini-3.1-pro-preview -> (3.1, "pro")
-        gemini-2.5-flash -> (2.5, "flash")
-        gemini-pro-latest -> (0.0, "pro")  # alias, no version
+        gemini-3.1-pro-preview -> ((3, 1), "pro")
+        gemini-2.5-flash -> ((2, 5), "flash")
+        gemini-pro-latest -> ((99, 0), "pro")  # alias, no version
     """
     # Strip "models/" prefix
     if name.startswith("models/"):
@@ -56,7 +59,7 @@ def extract_gemini_info(name: str) -> tuple[float, str] | None:
     # Match versioned: gemini-{major}.{minor}-{tier}
     m = re.match(r"gemini-(\d+)\.(\d+)-(\w+(?:-\w+)?)", name)
     if m:
-        version = float(f"{m.group(1)}.{m.group(2)}")
+        version = (int(m.group(1)), int(m.group(2)))
         tier_raw = m.group(3).split("-")[0]  # "flash-image" -> "flash"
         # Check for compound tiers like "flash-lite"
         if "flash-lite" in name:
@@ -69,26 +72,26 @@ def extract_gemini_info(name: str) -> tuple[float, str] | None:
         tier_raw = m.group(1)
         if tier_raw in GEMINI_TIERS:
             # Aliases get a high synthetic version since they auto-update
-            return (99.0, tier_raw)
+            return ((99, 0), tier_raw)
 
     return None
 
 
-def extract_openai_info(name: str) -> tuple[float, str] | None:
+def extract_openai_info(name: str) -> tuple[Version, str] | None:
     """Extract version and tier from an OpenAI model name.
 
     Examples:
-        gpt-5.4 -> (5.4, "")
-        gpt-5.4-mini -> (5.4, "mini")
-        gpt-4.1-nano -> (4.1, "nano")
-        gpt-image-1.5 -> (1.5, "")  # image model
-        o3 -> (3.0, "")
-        o4-mini -> (4.0, "mini")
+        gpt-5.4 -> ((5, 4), "")
+        gpt-5.4-mini -> ((5, 4), "mini")
+        gpt-4.1-nano -> ((4, 1), "nano")
+        gpt-image-1.5 -> ((101, 5), "")  # image model
+        o3 -> ((3, 0), "")
+        o4-mini -> ((4, 0), "mini")
     """
     # GPT models: gpt-{major}.{minor}[-tier]
     m = re.match(r"gpt-(\d+)\.(\d+)(?:-(\w+))?", name)
     if m:
-        version = float(f"{m.group(1)}.{m.group(2)}")
+        version = (int(m.group(1)), int(m.group(2)))
         tier = m.group(3) or ""
         # Filter out non-tier suffixes like "chat", "turbo"
         if tier in ("mini", "nano", "pro"):
@@ -96,22 +99,22 @@ def extract_openai_info(name: str) -> tuple[float, str] | None:
         return (version, "")
 
     # GPT image models: gpt-image-{major}.{minor}
-    # These are newer-gen than DALL-E, so add generation offset (10.0)
+    # These are newer-gen than DALL-E, so add a generation offset of 100.
     m = re.match(r"gpt-image-(\d+)\.(\d+)", name)
     if m:
-        version = float(f"{m.group(1)}.{m.group(2)}") + 10.0
+        version = (100 + int(m.group(1)), int(m.group(2)))
         return (version, "")
 
     # GPT image models: gpt-image-{major}
     m = re.match(r"gpt-image-(\d+)$", name)
     if m:
-        version = float(m.group(1)) + 10.0
+        version = (100 + int(m.group(1)), 0)
         return (version, "")
 
     # Legacy GPT: gpt-{major}[-suffix]
     m = re.match(r"gpt-(\d+)(?:-(.+))?$", name)
     if m:
-        version = float(m.group(1))
+        version = (int(m.group(1)), 0)
         suffix = m.group(2) or ""
         if "mini" in suffix:
             return (version, "mini")
@@ -122,7 +125,7 @@ def extract_openai_info(name: str) -> tuple[float, str] | None:
     # o-series: o{number}[-tier]
     m = re.match(r"o(\d+)(?:-(\w+))?$", name)
     if m:
-        version = float(m.group(1))
+        version = (int(m.group(1)), 0)
         tier = m.group(2) or ""
         if tier in ("mini", "nano", "pro"):
             return (version, tier)
@@ -131,27 +134,27 @@ def extract_openai_info(name: str) -> tuple[float, str] | None:
     # DALL-E: dall-e-{version}
     m = re.match(r"dall-e-(\d+)", name)
     if m:
-        version = float(m.group(1))
+        version = (int(m.group(1)), 0)
         return (version, "")
 
     return None
 
 
-def extract_anthropic_info(name: str) -> tuple[float, str] | None:
+def extract_anthropic_info(name: str) -> tuple[Version, str] | None:
     """Extract version and tier from an Anthropic model name.
 
     Examples:
-        claude-opus-4-7 -> (4.7, "opus")
-        claude-sonnet-4-6 -> (4.6, "sonnet")
-        claude-haiku-4-5 -> (4.5, "haiku")
-        claude-3-5-sonnet-20241022 -> (3.5, "sonnet")  # legacy format
+        claude-opus-4-7 -> ((4, 7), "opus")
+        claude-sonnet-4-6 -> ((4, 6), "sonnet")
+        claude-haiku-4-5 -> ((4, 5), "haiku")
+        claude-3-5-sonnet-20241022 -> ((3, 5), "sonnet")  # legacy format
     """
     # New format: claude-{tier}-{major}-{minor}
     m = re.match(r"claude-(\w+)-(\d+)-(\d+)", name)
     if m:
         tier = m.group(1)
         if tier in ANTHROPIC_TIERS:
-            version = float(f"{m.group(2)}.{m.group(3)}")
+            version = (int(m.group(2)), int(m.group(3)))
             return (version, tier)
 
     # Legacy format: claude-{major}-{minor}-{tier}[-date]
@@ -159,7 +162,7 @@ def extract_anthropic_info(name: str) -> tuple[float, str] | None:
     if m:
         tier = m.group(3).split("-")[0]  # strip date suffix
         if tier in ANTHROPIC_TIERS:
-            version = float(f"{m.group(1)}.{m.group(2)}")
+            version = (int(m.group(1)), int(m.group(2)))
             return (version, tier)
 
     # Versionless: claude-{tier} (aliases)
@@ -167,7 +170,7 @@ def extract_anthropic_info(name: str) -> tuple[float, str] | None:
     if m:
         tier = m.group(1)
         if tier in ANTHROPIC_TIERS:
-            return (99.0, tier)
+            return ((99, 0), tier)
 
     return None
 
@@ -216,13 +219,11 @@ def _should_skip(name: str, purpose: str, provider: str) -> bool:
     return False
 
 
-def score_model(name: str, provider: str) -> float:
+def score_model(name: str, provider: str) -> ModelScore | None:
     """Compute a composite score for a model. Higher = better.
 
-    Score = version * 10 + tier_score
-
-    This ensures version dominates (gpt-5.4 > gpt-4.1 regardless of tier)
-    while tier breaks ties within the same version (opus > sonnet).
+    Versions are compared as integer components, preserving semantic ordering:
+    ``gpt-5.10`` ranks above ``gpt-5.9``. Tier breaks ties within a version.
     """
     if provider == "gemini":
         info = extract_gemini_info(name)
@@ -231,14 +232,14 @@ def score_model(name: str, provider: str) -> float:
     elif provider == "anthropic":
         info = extract_anthropic_info(name)
     else:
-        return 0.0
+        return None
 
     if info is None:
-        return 0.0
+        return None
 
-    version, tier = info
+    (major, minor), tier = info
     tier_score = _get_tier_score(tier, provider)
-    return version * 10 + tier_score
+    return (major, minor, tier_score)
 
 
 def rank_models(
@@ -262,7 +263,7 @@ def rank_models(
         return None
 
     blocked = set(blocklist or [])
-    scored: list[tuple[float, str]] = []
+    scored: list[tuple[ModelScore, str]] = []
 
     for model in models:
         name: str = model.get("name", "")
@@ -280,17 +281,17 @@ def rank_models(
             continue
 
         s = score_model(clean_name, provider)
-        if s > 0:
+        if s is not None:
             scored.append((s, clean_name))
 
     if not scored:
         return None
 
     # Sort by score descending, then by name for determinism
-    scored.sort(key=lambda x: (-x[0], x[1]))
+    scored.sort(key=lambda x: (tuple(-component for component in x[0]), x[1]))
     best = scored[0][1]
     logger.debug(
-        "Ranked %d models for %s/%s, best: %s (score=%.1f)",
+        "Ranked %d models for %s/%s, best: %s (score=%s)",
         len(scored),
         provider,
         purpose,

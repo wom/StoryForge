@@ -13,68 +13,68 @@ class TestGeminiExtraction:
     """Test version/tier extraction for Gemini models."""
 
     def test_versioned_pro(self):
-        assert extract_gemini_info("gemini-3.1-pro") == (3.1, "pro")
+        assert extract_gemini_info("gemini-3.1-pro") == ((3, 1), "pro")
 
     def test_versioned_flash(self):
-        assert extract_gemini_info("gemini-2.5-flash") == (2.5, "flash")
+        assert extract_gemini_info("gemini-2.5-flash") == ((2, 5), "flash")
 
     def test_versioned_flash_image(self):
-        assert extract_gemini_info("gemini-2.5-flash-image") == (2.5, "flash")
+        assert extract_gemini_info("gemini-2.5-flash-image") == ((2, 5), "flash")
 
     def test_versioned_flash_lite(self):
-        assert extract_gemini_info("gemini-3.0-flash-lite") == (3.0, "flash-lite")
+        assert extract_gemini_info("gemini-3.0-flash-lite") == ((3, 0), "flash-lite")
 
     def test_alias_pro_latest(self):
         # Cross-gen aliases get high synthetic version
-        assert extract_gemini_info("gemini-pro-latest") == (99.0, "pro")
+        assert extract_gemini_info("gemini-pro-latest") == ((99, 0), "pro")
 
     def test_alias_flash_latest(self):
-        assert extract_gemini_info("gemini-flash-latest") == (99.0, "flash")
+        assert extract_gemini_info("gemini-flash-latest") == ((99, 0), "flash")
 
     def test_with_models_prefix(self):
-        assert extract_gemini_info("models/gemini-3.0-pro") == (3.0, "pro")
+        assert extract_gemini_info("models/gemini-3.0-pro") == ((3, 0), "pro")
 
     def test_unknown_format(self):
         assert extract_gemini_info("some-random-model") is None
 
     def test_nano(self):
-        assert extract_gemini_info("gemini-2.0-nano") == (2.0, "nano")
+        assert extract_gemini_info("gemini-2.0-nano") == ((2, 0), "nano")
 
 
 class TestOpenAIExtraction:
     """Test version/tier extraction for OpenAI models."""
 
     def test_gpt_versioned(self):
-        assert extract_openai_info("gpt-5.4") == (5.4, "")
+        assert extract_openai_info("gpt-5.4") == ((5, 4), "")
 
     def test_gpt_versioned_mini(self):
-        assert extract_openai_info("gpt-5.4-mini") == (5.4, "mini")
+        assert extract_openai_info("gpt-5.4-mini") == ((5, 4), "mini")
 
     def test_gpt_versioned_nano(self):
-        assert extract_openai_info("gpt-4.1-nano") == (4.1, "nano")
+        assert extract_openai_info("gpt-4.1-nano") == ((4, 1), "nano")
 
     def test_gpt_image(self):
         # gpt-image gets +10 version offset
         result = extract_openai_info("gpt-image-1.5")
         assert result is not None
-        assert result[0] == 11.5  # 1.5 + 10.0
+        assert result[0] == (101, 5)
 
     def test_gpt_image_major_only(self):
         result = extract_openai_info("gpt-image-1")
         assert result is not None
-        assert result[0] == 11.0  # 1.0 + 10.0
+        assert result[0] == (101, 0)
 
     def test_o_series(self):
-        assert extract_openai_info("o3") == (3.0, "")
+        assert extract_openai_info("o3") == ((3, 0), "")
 
     def test_o_series_mini(self):
-        assert extract_openai_info("o4-mini") == (4.0, "mini")
+        assert extract_openai_info("o4-mini") == ((4, 0), "mini")
 
     def test_dalle(self):
-        assert extract_openai_info("dall-e-3") == (3.0, "")
+        assert extract_openai_info("dall-e-3") == ((3, 0), "")
 
     def test_legacy_gpt(self):
-        assert extract_openai_info("gpt-4") == (4.0, "")
+        assert extract_openai_info("gpt-4") == ((4, 0), "")
 
     def test_unknown(self):
         assert extract_openai_info("whisper-1") is None
@@ -84,19 +84,19 @@ class TestAnthropicExtraction:
     """Test version/tier extraction for Anthropic models."""
 
     def test_new_format_opus(self):
-        assert extract_anthropic_info("claude-opus-4-7") == (4.7, "opus")
+        assert extract_anthropic_info("claude-opus-4-7") == ((4, 7), "opus")
 
     def test_new_format_sonnet(self):
-        assert extract_anthropic_info("claude-sonnet-4-6") == (4.6, "sonnet")
+        assert extract_anthropic_info("claude-sonnet-4-6") == ((4, 6), "sonnet")
 
     def test_new_format_haiku(self):
-        assert extract_anthropic_info("claude-haiku-4-5") == (4.5, "haiku")
+        assert extract_anthropic_info("claude-haiku-4-5") == ((4, 5), "haiku")
 
     def test_legacy_format(self):
-        assert extract_anthropic_info("claude-3-5-sonnet-20241022") == (3.5, "sonnet")
+        assert extract_anthropic_info("claude-3-5-sonnet-20241022") == ((3, 5), "sonnet")
 
     def test_legacy_opus(self):
-        assert extract_anthropic_info("claude-3-0-opus") == (3.0, "opus")
+        assert extract_anthropic_info("claude-3-0-opus") == ((3, 0), "opus")
 
     def test_unknown(self):
         assert extract_anthropic_info("not-a-claude-model") is None
@@ -123,8 +123,11 @@ class TestScoring:
         haiku = score_model("claude-haiku-4-5", "anthropic")
         assert opus > sonnet > haiku
 
-    def test_unknown_model_scores_zero(self):
-        assert score_model("unknown-model", "gemini") == 0.0
+    def test_unknown_model_has_no_score(self):
+        assert score_model("unknown-model", "gemini") is None
+
+    def test_semantic_minor_versions_are_ordered(self):
+        assert score_model("gpt-5.10", "openai") > score_model("gpt-5.9", "openai")
 
     def test_cross_gen_alias_scores_highest(self):
         # Aliases auto-update, so they should score very high

@@ -124,6 +124,36 @@ Once upon a time in an enchanted forest..."""
         assert metadata.get("learning_focus") == "counting"
         assert metadata.get("prompt") == "A wizard's quest"
 
+    def test_parse_context_metadata_normalizes_legacy_source_labels(self, tmp_path):
+        """Historical source labels must not make a saved context unextendable."""
+        ctx_file = tmp_path / "legacy_params.md"
+        ctx_file.write_text(
+            """# Story Context: Legacy
+**Theme:** Random (kindness)
+**Age Group:** preschool (CLI)
+**Tone:** heartwarming (Config)
+**Style:** adventure (Default)
+**Voice:** lyrical (CLI)
+**Art Style:** watercolor (CLI)
+**Length:** short (CLI)
+**Learning Focus:** colors (Config)
+
+## Story
+
+A legacy story."""
+        )
+
+        metadata = ContextManager().parse_context_metadata(ctx_file)
+
+        assert metadata["theme"] == "kindness"
+        assert metadata["age_group"] == "preschool"
+        assert metadata["tone"] == "heartwarming"
+        assert metadata["style"] == "adventure"
+        assert metadata["voice"] == "lyrical"
+        assert metadata["art_style"] == "watercolor"
+        assert metadata["length"] == "short"
+        assert metadata["learning_focus"] == "colors"
+
     def test_parse_context_metadata_with_story_preview(self, tmp_path):
         """Test that metadata includes story preview."""
         ctx_file = tmp_path / "test.md"
@@ -309,8 +339,7 @@ class TestExtendCommandIntegration:
         mock_mgr.list_available_contexts.return_value = []
         mock_context_mgr.return_value = mock_mgr
 
-        # typer.Exit is actually click.exceptions.Exit
-        from click.exceptions import Exit
+        from typer import Exit
 
         from storyforge.StoryForge import extend_story
 
@@ -418,7 +447,7 @@ class TestExtendCommandIntegration:
         # Mock picker returning None (cancelled)
         mock_pick_story.return_value = None
 
-        from click.exceptions import Exit
+        from typer import Exit
 
         from storyforge.StoryForge import extend_story
 

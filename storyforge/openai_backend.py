@@ -159,7 +159,7 @@ class OpenAIBackend(LLMBackend):
             models = list_openai_models()
             if models:
                 self._cache.set("openai", models)
-        text_model = find_openai_text_model(models) if models else "gpt-5.2"
+        text_model = find_openai_text_model(models) if models else "gpt-5.5"
         image_model = find_openai_image_model(models) if models else "gpt-image-1.5"
         return text_model, image_model
 

@@ -121,6 +121,13 @@ class TestFieldValidation:
         assert "Invalid value" in errors[0].message
         assert "short, medium, long" in errors[0].message
 
+    def test_image_count_must_be_within_supported_range(self):
+        validator = SchemaValidator(STORYFORGE_SCHEMA)
+
+        assert validator.validate_cli_argument("image_count", 3) == []
+        assert validator.validate_cli_argument("image_count", 0)
+        assert validator.validate_cli_argument("image_count", 6)
+
     def test_validate_field_with_custom_validator(self):
         """Test validation with custom validator function."""
         validator = SchemaValidator(STORYFORGE_SCHEMA)

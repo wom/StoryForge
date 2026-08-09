@@ -53,8 +53,9 @@ class TestPhaseExecutorPhases:
         self.phase_executor._phase_backend_init()
 
         assert self.phase_executor.llm_backend == mock_backend
-        # Check it was called with config_backend and config keyword args
-        mock_get_backend.assert_called_once_with(config_backend="gemini", config=self.phase_executor.config)
+        mock_get_backend.assert_called_once_with(
+            backend_name="gemini", config_backend=None, config=self.phase_executor.config
+        )
 
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.get_backend")
@@ -67,8 +68,23 @@ class TestPhaseExecutorPhases:
 
         self.phase_executor._phase_backend_init()
 
-        # Should call with None to trigger auto-detection
-        mock_get_backend.assert_called_once_with(config_backend=None, config=self.phase_executor.config)
+        # With no explicit or configured backend, factory auto-detection is used.
+        mock_get_backend.assert_called_once_with(
+            backend_name=None, config_backend=None, config=self.phase_executor.config
+        )
+
+    @patch("storyforge.phase_executor.console")
+    @patch("storyforge.phase_executor.get_backend")
+    def test_phase_backend_init_cli_backend_overrides_config(self, mock_get_backend, mock_console):
+        """The explicit CLI backend must take precedence over a config backend."""
+        self.checkpoint_data.resolved_config.update({"backend": "openai", "config_backend": "gemini"})
+        mock_get_backend.return_value = MagicMock()
+
+        self.phase_executor._phase_backend_init()
+
+        mock_get_backend.assert_called_once_with(
+            backend_name="openai", config_backend="gemini", config=self.phase_executor.config
+        )
 
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.get_backend")
@@ -387,6 +403,7 @@ class TestPhaseExecutorPhases:
     @patch("storyforge.phase_executor.console")
     def test_phase_image_generate_skip_if_not_requested(self, mock_console):
         """Test _phase_image_generate skips when no images requested."""
+        self.checkpoint_data.user_decisions["wants_images"] = False
         self.checkpoint_data.user_decisions["num_images_requested"] = 0
 
         initial_images = self.checkpoint_data.generated_content.get("images", [])
@@ -947,10 +964,11 @@ class TestContextIntelligenceWiring:
     @patch("storyforge.phase_executor.ContextManager")
     @patch("storyforge.phase_executor.Confirm")
     @patch("storyforge.phase_executor.console")
-    def test_registry_update_on_context_save(self, mock_console, mock_confirm, mock_cm_class):
+    def test_registry_update_on_context_save(self, mock_console, mock_confirm, mock_cm_class, tmp_path):
         """Test update_character_registry is called after saving context."""
         mock_confirm.ask.return_value = True
         mock_cm = MagicMock()
+        mock_cm.get_context_directory.return_value = tmp_path
         mock_cm_class.return_value = mock_cm
 
         self.checkpoint_data.original_inputs["prompt"] = "test story"

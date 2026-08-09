@@ -1,6 +1,6 @@
 [project]
 name = "StoryForge"
-version = "0.0.8"
+dynamic = ["version"]
 description = "A TUI app that generates short stories and AI images from prompts using a language model."
 authors = [
     { name = "Chris (wom)" }
@@ -68,6 +68,9 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 include = ["storyforge*"]
 exclude = ["data*", "tests*"]
+
+[tool.setuptools.dynamic]
+version = {attr = "storyforge.__version__"}
 
 [tool.ruff]
 target-version = "py312"
