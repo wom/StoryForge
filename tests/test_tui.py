@@ -59,6 +59,18 @@ async def test_home_screen_exposes_all_primary_workflows():
 
 
 @pytest.mark.asyncio
+async def test_home_panel_is_centered_in_wide_terminal():
+    app = StoryForgeApp(client=FakeClient())
+    async with app.run_test(size=(200, 50)) as pilot:
+        await pilot.pause()
+        home = app.screen.query_one("#home")
+        left_space = home.region.x
+        right_space = app.screen.size.width - home.region.right
+
+        assert abs(left_space - right_space) <= 1
+
+
+@pytest.mark.asyncio
 async def test_generate_route_prefills_prompt_and_opens_review():
     fake = FakeClient()
     app = StoryForgeApp(
