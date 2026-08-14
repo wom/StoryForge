@@ -1,4 +1,4 @@
-.PHONY: all test run install lint lint-check clean coverage debug console typecheck release
+.PHONY: all test run install lint lint-check clean coverage debug console typecheck mcp mcp-dev release
 
 # Use .venv/bin/uv consistently
 VENV_ACTIVATE = . .venv/bin/activate &&
@@ -25,6 +25,14 @@ coverage: install
 # Run the app
 run: install
 	$(VENV_ACTIVATE) storyforge --help
+
+# Run the bundled StoryForge MCP server over stdio.
+mcp: install
+	$(VENV_ACTIVATE) storyforge-mcp
+
+# Open the bundled server in the official MCP development inspector.
+mcp-dev: install
+	$(VENV_ACTIVATE) mcp dev storyforge/mcp_server.py
 
 # [venv] Run attaching to debug console
 debug:

@@ -1,0 +1,837 @@
+"""Unified Textual interface for StoryForge MCP workflows."""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any, Literal, cast
+
+from textual import work
+from textual.app import App, ComposeResult
+from textual.binding import Binding
+from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.screen import Screen
+from textual.widgets import (
+    Button,
+    Checkbox,
+    Footer,
+    Header,
+    Input,
+    Label,
+    LoadingIndicator,
+    OptionList,
+    Select,
+    Static,
+    TextArea,
+)
+from textual.worker import get_current_worker
+
+from .mcp_client import StoryForgeMCPClient
+from .mcp_models import (
+    DraftResult,
+    ExportRequest,
+    ExtensionRequest,
+    FinalizeRequest,
+    GenerationRequest,
+    RefinementRequest,
+    SessionSummary,
+    StorySummary,
+    WorkflowResult,
+)
+
+
+class StoryForgeScreen(Screen[None]):
+    """Base screen with consistent shell and navigation."""
+
+    BINDINGS = [Binding("escape", "back", "Back", show=True)]
+
+    @property
+    def storyforge_app(self) -> StoryForgeApp:
+        """Narrow Textual's application type for screen event handlers."""
+        return cast("StoryForgeApp", super().app)
+
+    def action_back(self) -> None:
+        app = self.storyforge_app
+        if len(app.screen_stack) > 1:
+            app.pop_screen()
+        else:
+            app.exit()
+
+
+class HomeScreen(StoryForgeScreen):
+    """StoryForge workflow launcher."""
+
+    BINDINGS = [Binding("q", "quit", "Quit", show=True)]
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="home"):
+            yield Static("[bold cyan]StoryForge[/bold cyan]", id="brand")
+            yield Static("Create and continue illustrated stories", classes="subtitle")
+            with Horizontal(classes="home-row"):
+                yield Button("New Story", id="new", variant="primary")
+                yield Button("Continue", id="continue")
+                yield Button("Extend", id="extend")
+            with Horizontal(classes="home-row"):
+                yield Button("Export Chain", id="export")
+                yield Button("World", id="world")
+                yield Button("Configuration", id="config")
+                yield Button("Models", id="models")
+        yield Footer()
+
+    def action_quit(self) -> None:
+        self.storyforge_app.exit()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        app = self.storyforge_app
+        routes: dict[str, Callable[[], Any]] = {
+            "new": app.show_new_story,
+            "continue": app.show_continue,
+            "extend": app.show_extend,
+            "export": app.show_export,
+            "world": app.show_world,
+            "config": app.show_config,
+            "models": app.show_models,
+        }
+        action = routes.get(event.button.id or "")
+        if action is not None:
+            action()
+
+
+class NewStoryScreen(StoryForgeScreen):
+    """Schema-aligned form for a new story."""
+
+    def __init__(self, initial: GenerationRequest | None = None) -> None:
+        super().__init__()
+        self.initial = initial or GenerationRequest(prompt=" ")
+
+    @staticmethod
+    def _options(values: list[str]) -> list[tuple[str, str]]:
+        return [((value.replace("_", " ").title() if value else "None"), value) for value in values]
+
+    def compose(self) -> ComposeResult:
+        initial = self.initial
+        yield Header()
+        with VerticalScroll(id="form"):
+            yield Label("New Story", classes="screen-title")
+            yield Label("Prompt")
+            yield TextArea(initial.prompt.strip(), id="prompt")
+            with Horizontal(classes="field-row"):
+                with Vertical(classes="field"):
+                    yield Label("Age range")
+                    yield Select(
+                        self._options(["toddler", "preschool", "early_reader", "middle_grade"]),
+                        value=initial.age_range or "early_reader",
+                        id="age_range",
+                    )
+                with Vertical(classes="field"):
+                    yield Label("Length")
+                    yield Select(
+                        self._options(["flash", "short", "medium", "bedtime"]),
+                        value=initial.length or "bedtime",
+                        id="length",
+                    )
+            with Horizontal(classes="field-row"):
+                with Vertical(classes="field"):
+                    yield Label("Style")
+                    yield Select(
+                        self._options(["adventure", "comedy", "fantasy", "fairy_tale", "friendship", "random"]),
+                        value=initial.style or "random",
+                        id="style",
+                    )
+                with Vertical(classes="field"):
+                    yield Label("Tone")
+                    yield Select(
+                        self._options(["gentle", "exciting", "silly", "heartwarming", "magical", "random"]),
+                        value=initial.tone or "random",
+                        id="tone",
+                    )
+            yield Label("Characters (comma-separated)")
+            yield Input(value=", ".join(initial.characters or []), id="characters")
+            yield Label("Setting")
+            yield Input(value=initial.setting or "", id="setting")
+            with Horizontal(classes="field-row"):
+                with Vertical(classes="field"):
+                    yield Label("Theme")
+                    yield Select(
+                        self._options(["courage", "kindness", "teamwork", "problem_solving", "creativity", "random"]),
+                        value=initial.theme or "random",
+                        id="theme",
+                    )
+                with Vertical(classes="field"):
+                    yield Label("Voice")
+                    yield Select(
+                        self._options(
+                            [
+                                "",
+                                "anapestic",
+                                "sardonic",
+                                "picaresque",
+                                "iambic",
+                                "fable",
+                                "gothic",
+                                "nonsense",
+                                "lyrical",
+                                "epistolary",
+                                "random",
+                            ]
+                        ),
+                        value=initial.voice or "",
+                        id="voice",
+                    )
+            with Horizontal(classes="field-row"):
+                with Vertical(classes="field"):
+                    yield Label("Learning focus")
+                    yield Select(
+                        self._options(["", "counting", "colors", "letters", "emotions", "nature"]),
+                        value=initial.learning_focus or "",
+                        id="learning_focus",
+                    )
+                with Vertical(classes="field"):
+                    yield Label("Image style")
+                    yield Select(
+                        self._options(["chibi", "realistic", "cartoon", "watercolor", "sketch"]),
+                        value=initial.image_style or "chibi",
+                        id="image_style",
+                    )
+            yield Label("Backend (leave blank for automatic selection)")
+            yield Input(value=initial.backend or "", id="backend")
+            yield Label("Output directory (leave blank for automatic name)")
+            yield Input(value=initial.output_dir or "", id="output_dir")
+            yield Label("World file override")
+            yield Input(value=initial.world_file or "", id="world_file")
+            yield Checkbox("Use saved story context", value=initial.use_context is not False, id="use_context")
+            with Horizontal(classes="actions"):
+                yield Button("Generate Draft", id="generate", variant="success")
+                yield Button("Cancel", id="cancel")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel":
+            self.action_back()
+            return
+        if event.button.id != "generate":
+            return
+        prompt = self.query_one("#prompt", TextArea).text.strip()
+        if not prompt:
+            self.notify("Enter a story prompt", severity="error")
+            return
+        characters = [value.strip() for value in self.query_one("#characters", Input).value.split(",")]
+        request = GenerationRequest(
+            prompt=prompt,
+            age_range=str(self.query_one("#age_range", Select).value),
+            length=str(self.query_one("#length", Select).value),
+            style=str(self.query_one("#style", Select).value),
+            tone=str(self.query_one("#tone", Select).value),
+            voice=str(self.query_one("#voice", Select).value) or None,
+            theme=str(self.query_one("#theme", Select).value),
+            learning_focus=str(self.query_one("#learning_focus", Select).value) or None,
+            characters=[value for value in characters if value] or None,
+            setting=self.query_one("#setting", Input).value.strip() or None,
+            backend=self.query_one("#backend", Input).value.strip() or None,
+            image_style=str(self.query_one("#image_style", Select).value),
+            image_count=self.initial.image_count,
+            output_dir=self.query_one("#output_dir", Input).value.strip() or None,
+            use_context=self.query_one("#use_context", Checkbox).value,
+            world_file=self.query_one("#world_file", Input).value.strip() or None,
+            verbose=self.initial.verbose,
+            debug=self.initial.debug,
+        )
+        self.storyforge_app.create_draft(request)
+
+
+class ProgressScreen(StoryForgeScreen):
+    """Responsive progress view fed by MCP notifications."""
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel", show=True)]
+
+    def __init__(self, title: str) -> None:
+        super().__init__()
+        self.progress_title = title
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="progress-panel"):
+            yield Static(f"[bold cyan]{self.progress_title}[/bold cyan]", classes="screen-title")
+            yield LoadingIndicator()
+            yield Static("Starting StoryForge MCP workflow…", id="progress-message")
+            yield Static("", id="progress-value", classes="subtitle")
+        yield Footer()
+
+    def update_progress(self, progress: float, total: float | None, message: str | None) -> None:
+        if message:
+            self.query_one("#progress-message", Static).update(message.replace("_", " ").title())
+        if total:
+            self.query_one("#progress-value", Static).update(f"{round(progress / total * 100)}%")
+
+    def action_cancel(self) -> None:
+        self.storyforge_app.cancel_active_workflow()
+
+
+class ReviewScreen(StoryForgeScreen):
+    """Story reading and refinement screen."""
+
+    def __init__(self, draft: DraftResult) -> None:
+        super().__init__()
+        self.draft = draft
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="review"):
+            yield Static("[bold cyan]Review Story[/bold cyan]", classes="screen-title")
+            yield VerticalScroll(Static(self.draft.story, id="story-text"), id="story-reader")
+            yield Input(placeholder="Optional refinement instructions", id="refinement")
+            with Horizontal(classes="actions"):
+                yield Button("Accept", id="accept", variant="success")
+                yield Button("Refine", id="refine", variant="warning")
+                yield Button("Home", id="home")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "accept":
+            self.storyforge_app.push_screen(MediaScreen(self.draft))
+        elif event.button.id == "refine":
+            instructions = self.query_one("#refinement", Input).value.strip()
+            if not instructions:
+                self.notify("Enter refinement instructions", severity="error")
+                return
+            self.storyforge_app.refine_draft(self.draft.session_id, instructions)
+        elif event.button.id == "home":
+            self.storyforge_app.go_home()
+
+
+class MediaScreen(StoryForgeScreen):
+    """Final media and context decisions."""
+
+    def __init__(self, draft: DraftResult) -> None:
+        super().__init__()
+        self.draft = draft
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="media-form"):
+            yield Static("[bold cyan]Finish Story[/bold cyan]", classes="screen-title")
+            yield Label("Video prompt scenes (0 to skip)")
+            yield Input(value="0", type="integer", id="video_count")
+            yield Label("Illustrations (0 to skip, maximum 5)")
+            yield Input(
+                value=str(self.draft.metadata.get("image_count", 0) or 0),
+                type="integer",
+                id="image_count",
+            )
+            yield Checkbox("Save as future story context", id="save_context")
+            with Horizontal(classes="actions"):
+                yield Button("Finish", id="finish", variant="success")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+            return
+        if event.button.id != "finish":
+            return
+        video = int(self.query_one("#video_count", Input).value or "0")
+        images = int(self.query_one("#image_count", Input).value or "0")
+        if not 0 <= images <= 5:
+            self.notify("Image count must be between 0 and 5", severity="error")
+            return
+        self.storyforge_app.finalize_story(
+            FinalizeRequest(
+                session_id=self.draft.session_id,
+                video_scene_count=video,
+                image_count=images,
+                save_context=self.query_one("#save_context", Checkbox).value,
+            )
+        )
+
+
+PickerKind = Literal["extend", "export", "continue"]
+
+
+class PickerScreen(StoryForgeScreen):
+    """Reusable split-pane picker based on the original sf-extend UI."""
+
+    def __init__(
+        self,
+        title: str,
+        kind: PickerKind,
+        items: list[StorySummary] | list[SessionSummary],
+    ) -> None:
+        super().__init__()
+        self.picker_title = title
+        self.kind = kind
+        self.items = items
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Horizontal(id="picker-layout"):
+            labels = []
+            for item in self.items:
+                if isinstance(item, StorySummary):
+                    suffix = f" · {item.chain_length} parts" if item.chain_length > 1 else ""
+                    labels.append(f"{item.filename}{suffix}")
+                else:
+                    labels.append(f"{item.prompt_preview} · {item.status}")
+            yield OptionList(*labels, id="item-list")
+            yield Static("", id="preview-panel")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        if self.items:
+            self._update_preview(0)
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        self._update_preview(event.option_index)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        item = self.items[event.option_index]
+        if self.kind == "extend" and isinstance(item, StorySummary):
+            self.storyforge_app.push_screen(ExtensionOptionsScreen(item))
+        elif self.kind == "export" and isinstance(item, StorySummary):
+            self.storyforge_app.push_screen(ExportOptionsScreen(item))
+        elif self.kind == "continue" and isinstance(item, SessionSummary):
+            self.storyforge_app.resume_session(item.session_id)
+
+    def _update_preview(self, index: int) -> None:
+        item = self.items[index]
+        if isinstance(item, StorySummary):
+            text = (
+                f"[bold cyan]{item.filename}[/bold cyan]\n\n"
+                f"[bold]Generated:[/bold] {item.timestamp or 'Unknown'}\n"
+                f"[bold]Chain:[/bold] {item.chain_length} part(s)\n"
+                f"[bold]Characters:[/bold] {item.characters or '—'}\n"
+                f"[bold]Theme:[/bold] {item.theme or '—'}\n\n"
+                f"[bold]Preview[/bold]\n{item.preview or 'No preview available.'}\n\n"
+                "[dim]Press Enter to continue[/dim]"
+            )
+        else:
+            text = (
+                f"[bold cyan]{item.prompt_preview}[/bold cyan]\n\n"
+                f"[bold]Created:[/bold] {item.created_at}\n"
+                f"[bold]Status:[/bold] {item.status}\n"
+                f"[bold]Phase:[/bold] {item.current_phase}\n"
+                f"[bold]Progress:[/bold] {item.completion_percentage}%\n\n"
+                "[dim]Press Enter to resume[/dim]"
+            )
+        self.query_one("#preview-panel", Static).update(text)
+
+
+class ExtensionOptionsScreen(StoryForgeScreen):
+    """Continuation direction form."""
+
+    def __init__(self, story: StorySummary) -> None:
+        super().__init__()
+        self.story = story
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="extension-form"):
+            yield Static(f"[bold cyan]Extend {self.story.filename}[/bold cyan]", classes="screen-title")
+            yield Select(
+                [("Leave a cliffhanger", "cliffhanger"), ("Wrap up the story", "wrap_up")],
+                value="cliffhanger",
+                id="ending",
+            )
+            yield Input(placeholder="Optional direction for the continuation", id="direction")
+            with Horizontal(classes="actions"):
+                yield Button("Generate Draft", id="generate", variant="success")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "generate":
+            ending = cast(Literal["wrap_up", "cliffhanger"], str(self.query_one("#ending", Select).value))
+            self.storyforge_app.create_extension_draft(
+                ExtensionRequest(
+                    story_id=self.story.id,
+                    ending_type=ending,
+                    direction=self.query_one("#direction", Input).value.strip() or None,
+                )
+            )
+
+
+class ExportOptionsScreen(StoryForgeScreen):
+    """Story-chain export destination form."""
+
+    def __init__(self, story: StorySummary) -> None:
+        super().__init__()
+        self.story = story
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="export-form"):
+            yield Static(f"[bold cyan]Export {self.story.filename}[/bold cyan]", classes="screen-title")
+            yield Static(f"{self.story.chain_length} story parts will be combined.")
+            yield Input(placeholder="Output path (leave blank for automatic name)", id="output")
+            with Horizontal(classes="actions"):
+                yield Button("Export", id="export", variant="success")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "export":
+            self.storyforge_app.export_chain(
+                ExportRequest(
+                    story_id=self.story.id,
+                    output=self.query_one("#output", Input).value.strip() or None,
+                )
+            )
+
+
+class ResultScreen(StoryForgeScreen):
+    """Consistent completion or failure result."""
+
+    def __init__(self, title: str, message: str, artifacts: list[str] | None = None, error: bool = False) -> None:
+        super().__init__()
+        self.result_title = title
+        self.message = message
+        self.artifacts = artifacts or []
+        self.error = error
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="result-panel"):
+            color = "red" if self.error else "green"
+            yield Static(f"[bold {color}]{self.result_title}[/bold {color}]", classes="screen-title")
+            yield Static(self.message)
+            if self.artifacts:
+                yield Static("\n".join(f"• {path}" for path in self.artifacts), id="artifacts")
+            with Horizontal(classes="actions"):
+                yield Button("Home", id="home", variant="primary")
+                yield Button("Quit", id="quit")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "home":
+            self.storyforge_app.go_home()
+        elif event.button.id == "quit":
+            self.storyforge_app.exit()
+
+
+class WorldScreen(StoryForgeScreen):
+    """World-file viewer and editor."""
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        super().__init__()
+        self.data = data
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="world-screen"):
+            yield Static("[bold cyan]Story World[/bold cyan]", classes="screen-title")
+            yield Static(str(self.data.get("path", "")), classes="subtitle")
+            yield TextArea(str(self.data.get("content", "")), id="world-content")
+            with Horizontal(classes="actions"):
+                yield Button("Save", id="save", variant="success")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "save":
+            self.storyforge_app.save_world(self.query_one("#world-content", TextArea).text)
+
+
+class DataScreen(StoryForgeScreen):
+    """Simple structured-data screen for config and model cache state."""
+
+    def __init__(self, title: str, content: str, kind: Literal["config", "models"]) -> None:
+        super().__init__()
+        self.data_title = title
+        self.content = content
+        self.kind = kind
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="data-screen"):
+            yield Static(f"[bold cyan]{self.data_title}[/bold cyan]", classes="screen-title")
+            yield VerticalScroll(Static(self.content), id="data-reader")
+            with Horizontal(classes="actions"):
+                if self.kind == "config":
+                    yield Button("Initialize Config", id="init", variant="primary")
+                else:
+                    yield Button("Invalidate Cache", id="invalidate", variant="primary")
+                    yield Button("Clear Cache", id="clear", variant="error")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "init":
+            self.storyforge_app.init_config()
+        elif event.button.id == "invalidate":
+            self.storyforge_app.invalidate_models()
+        elif event.button.id == "clear":
+            self.storyforge_app.clear_models()
+
+
+class StoryForgeApp(App[None]):
+    """Full-screen StoryForge MCP client."""
+
+    TITLE = "StoryForge"
+    CSS = """
+    Screen { background: $surface; }
+    Header { background: $primary-background; }
+    #home, #form, #review, #media-form, #extension-form, #export-form,
+    #progress-panel, #result-panel, #world-screen, #data-screen {
+        width: 90%; max-width: 110; height: auto; max-height: 1fr;
+        margin: 1 2; padding: 1 2; border: solid $primary;
+    }
+    #home { align: center middle; height: 1fr; }
+    #brand { text-align: center; text-style: bold; width: 100%; }
+    .subtitle { color: $text-muted; margin-bottom: 1; }
+    .screen-title { margin-bottom: 1; }
+    .home-row, .field-row, .actions { height: auto; margin-top: 1; }
+    .home-row { align-horizontal: center; }
+    .home-row Button { min-width: 18; margin: 0 1; }
+    .field { width: 1fr; margin-right: 1; }
+    .actions Button { margin-right: 1; }
+    TextArea#prompt { height: 8; }
+    #picker-layout { height: 1fr; }
+    #item-list { width: 1fr; min-width: 30; border: solid $primary; }
+    #item-list:focus { border: solid $accent; }
+    #preview-panel { width: 2fr; border: solid $primary; padding: 1 2; overflow-y: auto; }
+    #story-reader, #data-reader { height: 1fr; border: solid $primary; padding: 1 2; }
+    #world-content { height: 1fr; }
+    #progress-panel, #result-panel { align: center middle; height: 1fr; text-align: center; }
+    LoadingIndicator { height: 5; }
+    """
+
+    def __init__(
+        self,
+        route: str = "home",
+        initial_request: GenerationRequest | None = None,
+        client: StoryForgeMCPClient | Any | None = None,
+    ) -> None:
+        super().__init__()
+        self.route = route
+        self.initial_request = initial_request
+        self.client: Any = client
+        self._owns_client = client is None
+        self._active_worker: Any = None
+
+    async def on_mount(self) -> None:
+        try:
+            if self.client is None:
+                self.client = StoryForgeMCPClient(progress_callback=self._on_progress)
+                await self.client.__aenter__()
+            self.call_after_refresh(self._show_initial_route)
+        except Exception as error:
+            self.push_screen(ResultScreen("MCP Server Error", str(error), error=True))
+
+    async def on_unmount(self) -> None:
+        if self._owns_client and self.client is not None:
+            await self.client.__aexit__(None, None, None)
+
+    def _show_initial_route(self) -> None:
+        routes: dict[str, Callable[[], Any]] = {
+            "home": lambda: self.push_screen(HomeScreen()),
+            "generate": self.show_new_story,
+            "continue": self.show_continue,
+            "extend": self.show_extend,
+            "export": self.show_export,
+            "world": self.show_world,
+            "config": self.show_config,
+            "models": self.show_models,
+        }
+        routes.get(self.route, routes["home"])()
+
+    def go_home(self) -> None:
+        self.switch_screen(HomeScreen())
+
+    def show_new_story(self) -> None:
+        self.push_screen(NewStoryScreen(self.initial_request))
+
+    def _on_progress(self, progress: float, total: float | None, message: str | None) -> None:
+        if isinstance(self.screen, ProgressScreen):
+            self.screen.update_progress(progress, total, message)
+
+    async def _start_progress(self, title: str) -> ProgressScreen:
+        screen = ProgressScreen(title)
+        await self.push_screen(screen)
+        return screen
+
+    def cancel_active_workflow(self) -> None:
+        if self._active_worker is not None:
+            self._active_worker.cancel()
+        self.notify("Cancellation requested; the current provider call may finish first.", severity="warning")
+
+    @work(exclusive=True)
+    async def create_draft(self, request: GenerationRequest) -> None:
+        self._active_worker = get_current_worker()
+        await self._start_progress("Generating Draft")
+        try:
+            draft = await self.client.create_draft(request)
+            self.switch_screen(ReviewScreen(draft))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Generation Failed", str(error), error=True))
+
+    @work(exclusive=True)
+    async def create_extension_draft(self, request: ExtensionRequest) -> None:
+        self._active_worker = get_current_worker()
+        await self._start_progress("Extending Story")
+        try:
+            draft = await self.client.create_extension_draft(request)
+            self.switch_screen(ReviewScreen(draft))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Extension Failed", str(error), error=True))
+
+    @work(exclusive=True)
+    async def refine_draft(self, session_id: str, instructions: str) -> None:
+        self._active_worker = get_current_worker()
+        await self._start_progress("Refining Story")
+        try:
+            draft = await self.client.refine_draft(RefinementRequest(session_id=session_id, instructions=instructions))
+            self.switch_screen(ReviewScreen(draft))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Refinement Failed", str(error), error=True))
+
+    @work(exclusive=True)
+    async def finalize_story(self, request: FinalizeRequest) -> None:
+        self._active_worker = get_current_worker()
+        await self._start_progress("Finishing Story")
+        try:
+            result: WorkflowResult = await self.client.finalize_story(request)
+            self.switch_screen(ResultScreen("Story Complete", result.message, result.artifacts))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Finalization Failed", str(error), error=True))
+
+    @work(exclusive=True)
+    async def show_extend(self) -> None:
+        await self._start_progress("Loading Stories")
+        try:
+            stories = await self.client.list_stories()
+            screen: StoryForgeScreen = (
+                PickerScreen("Extend Story", "extend", stories)
+                if stories
+                else ResultScreen("No Saved Stories", "Generate and save a story before extending one.")
+            )
+            self.switch_screen(screen)
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Load Stories", str(error), error=True))
+
+    @work(exclusive=True)
+    async def show_export(self) -> None:
+        await self._start_progress("Loading Story Chains")
+        try:
+            stories = await self.client.list_stories(chain_only=True)
+            screen: StoryForgeScreen = (
+                PickerScreen("Export Story Chain", "export", stories)
+                if stories
+                else ResultScreen("No Story Chains", "Extend a story first to create a chain.")
+            )
+            self.switch_screen(screen)
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Load Chains", str(error), error=True))
+
+    @work(exclusive=True)
+    async def show_continue(self) -> None:
+        await self._start_progress("Loading Sessions")
+        try:
+            sessions = await self.client.list_sessions()
+            screen: StoryForgeScreen = (
+                PickerScreen("Continue Session", "continue", sessions)
+                if sessions
+                else ResultScreen("No Sessions", "No StoryForge checkpoints are available.")
+            )
+            self.switch_screen(screen)
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Load Sessions", str(error), error=True))
+
+    @work(exclusive=True)
+    async def resume_session(self, session_id: str) -> None:
+        await self._start_progress("Resuming Session")
+        try:
+            draft = await self.client.resume_session(session_id)
+            self.switch_screen(ReviewScreen(draft))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Resume Failed", str(error), error=True))
+
+    @work(exclusive=True)
+    async def export_chain(self, request: ExportRequest) -> None:
+        await self._start_progress("Exporting Story Chain")
+        try:
+            result = await self.client.export_chain(request)
+            self.switch_screen(ResultScreen("Export Complete", result.message, result.artifacts))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Export Failed", str(error), error=True))
+
+    @work(exclusive=True)
+    async def show_world(self) -> None:
+        await self._start_progress("Loading Story World")
+        try:
+            self.switch_screen(WorldScreen(await self.client.read_world()))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Load World", str(error), error=True))
+
+    @work(exclusive=True)
+    async def save_world(self, content: str) -> None:
+        await self._start_progress("Saving Story World")
+        try:
+            result = await self.client.write_world(content, overwrite=True)
+            self.switch_screen(ResultScreen("World Saved", f"Saved {result.get('path', '')}"))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Save World", str(error), error=True))
+
+    @work(exclusive=True)
+    async def show_config(self) -> None:
+        await self._start_progress("Loading Configuration")
+        try:
+            data = await self.client.get_config()
+            values = data.get("values", data)
+            content = "\n".join(f"[{section}]\n{settings}" for section, settings in values.items())
+            self.switch_screen(DataScreen("Configuration", content, "config"))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Load Configuration", str(error), error=True))
+
+    @work(exclusive=True)
+    async def init_config(self) -> None:
+        await self._start_progress("Initializing Configuration")
+        try:
+            result = await self.client.init_config()
+            self.switch_screen(ResultScreen("Configuration Ready", result.message, result.artifacts))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Initialize Configuration", str(error), error=True))
+
+    @work(exclusive=True)
+    async def show_models(self) -> None:
+        await self._start_progress("Loading Model Cache")
+        try:
+            models = await self.client.list_models()
+            lines = []
+            for backend, entries in models.items():
+                lines.append(f"[bold cyan]{backend.title()}[/bold cyan] · {len(entries)} cached")
+                lines.extend(f"  • {entry.get('name', entry.get('id', 'unknown'))}" for entry in entries)
+                lines.append("")
+            self.switch_screen(DataScreen("Model Cache", "\n".join(lines) or "No cached models.", "models"))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Load Models", str(error), error=True))
+
+    @work(exclusive=True)
+    async def invalidate_models(self) -> None:
+        await self._start_progress("Invalidating Model Cache")
+        try:
+            result = await self.client.invalidate_models()
+            self.switch_screen(ResultScreen("Cache Invalidated", result.message))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Invalidate Cache", str(error), error=True))
+
+    @work(exclusive=True)
+    async def clear_models(self) -> None:
+        await self._start_progress("Clearing Model Cache")
+        try:
+            result = await self.client.clear_models(confirmed=True)
+            self.switch_screen(ResultScreen("Cache Cleared", result.message))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Clear Cache", str(error), error=True))
+
+
+def run_tui(route: str = "home", initial_request: GenerationRequest | None = None) -> None:
+    """Launch StoryForge's full-screen MCP client."""
+    StoryForgeApp(route=route, initial_request=initial_request).run()

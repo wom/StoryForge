@@ -7,6 +7,7 @@ automatic checkpointing and recovery capabilities.
 
 import logging
 import os
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -28,7 +29,11 @@ class PhaseExecutor:
 
     MAX_FILENAME_PREFIX_LENGTH: int = 30
 
-    def __init__(self, checkpoint_manager: CheckpointManager) -> None:
+    def __init__(
+        self,
+        checkpoint_manager: CheckpointManager,
+        reporter: Callable[[str, str, float | None], None] | None = None,
+    ) -> None:
         """Initialize the phase executor."""
         self.checkpoint_manager = checkpoint_manager
         self.checkpoint_data: CheckpointData | None = None
@@ -40,6 +45,12 @@ class PhaseExecutor:
         self.story: str | None = None
         self.refinements: str | None = None
         self._initialized_phases: set[ExecutionPhase] = set()  # Track which phases have been initialized
+        self.reporter = reporter
+
+    def _report(self, kind: str, message: str, progress: float | None = None) -> None:
+        """Publish a transport-neutral workflow event when a reporter is configured."""
+        if self.reporter is not None:
+            self.reporter(kind, message, progress)
 
     def execute_from_checkpoint(self, checkpoint_data: CheckpointData, resume_phase: ExecutionPhase) -> None:
         """Execute StoryForge starting from a checkpoint and specific phase."""
@@ -235,7 +246,8 @@ class PhaseExecutor:
         cli_arguments: dict[str, Any],
         resolved_config: dict[str, Any],
         prompt_obj: Prompt | None = None,
-    ) -> None:
+        stop_after: ExecutionPhase | None = None,
+    ) -> CheckpointData:
         """
         Execute a new StoryForge session with checkpointing.
 
@@ -264,12 +276,20 @@ class PhaseExecutor:
             self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
 
             # Start execution from the beginning
-            self._execute_phase_sequence(ExecutionPhase.INIT)
+            if stop_after is None:
+                self._execute_phase_sequence(ExecutionPhase.INIT)
+            else:
+                self._execute_phase_sequence(ExecutionPhase.INIT, stop_after=stop_after)
+
+            if stop_after is not None:
+                self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
+                return self.checkpoint_data
 
             # Mark session as completed
             self.checkpoint_data.mark_completed()
             self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
             console.print("[bold green]✅ StoryForge session completed successfully![/bold green]")
+            return self.checkpoint_data
 
         except typer.Exit:
             # User cancelled - don't mark as failed
@@ -295,7 +315,71 @@ class PhaseExecutor:
                     console.print(f"[red]Could not save failed session:[/red] {save_error}")
             raise
 
-    def _execute_phase_sequence(self, start_phase: ExecutionPhase) -> None:
+    def execute_existing_session(
+        self,
+        checkpoint_data: CheckpointData,
+        start_phase: ExecutionPhase,
+        stop_after: ExecutionPhase | None = None,
+    ) -> CheckpointData:
+        """Continue an existing checkpoint without creating a resumed-session copy."""
+        self.checkpoint_data = checkpoint_data
+        self.story = str(checkpoint_data.generated_content.get("story") or "")
+        self.refinements = checkpoint_data.generated_content.get("refinements")
+        self._execute_phase_sequence(start_phase, stop_after=stop_after)
+        if stop_after is not None:
+            self.checkpoint_manager.save_checkpoint(checkpoint_data)
+            return checkpoint_data
+        checkpoint_data.mark_completed()
+        self.checkpoint_manager.save_checkpoint(checkpoint_data)
+        return checkpoint_data
+
+    def refine_existing_story(
+        self,
+        checkpoint_data: CheckpointData,
+        instructions: str,
+    ) -> CheckpointData:
+        """Refine a staged draft without invoking terminal interaction."""
+        if not instructions.strip():
+            raise ValueError("Refinement instructions cannot be empty")
+
+        self.checkpoint_data = checkpoint_data
+        self.story = str(checkpoint_data.generated_content.get("story") or "")
+        if not self.story:
+            raise ValueError("Checkpoint does not contain a draft story")
+
+        for phase in (
+            ExecutionPhase.CONFIG_LOAD,
+            ExecutionPhase.BACKEND_INIT,
+            ExecutionPhase.CONTEXT_LOAD,
+            ExecutionPhase.PROMPT_BUILD,
+        ):
+            self._execute_phase(phase)
+
+        self.refinements = instructions.strip()
+        if self.story_prompt is None:
+            raise RuntimeError("Story prompt could not be rebuilt")
+        self.story_prompt.refinement_mode = True
+        self.story_prompt.original_story = self.story
+        self.story_prompt.refinement_instructions = self.refinements
+        self._report("phase", "story_refine", None)
+        revised_story = self.llm_backend.generate_story(self.story_prompt)
+        if revised_story is None or revised_story.startswith(ERROR_STORY_SENTINEL):
+            error_msg, _ = classify_story_error(revised_story or ERROR_STORY_SENTINEL)
+            raise RuntimeError(error_msg)
+
+        self.story = revised_story
+        checkpoint_data.generated_content["story"] = revised_story
+        checkpoint_data.generated_content["refinements"] = self.refinements
+        checkpoint_data.user_decisions["story_accepted"] = None
+        self.checkpoint_manager.save_checkpoint(checkpoint_data)
+        self._report("phase", "story_refine_complete", 1.0)
+        return checkpoint_data
+
+    def _execute_phase_sequence(
+        self,
+        start_phase: ExecutionPhase,
+        stop_after: ExecutionPhase | None = None,
+    ) -> None:
         """Execute the phase sequence starting from the specified phase."""
         # Define the phase execution order
         phase_order = [
@@ -337,7 +421,11 @@ class PhaseExecutor:
                 # Don't add to checkpoint.completed_phases - these are initialization only
 
         # Execute phases in sequence from start_phase
-        for phase in phase_order[start_index:]:
+        phases = phase_order[start_index:]
+        if stop_after is not None:
+            phases = phases[: phases.index(stop_after) + 1]
+
+        for phase_index, phase in enumerate(phases):
             if self._should_skip_phase(phase):
                 continue
 
@@ -346,12 +434,14 @@ class PhaseExecutor:
                 self.checkpoint_data.current_phase = phase.value
 
             console.print(f"[dim]Executing phase:[/dim] {phase.value}")
+            self._report("phase", phase.value, phase_index / max(len(phases), 1))
             self._execute_phase(phase)
 
             # Mark phase completed and save checkpoint after success
             if self.checkpoint_data is not None:
                 self.checkpoint_data.update_phase(phase)
                 self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
+        self._report("phase", "complete", 1.0)
 
     def _should_skip_phase(self, phase: ExecutionPhase) -> bool:
         """Determine if a phase should be skipped based on checkpoint state."""
@@ -480,6 +570,10 @@ class PhaseExecutor:
 
         prompt = str(original_inputs.get("prompt", ""))
         cli_args = original_inputs.get("cli_arguments", {})
+
+        if resolved_config.get("auto_confirm"):
+            self.checkpoint_data.user_decisions["prompt_confirmed"] = True
+            return
 
         # Show summary and get confirmation
         from .StoryForge import show_prompt_summary_and_confirm
@@ -615,10 +709,14 @@ class PhaseExecutor:
         # Get continuation mode parameters if present
         continuation_mode = cli_args.get("continuation_mode", False)
         ending_type = cli_args.get("ending_type", "wrap_up")
+        continuation_direction = cli_args.get("continuation_direction") or resolved_config.get(
+            "continuation_direction"
+        )
+        prompt_context = resolved_config.get("continuation_context") or self.context
 
         self.story_prompt = Prompt(
             prompt=prompt,
-            context=self.context,
+            context=prompt_context,
             world=self.world,
             length=str(cli_args.get("length") or resolved_config.get("length") or ""),
             age_range=str(cli_args.get("age_range") or resolved_config.get("age_range") or ""),
@@ -632,6 +730,7 @@ class PhaseExecutor:
             image_style=str(cli_args.get("image_style") or resolved_config.get("image_style") or ""),
             continuation_mode=continuation_mode,
             ending_type=ending_type,
+            continuation_direction=continuation_direction,
             has_old_context=bool(
                 self.checkpoint_data.context_data.get("has_old_context")
                 if self.checkpoint_data.context_data
@@ -693,6 +792,9 @@ class PhaseExecutor:
             raise RuntimeError("Checkpoint data must be initialized")
         debug = self.checkpoint_data.resolved_config.get("debug", False)
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
+
+        if self.checkpoint_data.resolved_config.get("defer_story_review"):
+            return
 
         while True:
             # Display the generated story
@@ -1059,6 +1161,13 @@ class PhaseExecutor:
         if self.checkpoint_data.user_decisions.get("wants_video_prompt") is not None:
             return
 
+        configured_scenes = self.checkpoint_data.resolved_config.get("video_scene_count")
+        if configured_scenes is not None:
+            wants_video = int(configured_scenes) > 0
+            self.checkpoint_data.user_decisions["wants_video_prompt"] = wants_video
+            self.checkpoint_data.user_decisions["num_video_scenes"] = int(configured_scenes)
+            return
+
         wants_video = Confirm.ask("Would you like to generate a video prompt for the story?")
         self.checkpoint_data.user_decisions["wants_video_prompt"] = wants_video
 
@@ -1163,6 +1272,13 @@ class PhaseExecutor:
             raise RuntimeError("Checkpoint data must be initialized")
         # Check if decision already made
         if self.checkpoint_data.user_decisions.get("wants_images") is not None:
+            return
+
+        configured_images = self.checkpoint_data.resolved_config.get("final_image_count")
+        if configured_images is not None:
+            wants_images = int(configured_images) > 0
+            self.checkpoint_data.user_decisions["wants_images"] = wants_images
+            self.checkpoint_data.user_decisions["num_images_requested"] = int(configured_images)
             return
 
         wants_images = Confirm.ask("Would you like to generate illustrations for the story?")
@@ -1334,8 +1450,11 @@ class PhaseExecutor:
         if self.checkpoint_data.user_decisions.get("save_as_context") is not None:
             return
 
-        save_as_context = Confirm.ask(
-            "[bold blue]Save this story as future context for character development?[/bold blue]"
+        configured_save = self.checkpoint_data.resolved_config.get("final_save_context")
+        save_as_context = (
+            bool(configured_save)
+            if configured_save is not None
+            else Confirm.ask("[bold blue]Save this story as future context for character development?[/bold blue]")
         )
         self.checkpoint_data.user_decisions["save_as_context"] = save_as_context
 
