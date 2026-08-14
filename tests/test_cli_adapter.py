@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-from storyforge.cli import main, normalize_argv
+from storyforge.cli import _generation_request, main, normalize_argv, terminal_supports_tui
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -45,6 +45,26 @@ def test_main_passes_normalized_copy_without_mutating_input():
 
     assert arguments == ["A brave mouse"]
     mock_app.assert_called_once_with(args=["generate", "A brave mouse"])
+
+
+def test_force_tui_opens_home_route():
+    with patch("storyforge.tui.run_tui") as run_tui:
+        main(["--tui"])
+
+    run_tui.assert_called_once_with("home", None)
+
+
+def test_generation_arguments_prefill_tui_request():
+    request = _generation_request(["A brave mouse", "--tone", "gentle", "--character", "Max", "--character", "Luna"])
+
+    assert request.prompt == "A brave mouse"
+    assert request.tone == "gentle"
+    assert request.characters == ["Max", "Luna"]
+
+
+def test_terminal_capability_rejects_redirected_streams():
+    with patch("storyforge.cli.sys.stdin.isatty", return_value=False):
+        assert terminal_supports_tui() is False
 
 
 def test_module_entrypoint_lists_generate_command():

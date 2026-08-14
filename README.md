@@ -1,6 +1,6 @@
 # StoryForge
 
-A CLI/TUI that generates illustrated children's stories using AI. Provide a prompt, get a story and AI-generated images.
+A full-screen TUI and MCP server that generate illustrated children's stories using AI. Provide a prompt, get a story and AI-generated images.
 
 ## Features
 
@@ -13,6 +13,7 @@ A CLI/TUI that generates illustrated children's stories using AI. Provide a prom
 - ⏯️ **Checkpoint system** — resume interrupted sessions with `sf continue`
 - 🔄 Context summarization with temporal sampling, sentence deduplication, and token budget management
 - 🔁 Automatic retry with exponential backoff for transient API errors
+- 🔌 **Bundled MCP server** — the TUI and classic CLI share one typed workflow API that can also be registered with other MCP hosts
 
 **Backends:** [Google Gemini](https://aistudio.google.com/apikey) ✅ | [OpenAI](https://platform.openai.com/api-keys) ✅ | [Anthropic](https://console.anthropic.com/) (text only)
 
@@ -39,6 +40,9 @@ StoryForge auto-detects the backend from available keys. Override with `LLM_BACK
 ## Quick Start
 
 ```bash
+# Open the StoryForge home screen
+sf
+
 # Generate a story (the bare-prompt shortcut)
 sf "A brave mouse named Max finds a magic acorn"
 
@@ -62,6 +66,8 @@ sf export-chain
 ```
 
 > **Tip:** `sf` is a shorthand alias for `storyforge`. All commands work with either.
+
+StoryForge launches the full-screen interface when stdin and stdout are attached to a capable terminal. Existing arguments prefill the matching screen. Use `--no-tui` for the Rich prompt interface, or set `STORYFORGE_NO_TUI=1`; redirected input/output selects that interface automatically. Both interfaces execute application workflows through the bundled local MCP server.
 
 ### Story Options
 
@@ -91,8 +97,36 @@ sf world init                   # Create world.md template
 sf world edit                   # Open world.md in $EDITOR
 sf world show                   # Display world.md contents
 sf world path                   # Show world.md location
+sf --tui                        # Force the full-screen interface
+sf --no-tui "prompt"           # Force the Rich MCP client
 sf --help                       # Full help
 ```
+
+## MCP Server
+
+StoryForge includes a local stdio MCP server with typed tools for story discovery, draft generation, refinement, finalization, extension, resume, export, world/config access, and model-cache management.
+
+```bash
+# Run the protocol server directly (it waits for an MCP client on stdio)
+storyforge-mcp
+
+# Development inspector
+make mcp-dev
+```
+
+Register the installed command with an MCP host using its normal server configuration shape:
+
+```json
+{
+  "mcpServers": {
+    "storyforge": {
+      "command": "storyforge-mcp"
+    }
+  }
+}
+```
+
+The server inherits the host environment, including provider API keys. It reserves stdout for MCP messages and sends diagnostics to stderr.
 
 ## Configuration
 

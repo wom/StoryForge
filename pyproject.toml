@@ -34,7 +34,8 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
     "platformdirs>=4.2.0",
-    "pyyaml>=6.0.0"
+    "pyyaml>=6.0.0",
+    "mcp>=2,<3",
 ]
 
 [project.urls]
@@ -60,6 +61,7 @@ dev = [
 [project.scripts]
 storyforge = "storyforge.cli:main"
 sf = "storyforge.cli:main"
+storyforge-mcp = "storyforge.mcp_server:main"
 
 [build-system]
 requires = ["setuptools>=45", "wheel"]

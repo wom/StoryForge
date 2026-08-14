@@ -32,6 +32,8 @@ make test       # Run all tests
 make run        # Run the application
 make debug      # Run with Textual debugging console
 make console    # Start Textual debug server
+make mcp        # Run the bundled stdio MCP server
+make mcp-dev    # Open the MCP development inspector
 make lint       # Lint and format code (auto-fixes issues)
 make lint-check # Check linting without auto-fixes
 make typecheck  # Run type checking only
@@ -76,12 +78,17 @@ storyforge/
 ├── gemini_backend.py    # Gemini API integration
 ├── llm_backend.py       # LLM backend interface and shared helpers
 ├── model_discovery.py   # Dynamic Gemini model discovery
+├── mcp_client.py        # Shared typed stdio MCP client
+├── mcp_models.py        # MCP request/result schemas
+├── mcp_server.py        # Bundled StoryForge MCP server
 ├── openai_backend.py    # OpenAI API integration (GPT + image models)
 ├── phase_executor.py    # Phase-based execution engine
 ├── prompt.py            # Prompt handling and validation
 ├── py.typed             # PEP 561 type marker
 ├── story_picker.py      # Interactive TUI story picker (Textual)
 ├── test_story.txt       # Test story for debug mode
+├── tui.py               # Unified full-screen Textual application
+├── workflow.py          # UI-independent staged workflow services
 ├── world_template.py    # World definition template for world.md
 └── schema/              # Validation schema and CLI integration
     ├── __init__.py
@@ -113,6 +120,14 @@ pyproject.toml           # Project configuration
 - All source code in the `storyforge/` package
 - Use package imports: `from storyforge.module import Class`
 - Entry points in `pyproject.toml`: `storyforge` and `sf` (short alias)
+
+### Client / Server Boundary
+
+- The Textual and Rich interfaces are presentation-only MCP clients.
+- `storyforge-mcp` owns workflow execution, checkpoints, provider access, and file operations.
+- Long mutations run on one bounded server worker; MCP progress notifications are bridged back to the active client.
+- Workflow services contain no Textual, Typer, Rich, or MCP imports and should be tested independently.
+- MCP tools never prompt. Clients collect review, refinement, media, overwrite, and destructive-operation decisions explicitly.
 
 ## Contributing Workflow
 
