@@ -576,7 +576,7 @@ class StoryForgeApp(App[None]):
 
     TITLE = "StoryForge"
     CSS = """
-    Screen { background: $surface; }
+    Screen { background: $surface; align: center middle; }
     Header { background: $primary-background; }
     #home, #form, #review, #media-form, #extension-form, #export-form,
     #progress-panel, #result-panel, #world-screen, #data-screen {
@@ -585,7 +585,7 @@ class StoryForgeApp(App[None]):
     }
     #home { align: center middle; height: 1fr; }
     #brand { text-align: center; text-style: bold; width: 100%; }
-    .subtitle { color: $text-muted; margin-bottom: 1; }
+    .subtitle { color: $text-muted; margin-bottom: 1; text-align: center; width: 100%; }
     .screen-title { margin-bottom: 1; }
     .home-row, .field-row, .actions { height: auto; margin-top: 1; }
     .home-row { align-horizontal: center; }
