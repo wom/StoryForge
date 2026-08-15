@@ -48,7 +48,7 @@ def _generation_request(argv: Sequence[str]):
     """Build a TUI prefill request without replacing Typer's validation contract."""
     from .mcp_models import GenerationRequest
 
-    parser = argparse.ArgumentParser(add_help=False)
+    parser = argparse.ArgumentParser(add_help=False, allow_abbrev=False)
     parser.add_argument("prompt", nargs="?")
     parser.add_argument("--length", "-l")
     parser.add_argument("--age-range", "-a")
@@ -62,13 +62,13 @@ def _generation_request(argv: Sequence[str]):
     parser.add_argument("--image-style")
     parser.add_argument("--image-count", "-n", type=int)
     parser.add_argument("--output-dir", "-o")
-    parser.add_argument("--world-file")
+    parser.add_argument("--world-file", "-w")
     parser.add_argument("--backend")
-    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--use-context", action="store_true", default=None)
     parser.add_argument("--no-use-context", action="store_false", dest="use_context")
-    values, _unknown = parser.parse_known_args(list(argv))
+    values = parser.parse_args(list(argv))
     data: dict[str, Any] = vars(values)
     data["prompt"] = data.get("prompt") or " "
     return GenerationRequest(**data)
@@ -110,8 +110,9 @@ def main(argv: Sequence[str] | None = None) -> None:
 
         route, initial = _tui_route(args)
         generation_request = initial if route == "generate" else None
+        classic_args = ["continue"] if route == "continue" and args[:1] == ["generate"] else args
         try:
-            raise SystemExit(run_classic(args, generation_request))
+            raise SystemExit(run_classic(classic_args, generation_request))
         except KeyboardInterrupt:
             console.print("[yellow]StoryForge operation cancelled.[/yellow]")
             raise SystemExit(130) from None

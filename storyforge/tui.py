@@ -39,6 +39,62 @@ from .mcp_models import (
 )
 
 
+def _request_from_config(
+    data: dict[str, Any],
+    initial: GenerationRequest | None = None,
+) -> GenerationRequest:
+    """Build a blank form request from the MCP configuration resource."""
+    values = data.get("values", data)
+    story = values.get("story", {})
+    images = values.get("images", {})
+    output = values.get("output", {})
+    system = values.get("system", {})
+
+    characters_value = story.get("characters")
+    if isinstance(characters_value, str):
+        characters = [item.strip() for item in characters_value.split(",") if item.strip()] or None
+    else:
+        characters = list(characters_value or []) or None
+
+    use_context_value = output.get("use_context", True)
+    use_context = (
+        use_context_value
+        if isinstance(use_context_value, bool)
+        else str(use_context_value).strip().lower() in {"1", "true", "yes", "on"}
+    )
+    image_count_value = images.get("image_count")
+
+    configured = GenerationRequest(
+        prompt=" ",
+        length=story.get("length") or None,
+        age_range=story.get("age_range") or None,
+        style=story.get("style") or None,
+        tone=story.get("tone") or None,
+        voice=story.get("voice") or None,
+        theme=story.get("theme") or None,
+        learning_focus=story.get("learning_focus") or None,
+        setting=story.get("setting") or None,
+        characters=characters,
+        image_style=images.get("image_style") or None,
+        image_count=int(image_count_value) if image_count_value not in {None, ""} else None,
+        output_dir=output.get("output_dir") or None,
+        use_context=use_context,
+        world_file=output.get("world_file") or None,
+        backend=system.get("backend") or None,
+        verbose=str(system.get("verbose", "false")).lower() in {"1", "true", "yes", "on"},
+        debug=str(system.get("debug", "false")).lower() in {"1", "true", "yes", "on"},
+    )
+    if initial is None:
+        return configured
+
+    overrides = {
+        field: value
+        for field, value in initial.model_dump().items()
+        if value is not None and (field not in {"verbose", "debug"} or value is True)
+    }
+    return configured.model_copy(update=overrides)
+
+
 class StoryForgeScreen(Screen[None]):
     """Base screen with consistent shell and navigation."""
 
@@ -330,8 +386,15 @@ class MediaScreen(StoryForgeScreen):
             return
         if event.button.id != "finish":
             return
-        video = int(self.query_one("#video_count", Input).value or "0")
-        images = int(self.query_one("#image_count", Input).value or "0")
+        try:
+            video = int(self.query_one("#video_count", Input).value or "0")
+            images = int(self.query_one("#image_count", Input).value or "0")
+        except ValueError:
+            self.notify("Media counts must be whole numbers", severity="error")
+            return
+        if not 0 <= video <= 20:
+            self.notify("Video scene count must be between 0 and 20", severity="error")
+            return
         if not 0 <= images <= 5:
             self.notify("Image count must be between 0 and 5", severity="error")
             return
@@ -646,13 +709,14 @@ class StoryForgeApp(App[None]):
         self.switch_screen(HomeScreen())
 
     def show_new_story(self) -> None:
-        self.push_screen(NewStoryScreen(self.initial_request))
+        self._show_new_story_with_defaults()
 
     def _on_progress(self, progress: float, total: float | None, message: str | None) -> None:
         if isinstance(self.screen, ProgressScreen):
             self.screen.update_progress(progress, total, message)
 
     async def _start_progress(self, title: str) -> ProgressScreen:
+        self._active_worker = get_current_worker()
         screen = ProgressScreen(title)
         await self.push_screen(screen)
         return screen
@@ -660,7 +724,22 @@ class StoryForgeApp(App[None]):
     def cancel_active_workflow(self) -> None:
         if self._active_worker is not None:
             self._active_worker.cancel()
+            self._active_worker = None
+        if isinstance(self.screen, ProgressScreen):
+            if len(self.screen_stack) > 1:
+                self.pop_screen()
+            else:
+                self.switch_screen(HomeScreen())
         self.notify("Cancellation requested; the current provider call may finish first.", severity="warning")
+
+    @work(exclusive=True)
+    async def _show_new_story_with_defaults(self) -> None:
+        await self._start_progress("Loading Story Defaults")
+        try:
+            request = _request_from_config(await self.client.get_config(), self.initial_request)
+            self.switch_screen(NewStoryScreen(request))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Load Story Defaults", str(error), error=True))
 
     @work(exclusive=True)
     async def create_draft(self, request: GenerationRequest) -> None:

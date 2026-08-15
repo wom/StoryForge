@@ -28,6 +28,17 @@ from .prompt import Prompt
 
 Reporter = Callable[[str, str, float | None], None]
 
+POST_STORY_PHASES = frozenset(
+    {
+        ExecutionPhase.VIDEO_DECISION.value,
+        ExecutionPhase.IMAGE_DECISION.value,
+        ExecutionPhase.VIDEO_PROMPT_GENERATE.value,
+        ExecutionPhase.IMAGE_GENERATE.value,
+        ExecutionPhase.CONTEXT_SAVE.value,
+        ExecutionPhase.COMPLETED.value,
+    }
+)
+
 
 class StoryForgeWorkflow:
     """Application service shared by the bundled MCP tools."""
@@ -139,7 +150,23 @@ class StoryForgeWorkflow:
         if checkpoint.generated_content.get("story"):
             checkpoint.status = "active"
             checkpoint.last_error = None
+            checkpoint.completed_phases = [
+                phase for phase in checkpoint.completed_phases if phase not in POST_STORY_PHASES
+            ]
+            checkpoint.current_phase = ExecutionPhase.STORY_SAVE.value
+            if checkpoint.progress:
+                completed_count = len(checkpoint.completed_phases)
+                total_phases = int(checkpoint.progress.get("total_phases") or len(ExecutionPhase) - 1)
+                checkpoint.progress["completed_count"] = completed_count
+                checkpoint.progress["completion_percentage"] = round(completed_count / total_phases * 100)
             manager.save_checkpoint(checkpoint)
+            if ExecutionPhase.STORY_SAVE.value not in checkpoint.completed_phases:
+                checkpoint.resolved_config.update({"auto_confirm": True, "defer_story_review": True})
+                checkpoint = self._executor(manager).execute_existing_session(
+                    checkpoint,
+                    ExecutionPhase.STORY_SAVE,
+                    stop_after=ExecutionPhase.STORY_SAVE,
+                )
             return self._draft_result(checkpoint)
 
         try:
@@ -171,7 +198,8 @@ class StoryForgeWorkflow:
             "image_style": self._config_value(config, "images", "image_style", request.image_style),
             "image_count": self._config_value(config, "images", "image_count", request.image_count),
         }
-        output_dir = self._output_directory(request.output_dir)
+        configured_output_dir = self._config_value(config, "output", "output_dir", request.output_dir)
+        output_dir = self._output_directory(configured_output_dir)
         use_context = self._config_value(config, "output", "use_context", request.use_context)
         world_file = self._config_value(config, "output", "world_file", request.world_file)
         config_backend = config.get_field_value("system", "backend")

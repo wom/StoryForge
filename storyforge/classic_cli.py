@@ -16,7 +16,14 @@ from rich.prompt import Confirm, IntPrompt, Prompt
 
 from .console import console
 from .mcp_client import StoryForgeMCPClient
-from .mcp_models import ExportRequest, ExtensionRequest, FinalizeRequest, GenerationRequest, RefinementRequest
+from .mcp_models import (
+    DraftResult,
+    ExportRequest,
+    ExtensionRequest,
+    FinalizeRequest,
+    GenerationRequest,
+    RefinementRequest,
+)
 
 
 class ClassicCLI:
@@ -69,15 +76,26 @@ class ClassicCLI:
         if not Confirm.ask("Proceed with story generation?", default=True):
             return 0
         draft = await client.create_draft(request)
+        return await self._review_and_finalize(client, draft, "Generated Story")
+
+    async def _review_and_finalize(
+        self,
+        client: StoryForgeMCPClient,
+        draft: DraftResult,
+        title: str,
+    ) -> int:
+        """Collect the review and media decisions shared by draft workflows."""
         while True:
-            console.print(Panel(draft.story, title="[bold green]Generated Story[/bold green]", border_style="green"))
-            if not Confirm.ask("Would you like to refine the story?", default=False):
+            console.print(Panel(draft.story, title=f"[bold green]{title}[/bold green]", border_style="green"))
+            if Confirm.ask("Accept this story?", default=True):
                 break
             instructions = Prompt.ask("Refinements").strip()
             if instructions:
                 draft = await client.refine_draft(
                     RefinementRequest(session_id=draft.session_id, instructions=instructions)
                 )
+            else:
+                console.print("[yellow]Refinement instructions cannot be empty.[/yellow]")
         video_count = 0
         if Confirm.ask("Generate a video prompt?", default=False):
             video_count = IntPrompt.ask("Number of scenes", default=2)
@@ -108,10 +126,7 @@ class ClassicCLI:
             )
         choice = IntPrompt.ask("Select session", choices=[str(index) for index in range(1, len(sessions) + 1)])
         draft = await client.resume_session(sessions[choice - 1].session_id)
-        console.print(Panel(draft.story, title="[bold cyan]Resumed Story[/bold cyan]", border_style="cyan"))
-        result = await client.finalize_story(FinalizeRequest(session_id=draft.session_id))
-        self._print_result(result.message, result.artifacts)
-        return 0
+        return await self._review_and_finalize(client, draft, "Resumed Story")
 
     async def _extend(self, client: StoryForgeMCPClient) -> int:
         stories = await client.list_stories()

@@ -314,6 +314,19 @@ class TestPhaseExecutorPhases:
         metadata_content = written_files.get("/tmp/output/generation_metadata.md", "")
         assert "# Generation Metadata" in metadata_content
 
+    def test_refinement_rewrites_saved_story_artifact(self, tmp_path):
+        """The accepted artifact must track the latest staged refinement."""
+        self.checkpoint_data.generated_content["story"] = "Original draft"
+        self.checkpoint_data.resolved_config["output_directory"] = str(tmp_path)
+        self.phase_executor.story_prompt = MagicMock()
+        self.phase_executor.llm_backend = MagicMock()
+        self.phase_executor.llm_backend.generate_story.return_value = "Revised draft"
+
+        with patch.object(self.phase_executor, "_execute_phase"):
+            self.phase_executor.refine_existing_story(self.checkpoint_data, "Make it brighter")
+
+        assert (tmp_path / "story.txt").read_text(encoding="utf-8").endswith("Revised draft")
+
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.Confirm.ask")
     @patch("storyforge.phase_executor.typer.prompt")
