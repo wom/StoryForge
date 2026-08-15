@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from yaml import YAMLError, safe_load
+
 from .checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
 from .config import Config, load_config
 from .context import ContextManager
@@ -17,6 +19,8 @@ from .mcp_models import (
     ExportRequest,
     ExtensionRequest,
     FinalizeRequest,
+    GeneratedStory,
+    GeneratedStorySummary,
     GenerationRequest,
     SessionSummary,
     StorySummary,
@@ -39,6 +43,8 @@ POST_STORY_PHASES = frozenset(
         ExecutionPhase.COMPLETED.value,
     }
 )
+
+IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"})
 
 
 class StoryForgeWorkflow:
@@ -119,6 +125,42 @@ class StoryForgeWorkflow:
             "chain": self._json_safe(chain),
             "content": content,
         }
+
+    def list_generated_stories(self) -> list[GeneratedStorySummary]:
+        """List story artifacts produced in known StoryForge output directories."""
+        stories: list[GeneratedStorySummary] = []
+        for story_path in self._generated_story_paths():
+            try:
+                content = story_path.read_text(encoding="utf-8")
+                stat = story_path.stat()
+            except OSError:
+                continue
+            images = self._story_images(story_path.parent)
+            stories.append(
+                GeneratedStorySummary(
+                    id=str(story_path.resolve()),
+                    title=self._story_title(content, story_path.parent.name),
+                    story_path=str(story_path.resolve()),
+                    generated_at=datetime.fromtimestamp(stat.st_mtime).isoformat(sep=" ", timespec="seconds"),
+                    preview=self._story_preview(content),
+                    image_count=len(images),
+                )
+            )
+        return sorted(stories, key=lambda story: story.generated_at, reverse=True)
+
+    def get_generated_story(self, story_id: str) -> GeneratedStory:
+        """Load one story from the generated-output library."""
+        summary = next((story for story in self.list_generated_stories() if story.id == story_id), None)
+        if summary is None:
+            raise FileNotFoundError(f"Generated story not found: {story_id}")
+        story_path = Path(summary.story_path)
+        images = self._story_images(story_path.parent)
+        return GeneratedStory(
+            **summary.model_dump(),
+            content=story_path.read_text(encoding="utf-8"),
+            output_directory=str(story_path.parent),
+            image_paths=[str(path) for path in images],
+        )
 
     def list_sessions(self, limit: int = 15) -> list[SessionSummary]:
         manager = CheckpointManager(auto_cleanup=False)
@@ -419,6 +461,51 @@ class StoryForgeWorkflow:
         if not matches:
             raise FileNotFoundError(f"Saved story not found: {story_id}")
         return matches[0]
+
+    @staticmethod
+    def _generated_story_paths() -> list[Path]:
+        paths = {path.resolve() for path in Path.cwd().glob("*/story.txt") if path.is_file()}
+        direct_story = Path.cwd() / "story.txt"
+        if direct_story.is_file():
+            paths.add(direct_story.resolve())
+
+        manager = CheckpointManager(auto_cleanup=False)
+        for checkpoint_path in manager.checkpoint_dir.glob("checkpoint_*.yaml"):
+            try:
+                checkpoint = safe_load(checkpoint_path.read_text(encoding="utf-8")) or {}
+                output_directory = checkpoint.get("resolved_config", {}).get("output_directory")
+                if output_directory:
+                    story_path = Path(str(output_directory)).expanduser() / "story.txt"
+                    if story_path.is_file():
+                        paths.add(story_path.resolve())
+            except (OSError, TypeError, ValueError, YAMLError):
+                continue
+        return list(paths)
+
+    @staticmethod
+    def _story_images(output_directory: Path) -> list[Path]:
+        try:
+            return sorted(
+                path.resolve()
+                for path in output_directory.iterdir()
+                if path.is_file() and path.suffix.lower() in IMAGE_SUFFIXES
+            )
+        except OSError:
+            return []
+
+    @staticmethod
+    def _story_title(content: str, fallback: str) -> str:
+        first_line = next((line.strip() for line in content.splitlines() if line.strip()), "")
+        if first_line.lower().startswith("story:"):
+            first_line = first_line.split(":", 1)[1].strip()
+        return first_line.lstrip("# ").strip() or fallback.replace("_", " ").title()
+
+    @staticmethod
+    def _story_preview(content: str) -> str:
+        lines = [line.strip() for line in content.splitlines() if line.strip()]
+        if lines and lines[0].lower().startswith("story:"):
+            lines.pop(0)
+        return " ".join(lines)[:240]
 
     @staticmethod
     def _json_safe(value: Any) -> Any:

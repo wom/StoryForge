@@ -5,8 +5,13 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from contextlib import suppress
+from pathlib import Path
 from typing import Any, Literal, cast
 
+from PIL import Image, UnidentifiedImageError
+from rich.color import Color
+from rich.style import Style
+from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -27,12 +32,15 @@ from textual.widgets import (
 )
 from textual.worker import get_current_worker
 
+from .external_viewer import open_path_externally
 from .mcp_client import StoryForgeMCPClient
 from .mcp_models import (
     DraftResult,
     ExportRequest,
     ExtensionRequest,
     FinalizeRequest,
+    GeneratedStory,
+    GeneratedStorySummary,
     GenerationRequest,
     RefinementRequest,
     SessionSummary,
@@ -127,6 +135,7 @@ class HomeScreen(StoryForgeScreen):
             yield Static("Create and continue illustrated stories", classes="subtitle")
             with Horizontal(classes="home-row"):
                 yield Button("New Story", id="new", variant="primary")
+                yield Button("Stories", id="stories")
                 yield Button("Continue", id="continue")
                 yield Button("Extend", id="extend")
             with Horizontal(classes="home-row"):
@@ -143,6 +152,7 @@ class HomeScreen(StoryForgeScreen):
         app = self.storyforge_app
         routes: dict[str, Callable[[], Any]] = {
             "new": app.show_new_story,
+            "stories": app.show_stories,
             "continue": app.show_continue,
             "extend": app.show_extend,
             "export": app.show_export,
@@ -484,6 +494,212 @@ class PickerScreen(StoryForgeScreen):
         self.query_one("#preview-panel", Static).update(text)
 
 
+class StoryBrowserScreen(StoryForgeScreen):
+    """Browse every generated story artifact and open it for reading."""
+
+    def __init__(self, stories: list[GeneratedStorySummary]) -> None:
+        super().__init__()
+        self.stories = stories
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="story-browser"):
+            yield Static("Story Library", classes="screen-title literal-title", markup=False)
+            with Horizontal(id="story-browser-layout"):
+                labels = [
+                    Text(f"{story.title} · {story.image_count} image{'s' if story.image_count != 1 else ''}")
+                    for story in self.stories
+                ]
+                yield OptionList(*labels, id="story-list")
+                yield Static("", id="story-preview", markup=False)
+            with Horizontal(classes="actions"):
+                yield Button("Read", id="read", variant="primary")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        if self.stories:
+            self._update_preview(0)
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        self._update_preview(event.option_index)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        self.storyforge_app.open_generated_story(self.stories[event.option_index].id)
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "read":
+            option_list = self.query_one("#story-list", OptionList)
+            if option_list.highlighted is not None:
+                self.storyforge_app.open_generated_story(self.stories[option_list.highlighted].id)
+
+    def _update_preview(self, index: int) -> None:
+        story = self.stories[index]
+        image_label = f"{story.image_count} image{'s' if story.image_count != 1 else ''}"
+        self.query_one("#story-preview", Static).update(
+            f"{story.title}\n\nGenerated: {story.generated_at or 'Unknown'}\n"
+            f"Images: {image_label}\n\n{story.preview or 'No preview available.'}\n\n"
+            "Press Enter or choose Read to open"
+        )
+
+
+class StoryReaderScreen(StoryForgeScreen):
+    """Distraction-free reader for one generated story."""
+
+    def __init__(self, story: GeneratedStory) -> None:
+        super().__init__()
+        self.story = story
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="story-viewer"):
+            yield Static(self.story.title, classes="screen-title literal-title", markup=False)
+            details = self.story.generated_at or "Generation time unknown"
+            if self.story.image_paths:
+                details += f" · {len(self.story.image_paths)} image{'s' if len(self.story.image_paths) != 1 else ''}"
+            yield Static(details, classes="subtitle", markup=False)
+            yield VerticalScroll(
+                Static(self.story.content, id="library-story-text", markup=False),
+                id="library-story-reader",
+            )
+            with Horizontal(classes="actions"):
+                if self.story.image_paths:
+                    yield Button(f"View Images ({len(self.story.image_paths)})", id="images", variant="primary")
+                yield Button("Back", id="back")
+                yield Button("Home", id="home")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "images":
+            self.storyforge_app.push_screen(ImageViewerScreen(self.story.image_paths))
+        elif event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "home":
+            self.storyforge_app.go_home()
+
+
+class TerminalImage(Static):
+    """Render a local raster image with true-color half-block terminal cells."""
+
+    def __init__(self, image_path: str, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.image_path = image_path
+        self._cache_key: tuple[str, int, int] | None = None
+        self._cached_render = Text()
+
+    def set_image(self, image_path: str) -> None:
+        self.image_path = image_path
+        self._cache_key = None
+        self.refresh()
+
+    def render(self) -> Text:
+        width = max(1, self.size.width)
+        height = max(1, self.size.height)
+        cache_key = (self.image_path, width, height)
+        if cache_key == self._cache_key:
+            return self._cached_render
+
+        try:
+            with Image.open(self.image_path) as source:
+                image = source.convert("RGB")
+                image.thumbnail((width, height * 2), Image.Resampling.LANCZOS)
+                rendered = self._render_half_blocks(image)
+        except (OSError, UnidentifiedImageError):
+            rendered = Text("This image could not be displayed.", justify="center", style="red")
+
+        self._cache_key = cache_key
+        self._cached_render = rendered
+        return rendered
+
+    @staticmethod
+    def _render_half_blocks(image: Image.Image) -> Text:
+        rendered = Text(justify="center", no_wrap=True, overflow="crop")
+        pixels = image.load()
+        assert pixels is not None
+        for y in range(0, image.height, 2):
+            bottom_y = min(y + 1, image.height - 1)
+            for x in range(image.width):
+                top = cast(tuple[int, int, int], pixels[x, y])
+                bottom = cast(tuple[int, int, int], pixels[x, bottom_y])
+                rendered.append(
+                    "▀",
+                    Style(
+                        color=Color.from_rgb(*top),
+                        bgcolor=Color.from_rgb(*bottom),
+                    ),
+                )
+            if y + 2 < image.height:
+                rendered.append("\n")
+        return rendered
+
+
+class ImageViewerScreen(StoryForgeScreen):
+    """Navigate generated illustrations without leaving StoryForge."""
+
+    BINDINGS = [
+        Binding("left", "previous_image", "Previous", show=True),
+        Binding("right", "next_image", "Next", show=True),
+        Binding("o", "open_external", "Open External", show=True),
+        Binding("escape", "back", "Back", show=True),
+    ]
+
+    def __init__(self, image_paths: list[str]) -> None:
+        super().__init__()
+        self.image_paths = image_paths
+        self.image_index = 0
+
+    def compose(self) -> ComposeResult:
+        current = Path(self.image_paths[self.image_index])
+        yield Header()
+        with Vertical(id="image-viewer"):
+            yield Static(current.name, id="image-title", classes="screen-title literal-title", markup=False)
+            yield TerminalImage(str(current), id="image-canvas")
+            yield Static(self._position_text(), id="image-position", classes="subtitle")
+            with Horizontal(classes="actions image-actions"):
+                yield Button("Previous", id="previous")
+                yield Button("Next", id="next", variant="primary")
+                yield Button("Open External", id="open-external")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def action_previous_image(self) -> None:
+        self._show_image(self.image_index - 1)
+
+    def action_next_image(self) -> None:
+        self._show_image(self.image_index + 1)
+
+    def action_open_external(self) -> None:
+        path = self.image_paths[self.image_index]
+        try:
+            viewer = open_path_externally(path)
+        except (OSError, RuntimeError) as error:
+            self.notify(str(error), severity="error")
+        else:
+            self.notify(f"Opened {Path(path).name} in {viewer}")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "previous":
+            self.action_previous_image()
+        elif event.button.id == "next":
+            self.action_next_image()
+        elif event.button.id == "open-external":
+            self.action_open_external()
+        elif event.button.id == "back":
+            self.action_back()
+
+    def _show_image(self, index: int) -> None:
+        self.image_index = index % len(self.image_paths)
+        path = self.image_paths[self.image_index]
+        self.query_one("#image-title", Static).update(Path(path).name)
+        self.query_one("#image-canvas", TerminalImage).set_image(path)
+        self.query_one("#image-position", Static).update(self._position_text())
+
+    def _position_text(self) -> str:
+        return f"Image {self.image_index + 1} of {len(self.image_paths)} · use ← and → to navigate"
+
+
 class ExtensionOptionsScreen(StoryForgeScreen):
     """Continuation direction form."""
 
@@ -647,7 +863,8 @@ class StoryForgeApp(App[None]):
     Screen { background: $surface; align: center middle; }
     Header { background: $primary-background; }
     #home-panel, #form, #review, #media-form, #extension-form, #export-form,
-    #progress-panel, #result-panel, #world-screen, #data-screen {
+    #progress-panel, #result-panel, #world-screen, #data-screen, #story-browser,
+    #story-viewer, #image-viewer {
         width: 90%; max-width: 110; height: auto; max-height: 1fr;
         margin: 1 2; padding: 1 2; border: solid $primary;
     }
@@ -665,7 +882,19 @@ class StoryForgeApp(App[None]):
     #item-list { width: 1fr; min-width: 30; border: solid $primary; }
     #item-list:focus { border: solid $accent; }
     #preview-panel { width: 2fr; border: solid $primary; padding: 1 2; overflow-y: auto; }
-    #story-reader, #data-reader { height: 1fr; border: solid $primary; padding: 1 2; }
+    #story-browser, #story-viewer, #image-viewer { height: 1fr; }
+    #story-browser-layout { height: 1fr; }
+    #story-list { width: 2fr; min-width: 32; border: solid $primary; }
+    #story-list:focus { border: solid $accent; }
+    #story-preview { width: 3fr; height: 1fr; border: solid $primary; padding: 1 2; overflow-y: auto; }
+    #story-reader, #library-story-reader, #data-reader {
+        height: 1fr; border: solid $primary; padding: 1 2;
+    }
+    #library-story-text { width: 100%; }
+    .literal-title { color: $accent; text-style: bold; }
+    #image-canvas { height: 1fr; width: 100%; content-align: center middle; overflow: hidden; }
+    #image-title, #image-position { width: 100%; text-align: center; }
+    .image-actions { align-horizontal: center; }
     #world-content { height: 1fr; }
     #progress-panel {
         align: center middle;
@@ -748,6 +977,7 @@ class StoryForgeApp(App[None]):
         routes: dict[str, Callable[[], Any]] = {
             "home": lambda: self.push_screen(HomeScreen()),
             "generate": self.show_new_story,
+            "stories": self.show_stories,
             "continue": self.show_continue,
             "extend": self.show_extend,
             "export": self.show_export,
@@ -846,6 +1076,28 @@ class StoryForgeApp(App[None]):
             self.switch_screen(screen)
         except Exception as error:
             self.switch_screen(ResultScreen("Could Not Load Stories", str(error), error=True))
+
+    @work(exclusive=True)
+    async def show_stories(self) -> None:
+        await self._start_progress("Loading Story Library")
+        try:
+            stories = await self.client.list_generated_stories()
+            screen: StoryForgeScreen = (
+                StoryBrowserScreen(stories)
+                if stories
+                else ResultScreen("No Generated Stories", "Generate a story to add it to your library.")
+            )
+            self.switch_screen(screen)
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Load Story Library", str(error), error=True))
+
+    @work(exclusive=True)
+    async def open_generated_story(self, story_id: str) -> None:
+        await self._start_progress("Opening Story")
+        try:
+            self.switch_screen(StoryReaderScreen(await self.client.get_generated_story(story_id)))
+        except Exception as error:
+            self.switch_screen(ResultScreen("Could Not Open Story", str(error), error=True))
 
     @work(exclusive=True)
     async def show_export(self) -> None:

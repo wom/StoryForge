@@ -16,6 +16,8 @@ from .mcp_models import (
     ExportRequest,
     ExtensionRequest,
     FinalizeRequest,
+    GeneratedStory,
+    GeneratedStorySummary,
     GenerationRequest,
     RefinementRequest,
     SessionSummary,
@@ -111,6 +113,18 @@ class StoryForgeMCPClient:
 
     async def get_story(self, story_id: str) -> dict[str, Any]:
         return dict(await self._call("storyforge_get_story", {"story_id": story_id}) or {})
+
+    async def list_generated_stories(self) -> list[GeneratedStorySummary]:
+        data = await self._call("storyforge_list_generated_stories")
+        values = data.get("result", data) if isinstance(data, dict) else data
+        return [GeneratedStorySummary.model_validate(item) for item in values or []]
+
+    async def get_generated_story(self, story_id: str) -> GeneratedStory:
+        return await self._model(
+            "storyforge_get_generated_story",
+            GeneratedStory,
+            {"story_id": story_id},
+        )
 
     async def list_sessions(self, limit: int = 15) -> list[SessionSummary]:
         data = await self._call("storyforge_list_sessions", {"limit": limit})

@@ -25,6 +25,8 @@ async def test_server_exposes_expected_tools_and_resources():
         "storyforge_finalize_story",
         "storyforge_resume_session",
         "storyforge_export_chain",
+        "storyforge_list_generated_stories",
+        "storyforge_get_generated_story",
     } <= names
     assert {str(resource.uri) for resource in resources.resources} >= {
         "storyforge://config",

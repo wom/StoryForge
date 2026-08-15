@@ -1,5 +1,6 @@
 """Regression tests for MCP-backed workflow state transitions."""
 
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -166,3 +167,30 @@ def test_init_config_create_overwrite_contract(tmp_path):
     assert created.artifacts == [str(target)]
     assert overwritten.artifacts == [str(target)]
     assert target.exists()
+
+
+def test_generated_story_library_discovers_text_and_images(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = tmp_path / "storyforge_output_20260814_120000"
+    output.mkdir()
+    story_path = output / "story.txt"
+    story_path.write_text("Story: The Lantern Fox\n\nA fox carried a lantern home.", encoding="utf-8")
+    (output / "lantern_01.png").write_bytes(b"image")
+    (output / "notes.md").write_text("not an image", encoding="utf-8")
+    os.utime(story_path, (1_700_000_000, 1_700_000_000))
+
+    checkpoint_manager = MagicMock()
+    checkpoint_manager.checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_manager.checkpoint_dir.mkdir()
+    with patch("storyforge.workflow.CheckpointManager", return_value=checkpoint_manager):
+        workflow = StoryForgeWorkflow()
+        stories = workflow.list_generated_stories()
+        detail = workflow.get_generated_story(stories[0].id)
+
+    assert len(stories) == 1
+    assert stories[0].title == "The Lantern Fox"
+    assert stories[0].preview == "A fox carried a lantern home."
+    assert stories[0].image_count == 1
+    assert detail.content.startswith("Story: The Lantern Fox")
+    assert detail.output_directory == str(output.resolve())
+    assert detail.image_paths == [str((output / "lantern_01.png").resolve())]
