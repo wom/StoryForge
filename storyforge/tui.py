@@ -126,7 +126,10 @@ class StoryForgeScreen(Screen[None]):
 class HomeScreen(StoryForgeScreen):
     """StoryForge workflow launcher."""
 
-    BINDINGS = [Binding("q", "quit", "Quit", show=True)]
+    BINDINGS = [
+        Binding("escape", "quit", "Quit", show=True),
+        Binding("q", "quit", "Quit", show=True),
+    ]
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -973,9 +976,12 @@ class StoryForgeApp(App[None]):
             self._client_ready.set()
             raise
 
+    def get_default_screen(self) -> Screen:
+        """Use StoryForge Home as the real root instead of Textual's empty screen."""
+        return HomeScreen()
+
     def _show_initial_route(self) -> None:
         routes: dict[str, Callable[[], Any]] = {
-            "home": lambda: self.push_screen(HomeScreen()),
             "generate": self.show_new_story,
             "stories": self.show_stories,
             "continue": self.show_continue,
@@ -985,10 +991,15 @@ class StoryForgeApp(App[None]):
             "config": self.show_config,
             "models": self.show_models,
         }
-        routes.get(self.route, routes["home"])()
+        action = routes.get(self.route)
+        if action is not None:
+            action()
 
     def go_home(self) -> None:
-        self.switch_screen(HomeScreen())
+        while len(self.screen_stack) > 1:
+            self.pop_screen()
+        if not isinstance(self.screen, HomeScreen):
+            self.switch_screen(HomeScreen())
 
     def show_new_story(self) -> None:
         self._show_new_story_with_defaults()
