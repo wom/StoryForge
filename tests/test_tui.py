@@ -15,6 +15,7 @@ from storyforge.tui import (
     NewStoryScreen,
     PickerScreen,
     ProgressScreen,
+    ResultScreen,
     ReviewScreen,
     StoryForgeApp,
 )
@@ -176,9 +177,23 @@ async def test_owned_mcp_client_opens_and_closes_in_the_same_task():
         app = StoryForgeApp()
         async with app.run_test() as pilot:
             await pilot.pause()
+            await pilot.press("ctrl+q")
+            await pilot.pause()
 
     assert client.enter_task is not None
     assert client.exit_task is client.enter_task
+
+
+@pytest.mark.asyncio
+async def test_owned_mcp_client_startup_failure_does_not_break_shutdown():
+    client = AsyncMock()
+    client.__aenter__.side_effect = RuntimeError("server did not start")
+    with patch("storyforge.tui.StoryForgeMCPClient", return_value=client):
+        app = StoryForgeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, ResultScreen)
+            assert "server did not start" in app.screen.message
 
 
 @pytest.mark.asyncio

@@ -707,7 +707,9 @@ class StoryForgeApp(App[None]):
                 )
                 await self._client_ready.wait()
                 if self._client_owner_error is not None:
-                    await self._client_owner_task
+                    task = self._client_owner_task
+                    self._client_owner_task = None
+                    await task
             self.call_after_refresh(self._show_initial_route)
         except Exception as error:
             self.push_screen(ResultScreen("MCP Server Error", str(error), error=True))
