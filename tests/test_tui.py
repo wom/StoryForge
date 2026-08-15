@@ -138,6 +138,36 @@ async def test_home_panel_is_centered_in_wide_terminal():
 
 
 @pytest.mark.asyncio
+async def test_escape_from_home_exits_without_exposing_textual_root_screen():
+    app = StoryForgeApp(client=FakeClient())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert [type(screen).__name__ for screen in app.screen_stack] == ["HomeScreen"]
+
+        await pilot.press("escape")
+        await pilot.pause()
+
+        assert app.is_running is False
+
+
+@pytest.mark.asyncio
+async def test_escape_from_direct_route_returns_home_then_exits():
+    app = StoryForgeApp(route="stories", client=FakeClient())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert isinstance(app.screen, StoryBrowserScreen)
+        assert [type(screen).__name__ for screen in app.screen_stack] == ["HomeScreen", "StoryBrowserScreen"]
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert isinstance(app.screen, HomeScreen)
+
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.is_running is False
+
+
+@pytest.mark.asyncio
 async def test_story_browser_opens_generated_story_for_reading():
     fake = FakeClient()
     app = StoryForgeApp(client=fake)

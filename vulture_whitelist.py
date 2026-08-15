@@ -57,5 +57,6 @@ tui.StoryBrowserScreen.on_option_list_option_highlighted
 tui.StoryBrowserScreen.on_option_list_option_selected
 tui.ImageViewerScreen.BINDINGS
 tui.TerminalImage.render
+tui.StoryForgeApp.get_default_screen
 tui.StoryForgeApp.on_unmount
 tui.HomeScreen.on_button_pressed
