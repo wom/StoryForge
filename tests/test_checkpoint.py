@@ -78,18 +78,6 @@ class TestCheckpointData:
         assert checkpoint.status == SessionStatus.FAILED.value
         assert checkpoint.last_error == error_msg
 
-    def test_get_prompt_preview(self):
-        """Test prompt preview truncation."""
-        short_prompt = "Short prompt"
-        long_prompt = "This is a very long prompt that should be truncated because it exceeds the limit"
-
-        checkpoint_short = CheckpointData.create_new(short_prompt, {}, {})
-        checkpoint_long = CheckpointData.create_new(long_prompt, {}, {})
-
-        assert checkpoint_short.get_prompt_preview() == short_prompt
-        assert len(checkpoint_long.get_prompt_preview()) <= 50
-        assert checkpoint_long.get_prompt_preview().endswith("...")
-
 
 class TestCheckpointManager:
     """Test the CheckpointManager class functionality."""
@@ -234,108 +222,6 @@ class TestPhaseExecutor:
 
         shutil.rmtree(self.temp_dir, ignore_errors=True)
 
-    def test_create_resumed_session(self):
-        """Test creating a resumed session from original checkpoint."""
-        original_checkpoint = CheckpointData.create_new(
-            "original story", {"style": "adventure", "age_range": "preschool"}, {"backend": "gemini", "verbose": True}
-        )
-        original_checkpoint.generated_content["story"] = "Generated story content"
-        original_checkpoint.user_decisions["story_accepted"] = True
-
-        new_checkpoint = self.phase_executor._create_resumed_session(
-            original_checkpoint, ExecutionPhase.STORY_GENERATE
-        )
-
-        assert new_checkpoint.session_id != original_checkpoint.session_id
-        assert new_checkpoint.session_id.endswith("_sf_resumed")
-        assert new_checkpoint.status == "active"
-        assert new_checkpoint.current_phase == ExecutionPhase.STORY_GENERATE.value
-        assert new_checkpoint.original_inputs == original_checkpoint.original_inputs
-        assert new_checkpoint.resolved_config == original_checkpoint.resolved_config
-
-    def test_get_content_up_to_phase(self):
-        """Test preserving content up to specific phases."""
-        original_checkpoint = CheckpointData.create_new("test", {}, {})
-        original_checkpoint.generated_content = {
-            "story": "Generated story",
-            "refinements": "Some refinements",
-            "images": ["image1.png", "image2.png"],
-        }
-
-        # Test preserving story content for phases after story generation
-        content_for_image_phase = self.phase_executor._get_content_up_to_phase(
-            original_checkpoint, ExecutionPhase.IMAGE_DECISION
-        )
-
-        assert content_for_image_phase["story"] == "Generated story"
-        assert content_for_image_phase["refinements"] == "Some refinements"
-        assert content_for_image_phase["images"] == []  # Images should be cleared
-
-        # Test not preserving story for early phases
-        content_for_early_phase = self.phase_executor._get_content_up_to_phase(
-            original_checkpoint, ExecutionPhase.CONFIG_LOAD
-        )
-
-        assert content_for_early_phase["story"] is None
-        assert content_for_early_phase["refinements"] is None
-
-        # Video-prompt generation also requires the saved story.
-        content_for_video_phase = self.phase_executor._get_content_up_to_phase(
-            original_checkpoint, ExecutionPhase.VIDEO_PROMPT_GENERATE
-        )
-        assert content_for_video_phase["story"] == "Generated story"
-
-    def test_get_decisions_up_to_phase(self):
-        """Test preserving user decisions up to specific phases."""
-        original_checkpoint = CheckpointData.create_new("test", {}, {})
-        original_checkpoint.user_decisions = {
-            "story_accepted": True,
-            "wants_images": False,
-            "num_images_requested": 0,
-            "save_as_context": True,
-        }
-
-        # Test preserving story decision for story save phase
-        decisions_for_story_save = self.phase_executor._get_decisions_up_to_phase(
-            original_checkpoint, ExecutionPhase.STORY_SAVE
-        )
-
-        assert decisions_for_story_save["story_accepted"] is True
-        assert decisions_for_story_save["wants_images"] is None  # Should be cleared
-        assert decisions_for_story_save["save_as_context"] is None  # Should be cleared
-
-        # Test not preserving decisions for earlier phases
-        decisions_for_early_phase = self.phase_executor._get_decisions_up_to_phase(
-            original_checkpoint, ExecutionPhase.STORY_GENERATE
-        )
-
-        assert all(decision is None for decision in decisions_for_early_phase.values())
-
-    def test_resume_preserves_required_later_phase_decisions(self):
-        """Resuming a generation phase retains the decision that gates it."""
-        original_checkpoint = CheckpointData.create_new("test", {}, {})
-        original_checkpoint.user_decisions.update(
-            {
-                "story_accepted": True,
-                "wants_video_prompt": True,
-                "num_video_scenes": 4,
-                "wants_images": True,
-                "num_images_requested": 3,
-            }
-        )
-
-        video_decisions = self.phase_executor._get_decisions_up_to_phase(
-            original_checkpoint, ExecutionPhase.VIDEO_PROMPT_GENERATE
-        )
-        assert video_decisions["wants_video_prompt"] is True
-        assert video_decisions["num_video_scenes"] == 4
-
-        image_decisions = self.phase_executor._get_decisions_up_to_phase(
-            original_checkpoint, ExecutionPhase.IMAGE_GENERATE
-        )
-        assert image_decisions["wants_images"] is True
-        assert image_decisions["num_images_requested"] == 3
-
     def test_session_ids_are_unique(self):
         """Rapid checkpoint creation must not overwrite a previous session."""
         session_ids = {CheckpointData.create_new("test", {}, {}).session_id for _ in range(20)}
@@ -377,26 +263,6 @@ class TestPhaseExecutor:
         assert self.phase_executor._should_skip_phase(ExecutionPhase.STORY_GENERATE) is False
 
     @patch("storyforge.phase_executor.console")
-    def test_execute_from_checkpoint_creates_new_session(self, mock_console):
-        """Test that execute_from_checkpoint creates a new resumed session."""
-        resolved_config = {"backend": "test", "verbose": False}
-        original_checkpoint = CheckpointData.create_new("test story", {}, resolved_config)
-
-        # Mock the phase execution to avoid actual execution
-        with patch.object(self.phase_executor, "_execute_phase_sequence") as mock_execute:
-            self.phase_executor.execute_from_checkpoint(original_checkpoint, ExecutionPhase.STORY_GENERATE)
-
-            # Verify new session was created
-            assert self.phase_executor.checkpoint_data.session_id != original_checkpoint.session_id
-            assert self.phase_executor.checkpoint_data.session_id.endswith("_sf_resumed")
-
-            # Verify checkpoint manager was called
-            assert self.checkpoint_manager.save_checkpoint.called
-
-            # Verify phase execution was called
-            mock_execute.assert_called_once_with(ExecutionPhase.STORY_GENERATE)
-
-    @patch("storyforge.phase_executor.console")
     def test_execute_new_session(self, mock_console):
         """Test executing a new session with checkpointing."""
         prompt = "Test story prompt"
@@ -420,48 +286,25 @@ class TestPhaseExecutor:
 
 
 class TestCheckpointIntegration:
-    """Test checkpoint system integration."""
+    """Test checkpoint persistence integration."""
 
-    def test_end_to_end_checkpoint_workflow(self):
-        """Test complete checkpoint workflow from creation to resumption."""
+    def test_load_ignores_removed_interactive_state(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             with patch("storyforge.checkpoint.user_data_dir", return_value=tmpdir):
                 manager = CheckpointManager(auto_cleanup=False)
-                executor = PhaseExecutor(manager)
+                checkpoint = CheckpointData.create_new("A magical adventure", {}, {})
+                saved_path = manager.save_checkpoint(checkpoint)
+                payload = yaml.safe_load(saved_path.read_text(encoding="utf-8"))
+                payload["recovery_possible"] = True
+                payload["generated_content"]["images"] = ["old.png"]
+                payload["user_decisions"]["prompt_confirmed"] = True
+                saved_path.write_text(yaml.safe_dump(payload), encoding="utf-8")
 
-                # Create initial checkpoint
-                original_checkpoint = CheckpointData.create_new(
-                    "A magical adventure",
-                    {"style": "fantasy", "age_range": "middle_grade"},
-                    {"backend": "gemini", "verbose": False},
-                )
-                original_checkpoint.generated_content["story"] = "Once upon a time..."
-                original_checkpoint.update_phase(ExecutionPhase.STORY_SAVE)
-                original_checkpoint.mark_completed()
+                loaded = manager.load_checkpoint(saved_path)
 
-                # Save checkpoint
-                saved_path = manager.save_checkpoint(original_checkpoint)
-
-                # Load and resume from checkpoint
-                loaded_checkpoint = manager.load_checkpoint(saved_path)
-
-                # Create resumed session
-                resumed_checkpoint = executor._create_resumed_session(loaded_checkpoint, ExecutionPhase.IMAGE_DECISION)
-
-                # Verify resumed session properties
-                assert resumed_checkpoint.session_id != loaded_checkpoint.session_id
-                assert resumed_checkpoint.original_inputs["prompt"] == "A magical adventure"
-                assert resumed_checkpoint.generated_content["story"] == "Once upon a time..."
-                assert resumed_checkpoint.current_phase == ExecutionPhase.IMAGE_DECISION.value
-
-                # Verify resumed session starts with empty completed_phases
-                # (Critical phases will be initialized by _execute_phase_sequence before resume point)
-                assert resumed_checkpoint.completed_phases == []
-
-                # Verify parent session tracking
-                assert resumed_checkpoint.progress is not None
-                assert resumed_checkpoint.progress.get("resumed_from_session") == loaded_checkpoint.session_id
-                assert resumed_checkpoint.progress.get("resumed_at_phase") == ExecutionPhase.IMAGE_DECISION.value
+                assert "images" not in loaded.generated_content
+                assert loaded.generated_content["generated_images"] == []
+                assert "prompt_confirmed" not in loaded.user_decisions
 
     def test_checkpoint_yaml_structure(self):
         """Test that checkpoint YAML has expected structure and is readable."""

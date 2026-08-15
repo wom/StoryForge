@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import asyncio
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from textual.widgets import Button, Checkbox, Input, OptionList, Select, TextArea
@@ -89,11 +90,95 @@ async def test_home_panel_is_centered_in_wide_terminal():
     app = StoryForgeApp(client=FakeClient())
     async with app.run_test(size=(200, 50)) as pilot:
         await pilot.pause()
-        home = app.screen.query_one("#home")
+        home = app.screen.query_one("#home-panel")
         left_space = home.region.x
         right_space = app.screen.size.width - home.region.right
 
         assert abs(left_space - right_space) <= 1
+
+
+@pytest.mark.asyncio
+async def test_progress_panel_is_compact_and_centered_in_wide_terminal():
+    app = StoryForgeApp(client=FakeClient())
+    async with app.run_test(size=(200, 50)) as pilot:
+        await pilot.pause()
+        await app.push_screen(ProgressScreen("Generating Draft"))
+        await pilot.pause()
+        panel = app.screen.query_one("#progress-panel")
+        left_space = panel.region.x
+        right_space = app.screen.size.width - panel.region.right
+
+        assert abs(left_space - right_space) <= 1
+        assert panel.region.width <= 72
+        assert panel.region.height == 16
+
+
+@pytest.mark.asyncio
+async def test_review_screen_keeps_story_visible_and_actions_compact():
+    story = "Once upon a test.\n\n[Square brackets are story text.]"
+    draft = DraftResult(
+        session_id="session-test",
+        status="active",
+        story=story,
+        output_directory="output",
+        checkpoint_phase="story_save",
+    )
+    app = StoryForgeApp(client=FakeClient())
+
+    async with app.run_test(size=(150, 50)) as pilot:
+        await pilot.pause()
+        await app.push_screen(ReviewScreen(draft))
+        await pilot.pause()
+
+        reader = app.screen.query_one("#story-reader")
+        story_text = app.screen.query_one("#story-text")
+        home_button = app.screen.query_one("#home", Button)
+
+        assert reader.size.height > 0
+        assert story_text.content == story
+        assert home_button.region.height == 3
+        assert home_button.region.width < reader.region.width
+
+
+@pytest.mark.asyncio
+async def test_owned_mcp_client_suppresses_subprocess_output():
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    with patch("storyforge.tui.StoryForgeMCPClient", return_value=client) as client_type:
+        app = StoryForgeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+
+    client_type.assert_called_once_with(
+        progress_callback=app._on_progress,
+        suppress_server_output=True,
+    )
+    client.__aenter__.assert_awaited_once_with()
+    client.__aexit__.assert_awaited_once_with(None, None, None)
+
+
+@pytest.mark.asyncio
+async def test_owned_mcp_client_opens_and_closes_in_the_same_task():
+    class TaskBoundClient:
+        def __init__(self) -> None:
+            self.enter_task = None
+            self.exit_task = None
+
+        async def __aenter__(self):
+            self.enter_task = asyncio.current_task()
+            return self
+
+        async def __aexit__(self, exc_type, exc, traceback):
+            self.exit_task = asyncio.current_task()
+
+    client = TaskBoundClient()
+    with patch("storyforge.tui.StoryForgeMCPClient", return_value=client):
+        app = StoryForgeApp()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+
+    assert client.enter_task is not None
+    assert client.exit_task is client.enter_task
 
 
 @pytest.mark.asyncio

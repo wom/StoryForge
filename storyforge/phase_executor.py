@@ -12,16 +12,20 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import typer
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.prompt import Confirm
 
 from .checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
 from .config import Config, load_config
 from .console import console
 from .context import ContextManager
 from .llm_backend import ERROR_STORY_SENTINEL, classify_story_error, get_backend
+from .paths import create_output_directory_name
 from .prompt import Prompt
+
+
+def _load_debug_story() -> str:
+    """Load the bundled deterministic story used by debug workflows."""
+    return Path(__file__).with_name("test_story.txt").read_text(encoding="utf-8").strip()
 
 
 class PhaseExecutor:
@@ -51,194 +55,6 @@ class PhaseExecutor:
         """Publish a transport-neutral workflow event when a reporter is configured."""
         if self.reporter is not None:
             self.reporter(kind, message, progress)
-
-    def execute_from_checkpoint(self, checkpoint_data: CheckpointData, resume_phase: ExecutionPhase) -> None:
-        """Execute StoryForge starting from a checkpoint and specific phase."""
-        console.print(f"[bold cyan]Resuming from session:[/bold cyan] {checkpoint_data.session_id}")
-        console.print(f"[dim]Creating new session starting from phase:[/dim] {resume_phase.value}")
-
-        try:
-            # Validate checkpoint data before proceeding
-            self._validate_checkpoint_data(checkpoint_data)
-
-            # Create a new checkpoint session that inherits from the old one
-            self.checkpoint_data = self._create_resumed_session(checkpoint_data, resume_phase)
-
-            # Save the new session checkpoint
-            self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-
-            # Start execution from the specified phase
-            self._execute_phase_sequence(resume_phase)
-
-            # Mark session as completed
-            self.checkpoint_data.mark_completed()
-            self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-            console.print("[bold green]✅ StoryForge session completed successfully![/bold green]")
-
-        except typer.Exit:
-            # User cancelled - don't mark as failed
-            raise
-        except KeyboardInterrupt:
-            # User interrupted - save current state
-            if self.checkpoint_data:
-                console.print("\n[yellow]Session interrupted by user. Progress saved.[/yellow]")
-                self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-            raise typer.Exit(130) from None  # Standard exit code for SIGINT
-        except Exception as e:
-            # Mark session as failed and save checkpoint
-            # Don't re-wrap the error — _execute_phase() already adds phase context
-            error_msg = str(e)
-            console.print(f"[red]Session failed:[/red] {error_msg}")
-
-            if self.checkpoint_data:
-                self.checkpoint_data.mark_failed(error_msg)
-                try:
-                    self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-                    resumed_from = (
-                        self.checkpoint_data.progress.get("resumed_from_session")
-                        if self.checkpoint_data.progress
-                        else None
-                    )
-                    if resumed_from:
-                        console.print(
-                            f"[dim]Failed resumed session saved as:[/dim] {self.checkpoint_data.session_id} "
-                            f"[dim](resumed from {resumed_from})[/dim]"
-                        )
-                    else:
-                        console.print(f"[dim]Failed session saved as:[/dim] {self.checkpoint_data.session_id}")
-                except Exception as save_error:
-                    console.print(f"[red]Could not save failed session:[/red] {save_error}")
-            raise
-
-    def _create_resumed_session(
-        self, original_checkpoint: CheckpointData, resume_phase: ExecutionPhase
-    ) -> CheckpointData:
-        """Create a new checkpoint session based on original session, starting from resume_phase."""
-        now = datetime.now().isoformat() + "Z"
-        new_session_id = CheckpointData.create_session_id("_sf_resumed")
-
-        # Don't pre-mark phases as completed - start fresh to avoid skip logic issues
-        # Only preserve generated content and decisions up to resume point
-        new_checkpoint = CheckpointData(
-            session_id=new_session_id,
-            created_at=now,
-            updated_at=now,
-            status="active",
-            current_phase=resume_phase.value,
-            completed_phases=[],  # Start fresh - phases will be marked as we execute them
-            original_inputs=original_checkpoint.original_inputs.copy(),
-            resolved_config=original_checkpoint.resolved_config.copy(),
-            generated_content=self._get_content_up_to_phase(original_checkpoint, resume_phase),
-            user_decisions=self._get_decisions_up_to_phase(original_checkpoint, resume_phase),
-            context_data=original_checkpoint.context_data.copy() if original_checkpoint.context_data else None,
-            progress={
-                "total_phases": len(ExecutionPhase) - 1,  # Exclude COMPLETED
-                "completed_count": 0,
-                "completion_percentage": 0,
-                "resumed_from_session": original_checkpoint.session_id,  # Track parent session
-                "resumed_at_phase": resume_phase.value,  # Track resume point
-            },
-        )
-
-        return new_checkpoint
-
-    def _validate_checkpoint_data(self, checkpoint_data: CheckpointData) -> None:
-        """Validate checkpoint data for consistency and completeness."""
-        if not checkpoint_data:
-            raise ValueError("Checkpoint data is None")
-
-        if not checkpoint_data.session_id:
-            raise ValueError("Checkpoint missing session_id")
-
-        if not checkpoint_data.original_inputs.get("prompt"):
-            raise ValueError("Checkpoint missing original prompt")
-
-        if not checkpoint_data.resolved_config:
-            raise ValueError("Checkpoint missing resolved configuration")
-
-        # Validate phase is known
-        # Only validate ExecutionPhase values - ignore old incompatible checkpoints
-        try:
-            ExecutionPhase(checkpoint_data.current_phase)
-        except ValueError as e:
-            raise ValueError(
-                f"Incompatible checkpoint format - please start a new session: {checkpoint_data.current_phase}"
-            ) from e
-
-        # Validate completed phases - skip invalid ones from old checkpoints
-        valid_completed_phases = []
-        for phase_name in checkpoint_data.completed_phases:
-            try:
-                ExecutionPhase(phase_name)
-                valid_completed_phases.append(phase_name)
-            except ValueError:
-                # Skip invalid phases from old checkpoint format
-                continue
-
-        # Update checkpoint with only valid phases
-        checkpoint_data.completed_phases = valid_completed_phases
-
-    def _get_content_up_to_phase(
-        self, original_checkpoint: CheckpointData, resume_phase: ExecutionPhase
-    ) -> dict[str, Any]:
-        """Get generated content that should be preserved up to the resume phase."""
-        content: dict[str, Any] = {
-            "story": None,
-            "refinements": None,
-            "images": [],
-        }
-
-        # Preserve story if resuming from a phase after story generation
-        story_phases = [
-            ExecutionPhase.STORY_SAVE,
-            ExecutionPhase.VIDEO_DECISION,
-            ExecutionPhase.IMAGE_DECISION,
-            ExecutionPhase.VIDEO_PROMPT_GENERATE,
-            ExecutionPhase.IMAGE_GENERATE,
-            ExecutionPhase.CONTEXT_SAVE,
-        ]
-
-        if resume_phase in story_phases:
-            content["story"] = original_checkpoint.generated_content.get("story")
-            content["refinements"] = original_checkpoint.generated_content.get("refinements")
-
-        # Don't preserve images or context files - let user make new decisions
-        return content
-
-    def _get_decisions_up_to_phase(
-        self, original_checkpoint: CheckpointData, resume_phase: ExecutionPhase
-    ) -> dict[str, Any]:
-        """Get user decisions that should be preserved up to the resume phase."""
-        decisions = {
-            "story_accepted": None,
-            "wants_video_prompt": None,
-            "num_video_scenes": None,
-            "wants_images": None,
-            "num_images_requested": None,
-            "save_as_context": None,
-        }
-
-        post_story_phases = {
-            ExecutionPhase.STORY_SAVE,
-            ExecutionPhase.VIDEO_DECISION,
-            ExecutionPhase.IMAGE_DECISION,
-            ExecutionPhase.VIDEO_PROMPT_GENERATE,
-            ExecutionPhase.IMAGE_GENERATE,
-            ExecutionPhase.CONTEXT_SAVE,
-        }
-        if resume_phase in post_story_phases:
-            decisions["story_accepted"] = original_checkpoint.user_decisions.get("story_accepted")
-
-        if resume_phase == ExecutionPhase.VIDEO_PROMPT_GENERATE:
-            decisions["wants_video_prompt"] = original_checkpoint.user_decisions.get("wants_video_prompt")
-            decisions["num_video_scenes"] = original_checkpoint.user_decisions.get("num_video_scenes")
-
-        if resume_phase == ExecutionPhase.IMAGE_GENERATE:
-            decisions["wants_images"] = original_checkpoint.user_decisions.get("wants_images")
-            decisions["num_images_requested"] = original_checkpoint.user_decisions.get("num_images_requested")
-
-        # Decisions at earlier phases are deliberately re-asked.
-        return decisions
 
     def execute_new_session(
         self,
@@ -291,15 +107,12 @@ class PhaseExecutor:
             console.print("[bold green]✅ StoryForge session completed successfully![/bold green]")
             return self.checkpoint_data
 
-        except typer.Exit:
-            # User cancelled - don't mark as failed
-            raise
         except KeyboardInterrupt:
             # User interrupted - save current state
             if self.checkpoint_data:
                 console.print("\n[yellow]Session interrupted by user. Progress saved.[/yellow]")
                 self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-            raise typer.Exit(130) from None  # Standard exit code for SIGINT
+            raise
         except Exception as e:
             # Mark session as failed and save checkpoint
             # Don't re-wrap the error — _execute_phase() already adds phase context
@@ -499,9 +312,6 @@ class PhaseExecutor:
             if verbose:
                 console.print(f"[dim]Completed phase: {phase.value}[/dim]")
 
-        except typer.Exit:
-            # User cancelled - propagate up
-            raise
         except KeyboardInterrupt:
             # User interrupted - propagate up
             raise
@@ -527,6 +337,8 @@ class PhaseExecutor:
             raise RuntimeError("Checkpoint data must be initialized")
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
         self.config = load_config(verbose=verbose)
+        if self.config.config_path is not None:
+            self.checkpoint_data.resolved_config["config_path"] = str(self.config.config_path)
 
     def _phase_backend_init(self) -> None:
         """Initialize LLM backend phase."""
@@ -564,40 +376,11 @@ class PhaseExecutor:
             console.print(f"[dim]Using {self.llm_backend.name} backend[/dim]")
 
     def _phase_prompt_confirm(self) -> None:
-        """Prompt confirmation phase."""
+        """Validate that confirmation was handled by the calling client."""
         if self.checkpoint_data is None:
             raise RuntimeError("Checkpoint data must be initialized")
-        # Extract parameters from checkpoint
-        original_inputs = self.checkpoint_data.original_inputs
-        resolved_config = self.checkpoint_data.resolved_config
-
-        prompt = str(original_inputs.get("prompt", ""))
-        cli_args = original_inputs.get("cli_arguments", {})
-
-        if resolved_config.get("auto_confirm"):
-            self.checkpoint_data.user_decisions["prompt_confirmed"] = True
-            return
-
-        # Show summary and get confirmation
-        from .StoryForge import show_prompt_summary_and_confirm
-
-        if not show_prompt_summary_and_confirm(
-            prompt=prompt,
-            age_range=cli_args.get("age_range", resolved_config.get("age_range")),
-            style=cli_args.get("style", resolved_config.get("style")),
-            tone=cli_args.get("tone", resolved_config.get("tone")),
-            voice=cli_args.get("voice", resolved_config.get("voice")),
-            theme=cli_args.get("theme", resolved_config.get("theme")),
-            length=cli_args.get("length", resolved_config.get("length")),
-            setting=cli_args.get("setting"),
-            characters=cli_args.get("characters"),
-            learning_focus=cli_args.get("learning_focus"),
-            image_style=cli_args.get("image_style", resolved_config.get("image_style")),
-            generation_type="story",
-            backend_name=self.llm_backend.name if self.llm_backend else None,
-        ):
-            console.print("[yellow]Story generation cancelled.[/yellow]")
-            raise typer.Exit(0)
+        if not self.checkpoint_data.resolved_config.get("auto_confirm"):
+            raise RuntimeError("Prompt confirmation must be handled by the MCP client")
 
     def _phase_context_load(self) -> None:
         """Load context files and world definition phase.
@@ -770,9 +553,7 @@ class PhaseExecutor:
             progress.add_task("story", total=None)
 
             if debug:
-                from .StoryForge import load_story_from_file
-
-                self.story = load_story_from_file("storyforge/test_story.txt")
+                self.story = _load_debug_story()
                 console.print("[dim]Loaded debug story from test file.[/dim]")
             else:
                 self.story = self.llm_backend.generate_story(self.story_prompt)
@@ -790,91 +571,11 @@ class PhaseExecutor:
         self._handle_story_refinement()
 
     def _handle_story_refinement(self) -> None:
-        """Handle story refinement loop."""
+        """Ensure story review is delegated to an MCP client."""
         if self.checkpoint_data is None:
             raise RuntimeError("Checkpoint data must be initialized")
-        debug = self.checkpoint_data.resolved_config.get("debug", False)
-        verbose = self.checkpoint_data.resolved_config.get("verbose", False)
-
-        if self.checkpoint_data.resolved_config.get("defer_story_review"):
-            return
-
-        while True:
-            # Display the generated story
-            console.print("\n[bold green]Generated Story:[/bold green]")
-            prompt_preview = self.checkpoint_data.original_inputs.get("prompt", "")
-            console.print(f"[dim]Prompt:[/dim] {prompt_preview}")
-            if self.refinements:
-                console.print(f"[dim]Refinements:[/dim] {self.refinements}")
-            console.print()
-            console.print(self.story or "")
-            console.print()
-
-            # Ask if user wants to refine
-            if not Confirm.ask(
-                "[bold yellow]Would you like to refine the story?[/bold yellow]",
-                default=False,
-                show_default=True,
-            ):
-                # Story accepted
-                if self.checkpoint_data:
-                    self.checkpoint_data.user_decisions["story_accepted"] = True
-                break
-
-            self.refinements = typer.prompt("Refinements:")
-
-            # Store refinements in checkpoint
-            if self.checkpoint_data:
-                self.checkpoint_data.generated_content["refinements"] = self.refinements
-                self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
-
-            # Set refinement mode on the prompt so Prompt.story builds
-            # a dedicated editing prompt instead of a "write new story" prompt
-            if self.story_prompt:
-                self.story_prompt.refinement_mode = True
-                self.story_prompt.original_story = self.story
-                self.story_prompt.refinement_instructions = self.refinements
-
-            # Regenerate story with refinement
-            with Progress(
-                SpinnerColumn(),
-                TextColumn("[bold blue]Refining story..."),
-                console=console,
-                transient=True,
-            ) as progress:
-                progress.add_task("refining", total=None)
-
-                if debug:
-                    # In debug mode, show what would be sent but use test story
-                    console.print("[dim]Debug mode: skipping LLM refinement, using test story.[/dim]")
-                    if self.story_prompt:
-                        console.print(f"[dim]{self.story_prompt.story[:200]}...[/dim]")
-                    from .StoryForge import load_story_from_file
-
-                    self.story = load_story_from_file("storyforge/test_story.txt")
-                else:
-                    self.story = self.llm_backend.generate_story(self.story_prompt)
-                    if verbose:
-                        console.print("[dim]Story refinement complete.[/dim]")
-
-            # Clear refinement mode
-            if self.story_prompt:
-                self.story_prompt.refinement_mode = False
-                self.story_prompt.original_story = None
-                self.story_prompt.refinement_instructions = None
-
-            if self.story is None or self.story.startswith(ERROR_STORY_SENTINEL):
-                error_msg, _ = classify_story_error(self.story or ERROR_STORY_SENTINEL)
-                raise RuntimeError(error_msg)
-
-            # Update story in checkpoint
-            self.checkpoint_data.generated_content["story"] = self.story
-
-            # Clear this phase from completed so we can run refinement again
-            if ExecutionPhase.STORY_GENERATE.value in self.checkpoint_data.completed_phases:
-                self.checkpoint_data.completed_phases.remove(ExecutionPhase.STORY_GENERATE.value)
-
-            self.checkpoint_manager.save_checkpoint(self.checkpoint_data)
+        if not self.checkpoint_data.resolved_config.get("defer_story_review"):
+            raise RuntimeError("Story review must be handled by the MCP client")
 
     def _phase_story_save(self) -> None:
         """Save story to file phase."""
@@ -882,11 +583,8 @@ class PhaseExecutor:
             raise RuntimeError("Checkpoint data must be initialized")
         output_dir = self.checkpoint_data.resolved_config.get("output_directory")
         if not output_dir:
-            from .StoryForge import generate_default_output_dir
-
-            # Check if this is an extended story
             continuation_mode = self.checkpoint_data.resolved_config.get("continuation_mode", False)
-            output_dir = generate_default_output_dir(extended=continuation_mode)
+            output_dir = create_output_directory_name(extended=continuation_mode)
             self.checkpoint_data.resolved_config["output_directory"] = output_dir
 
         story_filename = "story.txt"
@@ -1165,18 +863,11 @@ class PhaseExecutor:
             return
 
         configured_scenes = self.checkpoint_data.resolved_config.get("video_scene_count")
-        if configured_scenes is not None:
-            wants_video = int(configured_scenes) > 0
-            self.checkpoint_data.user_decisions["wants_video_prompt"] = wants_video
-            self.checkpoint_data.user_decisions["num_video_scenes"] = int(configured_scenes)
-            return
-
-        wants_video = Confirm.ask("Would you like to generate a video prompt for the story?")
+        if configured_scenes is None:
+            raise RuntimeError("Video decision must be supplied by the MCP client")
+        wants_video = int(configured_scenes) > 0
         self.checkpoint_data.user_decisions["wants_video_prompt"] = wants_video
-
-        if wants_video:
-            num_scenes = typer.prompt("How many scenes for the video prompt?", type=int, default=2)
-            self.checkpoint_data.user_decisions["num_video_scenes"] = num_scenes
+        self.checkpoint_data.user_decisions["num_video_scenes"] = int(configured_scenes)
 
     def _phase_video_prompt_generate(self) -> None:
         """Video prompt generation phase."""
@@ -1278,19 +969,11 @@ class PhaseExecutor:
             return
 
         configured_images = self.checkpoint_data.resolved_config.get("final_image_count")
-        if configured_images is not None:
-            wants_images = int(configured_images) > 0
-            self.checkpoint_data.user_decisions["wants_images"] = wants_images
-            self.checkpoint_data.user_decisions["num_images_requested"] = int(configured_images)
-            return
-
-        wants_images = Confirm.ask("Would you like to generate illustrations for the story?")
+        if configured_images is None:
+            raise RuntimeError("Image decision must be supplied by the MCP client")
+        wants_images = int(configured_images) > 0
         self.checkpoint_data.user_decisions["wants_images"] = wants_images
-
-        if wants_images:
-            default_images = self.checkpoint_data.resolved_config.get("image_count", 3)
-            num_images = typer.prompt("How many images would you like to generate?", type=int, default=default_images)
-            self.checkpoint_data.user_decisions["num_images_requested"] = num_images
+        self.checkpoint_data.user_decisions["num_images_requested"] = int(configured_images)
 
     def _phase_image_generate(self) -> None:
         """Image generation phase."""
@@ -1454,11 +1137,9 @@ class PhaseExecutor:
             return
 
         configured_save = self.checkpoint_data.resolved_config.get("final_save_context")
-        save_as_context = (
-            bool(configured_save)
-            if configured_save is not None
-            else Confirm.ask("[bold blue]Save this story as future context for character development?[/bold blue]")
-        )
+        if configured_save is None:
+            raise RuntimeError("Context-save decision must be supplied by the MCP client")
+        save_as_context = bool(configured_save)
         self.checkpoint_data.user_decisions["save_as_context"] = save_as_context
 
         if save_as_context:

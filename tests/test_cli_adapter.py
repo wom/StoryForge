@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from storyforge.cli import _generation_request, main, normalize_argv, terminal_supports_tui
+from storyforge.cli import build_parser, main, normalize_argv, terminal_supports_tui
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -40,13 +40,34 @@ def test_normalize_argv_shows_help_without_arguments():
     assert normalize_argv([]) == ["--help"]
 
 
-def test_main_passes_normalized_copy_without_mutating_input():
+def test_main_passes_normalized_copy_to_classic_client_without_mutating_input():
     arguments = ["A brave mouse"]
-    with patch("storyforge.cli.app") as mock_app:
+    with (
+        patch("storyforge.cli.terminal_supports_tui", return_value=False),
+        patch("storyforge.classic_cli.run_classic", return_value=0) as run_classic,
+        pytest.raises(SystemExit) as error,
+    ):
         main(arguments)
 
     assert arguments == ["A brave mouse"]
-    mock_app.assert_called_once_with(args=["generate", "A brave mouse"])
+    assert error.value.code == 0
+    request = run_classic.call_args.args[1]
+    assert run_classic.call_args.args[0] == ["generate", "A brave mouse"]
+    assert request.prompt == "A brave mouse"
+
+
+def test_main_builds_generation_request_from_schema_options():
+    with (
+        patch("storyforge.cli.terminal_supports_tui", return_value=False),
+        patch("storyforge.classic_cli.run_classic", return_value=0) as run_classic,
+        pytest.raises(SystemExit),
+    ):
+        main(["generate", "A brave mouse", "-w", "world.md", "-v", "--character", "Max"])
+
+    request = run_classic.call_args.args[1]
+    assert request.world_file == "world.md"
+    assert request.verbose is True
+    assert request.characters == ["Max"]
 
 
 def test_force_tui_opens_home_route():
@@ -56,24 +77,45 @@ def test_force_tui_opens_home_route():
     run_tui.assert_called_once_with("home", None)
 
 
-def test_generation_arguments_prefill_tui_request():
-    request = _generation_request(["A brave mouse", "--tone", "gentle", "--character", "Max", "--character", "Luna"])
-
-    assert request.prompt == "A brave mouse"
-    assert request.tone == "gentle"
-    assert request.characters == ["Max", "Luna"]
-
-
-def test_generation_adapter_supports_advertised_short_options():
-    request = _generation_request(["A brave mouse", "-w", "world.md", "-v"])
-
-    assert request.world_file == "world.md"
-    assert request.verbose is True
-
-
-def test_generation_adapter_rejects_unknown_options():
+def test_generation_parser_rejects_unknown_options():
     with pytest.raises(SystemExit) as error:
-        _generation_request(["A brave mouse", "--tonne", "gentle"])
+        build_parser().parse_args(["generate", "A brave mouse", "--tonne", "gentle"])
+
+    assert error.value.code == 2
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["continue"],
+        ["extend"],
+        ["export-chain", "--context", "story", "--output", "chain.txt"],
+        ["config", "init", "--path", "storyforge.ini", "--force"],
+        ["world", "init", "--force"],
+        ["models", "refresh"],
+    ],
+)
+def test_parser_accepts_supported_command_surfaces(arguments):
+    assert build_parser().parse_args(arguments).command == arguments[0]
+
+
+def test_parser_rejects_unknown_subcommand_options():
+    with pytest.raises(SystemExit) as error:
+        build_parser().parse_args(["config", "init", "--froce"])
+
+    assert error.value.code == 2
+
+
+def test_parser_rejects_out_of_range_image_count():
+    with pytest.raises(SystemExit) as error:
+        build_parser().parse_args(["generate", "A story", "--image-count", "6"])
+
+    assert error.value.code == 2
+
+
+def test_parser_rejects_abbreviated_options():
+    with pytest.raises(SystemExit) as error:
+        build_parser().parse_args(["generate", "A story", "--verb"])
 
     assert error.value.code == 2
 
@@ -107,12 +149,12 @@ def test_module_entrypoint_routes_bare_prompt_to_generate():
     result = run_module_cli("A brave mouse", "--help")
 
     assert result.returncode == 0, result.stderr
-    assert "Usage:" in result.stdout
-    assert "generate [OPTIONS] [prompt]" in result.stdout
+    assert "usage:" in result.stdout
+    assert "storyforge generate" in result.stdout
 
 
 def test_module_entrypoint_supports_explicit_generate_command():
     result = run_module_cli("generate", "--help")
 
     assert result.returncode == 0, result.stderr
-    assert "generate [OPTIONS] [prompt]" in result.stdout
+    assert "storyforge generate" in result.stdout

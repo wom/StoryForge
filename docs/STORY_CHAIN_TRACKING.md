@@ -93,6 +93,6 @@ Chain tracking is implemented across three files:
 
 - **`storyforge/context.py`** — `get_story_chain()`, `write_chain_to_file()`, `parse_context_metadata()` (extracts `extended_from`)
 - **`storyforge/phase_executor.py`** — `_phase_context_save()` writes the `**Extended From:**` parent reference
-- **`storyforge/StoryForge.py`** — `extend_story()` displays chain, `export_chain()` CLI command
+- **`storyforge/workflow.py`** — creates extension drafts and exports chains for both MCP-backed clients
 
 See also: [CONFIGURATION.md](CONFIGURATION.md) · [README](../README.md)

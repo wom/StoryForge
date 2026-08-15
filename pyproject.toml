@@ -31,7 +31,6 @@ dependencies = [
     "requests>=2.31.0",
     "pillow>=11.2.1",
     "textual[syntax]>=0.54.1",
-    "typer>=0.9.0",
     "rich>=13.0.0",
     "platformdirs>=4.2.0",
     "pyyaml>=6.0.0",
@@ -55,7 +54,8 @@ dev = [
     "pre-commit>=3.6.0",
     "pip>=25.1.1",
     "textual-dev>=0.00.1",
-    "types-PyYAML>=6.0.12"
+    "types-PyYAML>=6.0.12",
+    "vulture>=2.16,<3",
 ]
 
 [project.scripts]
@@ -104,6 +104,11 @@ python_functions = "test_*"
 
 [tool.coverage.run]
 relative_files = true
+
+[tool.vulture]
+paths = ["storyforge", "vulture_whitelist.py"]
+min_confidence = 60
+sort_by_size = true
 
 [tool.mypy]
 python_version = "3.12"

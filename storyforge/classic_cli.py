@@ -1,4 +1,4 @@
-"""Rich/Typer-compatible fallback implemented as an MCP client."""
+"""Rich fallback implemented as a client of the bundled MCP server."""
 
 from __future__ import annotations
 
@@ -158,7 +158,7 @@ class ClassicCLI:
         parser = argparse.ArgumentParser(add_help=False)
         parser.add_argument("--context", "-c")
         parser.add_argument("--output", "-o")
-        options, _ = parser.parse_known_args(args)
+        options = parser.parse_args(args)
         stories = await client.list_stories(chain_only=True)
         if not stories:
             console.print("[yellow]No extended story chains found.[/yellow]")
@@ -182,7 +182,7 @@ class ClassicCLI:
             parser = argparse.ArgumentParser(add_help=False)
             parser.add_argument("--path", "-p")
             parser.add_argument("--force", "-f", action="store_true")
-            options, _ = parser.parse_known_args(args[1:])
+            options = parser.parse_args(args[1:])
             result = await client.init_config(options.path, options.force)
             self._print_result(result.message, result.artifacts)
         else:

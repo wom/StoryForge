@@ -1,0 +1,54 @@
+"""Explicit references for framework- and API-discovered StoryForge symbols."""
+
+# ruff: noqa: B018
+
+from storyforge import checkpoint, context, mcp_models, mcp_server, tui
+
+# Checkpoint fields are serialized and restored dynamically.
+checkpoint.CheckpointData.last_error
+
+# These maintenance helpers are intentional ContextManager public APIs.
+context.ContextManager.build_character_registry
+context.ContextManager.clear_cache
+
+# Pydantic consumes these declarations and clients consume the serialized fields.
+mcp_models.StrictModel.model_config
+mcp_models.DraftResult.output_directory
+mcp_models.DraftResult.checkpoint_phase
+mcp_models.WorkflowResult.output_directory
+
+# FastMCP registers tools and resources through decorators.
+mcp_server.storyforge_list_stories
+mcp_server.storyforge_get_story
+mcp_server.storyforge_list_sessions
+mcp_server.storyforge_get_session
+mcp_server.storyforge_resume_session
+mcp_server.storyforge_create_draft
+mcp_server.storyforge_create_extension_draft
+mcp_server.storyforge_refine_draft
+mcp_server.storyforge_finalize_story
+mcp_server.storyforge_export_chain
+mcp_server.storyforge_get_config
+mcp_server.storyforge_init_config
+mcp_server.storyforge_read_world
+mcp_server.storyforge_write_world
+mcp_server.storyforge_list_models
+mcp_server.storyforge_invalidate_models
+mcp_server.storyforge_clear_models
+mcp_server.config_resource
+mcp_server.world_resource
+mcp_server.story_resource
+mcp_server.session_resource
+
+# Textual discovers these names and class variables through its event system.
+tui.StoryForgeScreen.BINDINGS
+tui.StoryForgeApp.TITLE
+tui.StoryForgeApp.CSS
+tui.HomeScreen.compose
+tui.HomeScreen.action_quit
+tui.ProgressScreen.action_cancel
+tui.PickerScreen.on_mount
+tui.PickerScreen.on_option_list_option_highlighted
+tui.PickerScreen.on_option_list_option_selected
+tui.StoryForgeApp.on_unmount
+tui.HomeScreen.on_button_pressed

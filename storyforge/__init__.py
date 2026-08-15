@@ -20,14 +20,8 @@ CLI Usage:
     $ python -m storyforge "A brave mouse goes on an adventure"
 """
 
-# Main CLI interface
-from .StoryForge import app
-
 # Version info
 __version__ = "0.0.9"
 __author__ = "Chris (wom)"
 
-# Main exports
-__all__ = [
-    "app",  # Main CLI application
-]
+__all__ = ["__version__"]

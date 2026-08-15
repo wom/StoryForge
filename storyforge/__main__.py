@@ -2,7 +2,7 @@
 
 
 def main() -> None:
-    """Invoke the Typer command-line application."""
+    """Invoke the StoryForge command-line router."""
     from storyforge.cli import main as cli_main
 
     cli_main()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Callable
-from typing import Any, TypeVar
+from typing import Any, TextIO, TypeVar
 
 from mcp import Client, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -38,12 +38,14 @@ class StoryForgeMCPClient:
         self,
         progress_callback: ProgressCallback | None = None,
         server: Any | None = None,
+        suppress_server_output: bool = False,
     ) -> None:
         self.progress_callback = progress_callback
         self.server = server
-        self._transport: Any | None = None
+        self.suppress_server_output = suppress_server_output
         self._client_context: Client | None = None
         self._client: Client | None = None
+        self._server_errlog: TextIO | None = None
 
     async def __aenter__(self) -> StoryForgeMCPClient:
         if self.server is None:
@@ -52,18 +54,32 @@ class StoryForgeMCPClient:
                 args=["-m", "storyforge.mcp_server"],
                 env=dict(os.environ),
             )
-            self._transport = stdio_client(params)
-            client_context = Client(self._transport)
+            if self.suppress_server_output:
+                self._server_errlog = open(os.devnull, "w", encoding="utf-8")
+            client_context = Client(stdio_client(params, errlog=self._server_errlog or sys.stderr))
         else:
             client_context = Client(self.server, raise_exceptions=True)
         self._client_context = client_context
-        self._client = await client_context.__aenter__()
+        try:
+            self._client = await client_context.__aenter__()
+        except BaseException:
+            self._close_server_errlog()
+            raise
         return self
 
     async def __aexit__(self, exc_type: Any, exc: Any, traceback: Any) -> None:
-        if self._client_context is not None:
-            await self._client_context.__aexit__(exc_type, exc, traceback)
-        self._client = None
+        try:
+            if self._client_context is not None:
+                await self._client_context.__aexit__(exc_type, exc, traceback)
+        finally:
+            self._client = None
+            self._client_context = None
+            self._close_server_errlog()
+
+    def _close_server_errlog(self) -> None:
+        if self._server_errlog is not None:
+            self._server_errlog.close()
+            self._server_errlog = None
 
     async def _call(self, name: str, arguments: dict[str, Any] | None = None) -> Any:
         if self._client is None:

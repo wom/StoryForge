@@ -36,6 +36,7 @@ make mcp        # Run the bundled stdio MCP server
 make mcp-dev    # Open the MCP development inspector
 make lint       # Lint and format code (auto-fixes issues)
 make lint-check # Check linting without auto-fixes
+make dead-code  # Check production code for unused symbols
 make typecheck  # Run type checking only
 make coverage   # Run tests with coverage report (xml + html + term)
 make clean      # Clean up build artifacts, caches, and remove .venv
@@ -46,6 +47,7 @@ make clean      # Clean up build artifacts, caches, and remove .venv
 The project uses:
 - **ruff** - Fast Python linter and formatter
 - **mypy** - Static type checking
+- **Vulture** - Dead-code detection with an explicit framework-entry-point whitelist
 - **pre-commit** - Git hooks for automated checks
 
 ### Pre-commit Hooks
@@ -69,9 +71,10 @@ storyforge "Any prompt here" --debug
 ```
 storyforge/
 ├── __init__.py
-├── StoryForge.py        # Main CLI application (Typer)
 ├── anthropic_backend.py # Anthropic Claude API integration
 ├── checkpoint.py        # Session persistence and resume
+├── classic_cli.py       # Rich MCP client
+├── cli.py               # argparse entry point and UI routing
 ├── config.py            # Configuration loading and validation
 ├── console.py           # Shared Rich console instance
 ├── context.py           # Context management, character registry, summarization
@@ -82,19 +85,19 @@ storyforge/
 ├── mcp_models.py        # MCP request/result schemas
 ├── mcp_server.py        # Bundled StoryForge MCP server
 ├── openai_backend.py    # OpenAI API integration (GPT + image models)
+├── paths.py             # Shared output and world-file path helpers
 ├── phase_executor.py    # Phase-based execution engine
 ├── prompt.py            # Prompt handling and validation
 ├── py.typed             # PEP 561 type marker
-├── story_picker.py      # Interactive TUI story picker (Textual)
 ├── test_story.txt       # Test story for debug mode
 ├── tui.py               # Unified full-screen Textual application
 ├── workflow.py          # UI-independent staged workflow services
 ├── world_template.py    # World definition template for world.md
-└── schema/              # Validation schema and CLI integration
+└── schema/              # Configuration and prompt validation schema
     ├── __init__.py
-    ├── cli_integration.py
     ├── config_schema.py
-    └── core.py
+    ├── core.py
+    └── validation.py
 
 tests/                   # Test suite (pytest)
 docs/                    # Documentation
@@ -119,20 +122,20 @@ pyproject.toml           # Project configuration
 
 - All source code in the `storyforge/` package
 - Use package imports: `from storyforge.module import Class`
-- Entry points in `pyproject.toml`: `storyforge` and `sf` (short alias)
+- Entry points in `pyproject.toml`: `storyforge`, `sf` (short alias), and `storyforge-mcp`
 
 ### Client / Server Boundary
 
 - The Textual and Rich interfaces are presentation-only MCP clients.
 - `storyforge-mcp` owns workflow execution, checkpoints, provider access, and file operations.
 - Long mutations run on one bounded server worker; MCP progress notifications are bridged back to the active client.
-- Workflow services contain no Textual, Typer, Rich, or MCP imports and should be tested independently.
+- Workflow services contain no Textual, Rich, or MCP imports and should be tested independently.
 - MCP tools never prompt. Clients collect review, refinement, media, overwrite, and destructive-operation decisions explicitly.
 
 ## Contributing Workflow
 
 1. **Setup**: `make install && pre-commit install`
-2. **Development**: `make test && make lint`
+2. **Development**: `make test && make lint-check`
 3. **Commit**: Pre-commit hooks run automatically
 
 ### Code Style Guidelines
@@ -188,7 +191,7 @@ uv venv .venv && source .venv/bin/activate && uv pip install .[dev]
 
 1. **Update version** in both `pyproject.toml` and `storyforge/__init__.py`
 2. **Update CHANGELOG.md** — move `[Unreleased]` items into a new versioned section with today's date
-3. **Validate**: `make lint && make test && make coverage`
+3. **Validate**: `make lint && make lint-check && make test && make coverage`
 4. **Commit**: `git commit -am "release: v0.0.X"`
 5. **Tag**: `git tag v0.0.X`
 6. **Push**: `git push origin main --tags`
