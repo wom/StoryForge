@@ -1,4 +1,4 @@
-.PHONY: all test run install lint lint-check clean coverage debug console typecheck mcp mcp-dev release
+.PHONY: all test run install lint lint-check dead-code clean coverage debug console typecheck mcp mcp-dev release
 
 # Use .venv/bin/uv consistently
 VENV_ACTIVATE = . .venv/bin/activate &&
@@ -43,15 +43,19 @@ console:
 
 # Lint the code (mirrors pre-commit hook behavior)
 lint: install
-	$(VENV_ACTIVATE) ruff check --fix storyforge tests
-	$(VENV_ACTIVATE) ruff format storyforge tests
+	$(VENV_ACTIVATE) ruff check --fix storyforge tests vulture_whitelist.py
+	$(VENV_ACTIVATE) ruff format storyforge tests vulture_whitelist.py
 	$(VENV_ACTIVATE) mypy storyforge
 
 # Lint check only (no auto-fixes)
-lint-check: install
-	$(VENV_ACTIVATE) ruff check storyforge tests
-	$(VENV_ACTIVATE) ruff format --check storyforge tests
+lint-check: install dead-code
+	$(VENV_ACTIVATE) ruff check storyforge tests vulture_whitelist.py
+	$(VENV_ACTIVATE) ruff format --check storyforge tests vulture_whitelist.py
 	$(VENV_ACTIVATE) mypy storyforge
+
+# Find unused production code (framework entry points are explicitly whitelisted)
+dead-code: install
+	$(VENV_ACTIVATE) vulture
 
 # Type check only
 typecheck: install

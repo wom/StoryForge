@@ -50,13 +50,9 @@ class ConfigField:
 
     # Documentation
     example_values: list[str] | None = None
-    added_version: str | None = None
-    deprecated: bool = False
-    deprecation_message: str | None = None
 
     # INI file generation
     ini_comment: str | None = None
-    ini_group_comment: str | None = None
 
     def __post_init__(self):
         """Generate derived fields after initialization."""

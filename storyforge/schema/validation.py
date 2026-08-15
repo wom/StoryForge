@@ -103,16 +103,3 @@ class SchemaValidator:
                         all_errors.extend(field_errors)
 
         return all_errors
-
-    def validate_cli_argument(self, field_name: str, value: Any) -> list[ValidationError]:
-        """Validate a single CLI argument by field name."""
-        # Find the field across all sections
-        for section_name in ["story", "images", "output", "system"]:
-            if hasattr(self.schema, section_name):
-                section = getattr(self.schema, section_name)
-                if field_name in section.fields:
-                    field = section.fields[field_name]
-                    return self.validate_field(field, value)
-
-        # Field not found in schema
-        return [ValidationError(field_name, value, f"Unknown configuration field '{field_name}'", "")]

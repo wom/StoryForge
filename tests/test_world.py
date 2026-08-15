@@ -4,8 +4,11 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from storyforge.context import ContextManager
 from storyforge.prompt import Prompt
+from storyforge.workflow import StoryForgeWorkflow
 from storyforge.world_template import WORLD_FILENAME, WORLD_TEMPLATE
 
 
@@ -498,134 +501,42 @@ class TestWorldTemplate:
         assert WORLD_FILENAME == "world.md"
 
 
-class TestWorldCLICommands:
-    """Test the storyforge world CLI commands."""
+class TestWorldWorkflow:
+    """Test world-file operations through the MCP-backed workflow."""
 
-    def test_world_init_creates_file(self, tmp_path, monkeypatch):
-        """world init creates world.md from template."""
-        from typer.testing import CliRunner
+    def test_write_world_create_and_overwrite(self, tmp_path):
+        path = tmp_path / "world.md"
+        workflow = StoryForgeWorkflow()
 
-        from storyforge.StoryForge import app
+        with patch("storyforge.workflow.resolve_world_file_path", return_value=path):
+            created = workflow.write_world("# First world")
+            with pytest.raises(FileExistsError):
+                workflow.write_world("# Second world")
+            replaced = workflow.write_world("# Second world", overwrite=True)
 
-        runner = CliRunner()
-        monkeypatch.chdir(tmp_path)
-        context_dir = tmp_path / "context"
-        context_dir.mkdir()
+        assert created.path == str(path)
+        assert replaced.content == "# Second world"
+        assert path.read_text(encoding="utf-8") == "# Second world"
 
-        result = runner.invoke(app, ["world", "init"])
-        assert result.exit_code == 0
-        assert "created" in result.output.lower() or "✨" in result.output
+    def test_read_world_returns_existing_content(self, tmp_path):
+        path = tmp_path / "world.md"
+        path.write_text("# Existing world", encoding="utf-8")
 
-        world_file = context_dir / WORLD_FILENAME
-        assert world_file.exists()
-        content = world_file.read_text(encoding="utf-8")
-        assert "# Story World" in content
+        with patch("storyforge.workflow.ContextManager._discover_world_file", return_value=path):
+            result = StoryForgeWorkflow().read_world()
 
-    def test_world_init_no_overwrite(self, tmp_path, monkeypatch):
-        """world init refuses to overwrite without --force."""
-        from typer.testing import CliRunner
+        assert result.exists is True
+        assert result.path == str(path)
+        assert result.content == "# Existing world"
 
-        from storyforge.StoryForge import app
+    def test_read_world_reports_resolved_missing_path(self, tmp_path):
+        expected = tmp_path / "world.md"
+        with (
+            patch("storyforge.workflow.ContextManager._discover_world_file", return_value=None),
+            patch("storyforge.workflow.resolve_world_file_path", return_value=expected),
+        ):
+            result = StoryForgeWorkflow().read_world()
 
-        runner = CliRunner()
-        monkeypatch.chdir(tmp_path)
-        context_dir = tmp_path / "context"
-        context_dir.mkdir()
-        (context_dir / WORLD_FILENAME).write_text("existing", encoding="utf-8")
-
-        result = runner.invoke(app, ["world", "init"])
-        assert result.exit_code == 0
-        assert "already exists" in result.output.lower()
-        assert (context_dir / WORLD_FILENAME).read_text(encoding="utf-8") == "existing"
-
-    def test_world_init_force_overwrites(self, tmp_path, monkeypatch):
-        """world init --force overwrites existing file."""
-        from typer.testing import CliRunner
-
-        from storyforge.StoryForge import app
-
-        runner = CliRunner()
-        monkeypatch.chdir(tmp_path)
-        context_dir = tmp_path / "context"
-        context_dir.mkdir()
-        (context_dir / WORLD_FILENAME).write_text("old content", encoding="utf-8")
-
-        result = runner.invoke(app, ["world", "init", "--force"])
-        assert result.exit_code == 0
-        content = (context_dir / WORLD_FILENAME).read_text(encoding="utf-8")
-        assert "# Story World" in content
-
-    def test_world_show_displays_content(self, tmp_path, monkeypatch):
-        """world show displays world.md content."""
-        from typer.testing import CliRunner
-
-        from storyforge.StoryForge import app
-
-        runner = CliRunner()
-        monkeypatch.setenv("STORYFORGE_TEST_CONTEXT_DIR", str(tmp_path))
-        (tmp_path / WORLD_FILENAME).write_text("# My World\n\nLuna is brave.", encoding="utf-8")
-
-        result = runner.invoke(app, ["world", "show"])
-        assert result.exit_code == 0
-        assert "Luna is brave" in result.output
-
-    def test_world_show_strips_comments(self, tmp_path, monkeypatch):
-        """world show strips HTML comments from display."""
-        from typer.testing import CliRunner
-
-        from storyforge.StoryForge import app
-
-        runner = CliRunner()
-        monkeypatch.setenv("STORYFORGE_TEST_CONTEXT_DIR", str(tmp_path))
-        (tmp_path / WORLD_FILENAME).write_text("# World\n\n<!-- hidden -->\n\nVisible content", encoding="utf-8")
-
-        result = runner.invoke(app, ["world", "show"])
-        assert result.exit_code == 0
-        assert "hidden" not in result.output
-        assert "Visible content" in result.output
-
-    def test_world_show_no_file(self, tmp_path, monkeypatch):
-        """world show reports when no world file exists."""
-        from typer.testing import CliRunner
-
-        from storyforge.StoryForge import app
-
-        runner = CliRunner()
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("STORYFORGE_TEST_CONTEXT_DIR", raising=False)
-
-        with patch("storyforge.context.user_data_dir", return_value=str(tmp_path / "xdg")):
-            result = runner.invoke(app, ["world", "show"])
-        assert result.exit_code == 1
-        assert "no world file" in result.output.lower()
-
-    def test_world_path_shows_path(self, tmp_path, monkeypatch):
-        """world path shows the resolved path."""
-        from typer.testing import CliRunner
-
-        from storyforge.StoryForge import app
-
-        runner = CliRunner()
-        monkeypatch.setenv("STORYFORGE_TEST_CONTEXT_DIR", str(tmp_path))
-        world_file = tmp_path / WORLD_FILENAME
-        world_file.write_text("# World", encoding="utf-8")
-
-        result = runner.invoke(app, ["world", "path"])
-        assert result.exit_code == 0
-        assert WORLD_FILENAME in result.output
-
-    def test_world_path_no_file(self, tmp_path, monkeypatch):
-        """world path reports expected location when no file exists."""
-        from typer.testing import CliRunner
-
-        from storyforge.StoryForge import app
-
-        runner = CliRunner()
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.delenv("STORYFORGE_TEST_CONTEXT_DIR", raising=False)
-
-        with patch("storyforge.context.user_data_dir", return_value=str(tmp_path / "xdg")):
-            result = runner.invoke(app, ["world", "path"])
-        assert result.exit_code == 0
-        assert "no world file" in result.output.lower()
-        assert "storyforge world init" in result.output
+        assert result.exists is False
+        assert result.path == str(expected)
+        assert result.content == ""

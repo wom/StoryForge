@@ -17,7 +17,6 @@ from uuid import uuid4
 
 import yaml
 from platformdirs import user_data_dir
-from rich.prompt import Confirm, IntPrompt
 
 from .console import console
 
@@ -102,7 +101,6 @@ class CheckpointData:
 
     # Error information
     last_error: str | None = None
-    recovery_possible: bool = True
 
     @staticmethod
     def create_session_id(suffix: str = "_sf") -> str:
@@ -136,7 +134,7 @@ class CheckpointData:
             generated_content={
                 "story": None,
                 "refinements": None,
-                "images": [],
+                "generated_images": [],
             },
             user_decisions={
                 "story_accepted": None,
@@ -182,14 +180,6 @@ class CheckpointData:
         self.status = SessionStatus.FAILED.value
         self.last_error = error_message
         self.updated_at = datetime.now().isoformat() + "Z"
-
-    def get_prompt_preview(self, max_length: int = 50) -> str:
-        """Get a truncated preview of the original prompt."""
-        prompt_value = self.original_inputs.get("prompt", "")
-        prompt = str(prompt_value) if prompt_value is not None else ""
-        if len(prompt) <= max_length:
-            return prompt
-        return prompt[: max_length - 3] + "..."
 
 
 class CheckpointManager:
@@ -274,6 +264,14 @@ class CheckpointManager:
             if missing_fields:
                 raise ValueError(f"Checkpoint missing required fields: {missing_fields}")
 
+            # Older checkpoints may contain state from the removed interactive
+            # executor. Ignore those fields while preserving load compatibility.
+            data_dict.pop("recovery_possible", None)
+            generated_content = data_dict.setdefault("generated_content", {})
+            generated_content.pop("images", None)
+            generated_content.setdefault("generated_images", [])
+            data_dict.setdefault("user_decisions", {}).pop("prompt_confirmed", None)
+
             return CheckpointData(**data_dict)
 
         except FileNotFoundError:
@@ -347,134 +345,6 @@ class CheckpointManager:
 
         except Exception as e:
             console.print(f"[yellow]Error during checkpoint cleanup: {e}[/yellow]")
-
-    def prompt_checkpoint_selection(self) -> CheckpointData | None:
-        """Prompt user to select from available checkpoints."""
-        recent_checkpoints = self.find_recent_checkpoints(5)
-
-        if not recent_checkpoints:
-            console.print("[yellow]No previous StoryForge sessions found.[/yellow]")
-            return None
-
-        console.print("\n[bold cyan]Recent StoryForge sessions:[/bold cyan]")
-        checkpoint_infos = []
-
-        for i, checkpoint_path in enumerate(recent_checkpoints, 1):
-            info = self.get_checkpoint_info(checkpoint_path)
-            checkpoint_infos.append(info)
-
-            status_color = {
-                "active": "red",
-                "failed": "red",
-                "completed": "green",
-            }.get(info["status"], "yellow")
-
-            # Format datetime for display
-            try:
-                dt = datetime.fromisoformat(info["created_at"].replace("Z", "+00:00"))
-                time_str = dt.strftime("%Y-%m-%d %H:%M")
-            except Exception:
-                logging.getLogger(__name__).debug("Could not parse checkpoint date")
-                time_str = "Unknown time"
-
-            console.print(
-                f'  {i}. {time_str} - "{info["prompt_preview"]}" '
-                f"([{status_color}]{info['status'].upper()}[/{status_color}] at {info['current_phase']})"
-            )
-
-        console.print()
-
-        if len(checkpoint_infos) == 1:
-            if Confirm.ask("Continue from this session?"):
-                try:
-                    return self.load_checkpoint(checkpoint_infos[0]["path"])
-                except yaml.YAMLError as e:
-                    console.print(f"[red]Invalid YAML in checkpoint file {checkpoint_infos[0]['path']}:[/red] {e}")
-                    if Confirm.ask("This checkpoint appears corrupted. Move it to a .corrupt file and continue?"):
-                        path = checkpoint_infos[0]["path"]
-                        corrupt_path = path.with_suffix(path.suffix + ".corrupt")
-                        try:
-                            path.rename(corrupt_path)
-                            console.print(f"[dim]Moved corrupted checkpoint to {corrupt_path}[/dim]")
-                        except Exception as ex:
-                            console.print(f"[yellow]Could not move corrupted file: {ex}[/yellow]")
-                    return None
-                except Exception:
-                    # For any other error, do not abort the whole flow
-                    console.print("[yellow]Could not load selected checkpoint. Skipping.[/yellow]")
-                    return None
-            return None
-
-        try:
-            selection = IntPrompt.ask(
-                "Select session to continue",
-                choices=[str(i) for i in range(1, len(checkpoint_infos) + 1)] + ["q"],
-                default="q",
-            )
-
-            if str(selection) == "q":
-                return None
-
-            # IntPrompt.ask returns int, so we need to handle the conversion
-            selection_int = int(selection)
-            selected_info = checkpoint_infos[selection_int - 1]
-            try:
-                return self.load_checkpoint(selected_info["path"])
-            except yaml.YAMLError as e:
-                console.print(f"[red]Invalid YAML in checkpoint file {selected_info['path']}:[/red] {e}")
-                if Confirm.ask("This checkpoint appears corrupted. Move it to a .corrupt file and continue?"):
-                    path = selected_info["path"]
-                    corrupt_path = path.with_suffix(path.suffix + ".corrupt")
-                    try:
-                        path.rename(corrupt_path)
-                        console.print(f"[dim]Moved corrupted checkpoint to {corrupt_path}[/dim]")
-                    except Exception as ex:
-                        console.print(f"[yellow]Could not move corrupted file: {ex}[/yellow]")
-                return None
-            except Exception:
-                console.print("[yellow]Could not load selected checkpoint. Skipping.[/yellow]")
-                return None
-
-        except (ValueError, KeyboardInterrupt):
-            console.print("[yellow]Selection cancelled.[/yellow]")
-            return None
-
-    def prompt_phase_selection(self, checkpoint_data: CheckpointData) -> ExecutionPhase | None:
-        """Prompt user to select which phase to resume from for completed sessions."""
-        if checkpoint_data.status != SessionStatus.COMPLETED.value:
-            # For active/failed sessions, resume from current phase
-            try:
-                return ExecutionPhase(checkpoint_data.current_phase)
-            except ValueError:
-                # If phase is not recognized, it's an old incompatible checkpoint
-                raise ValueError("Incompatible checkpoint format - please start a new session") from None
-
-        console.print(f'\n[bold]Selected completed session:[/bold] "{checkpoint_data.get_prompt_preview()}"')
-        console.print("\n[bold cyan]Choose phase to resume from:[/bold cyan]")
-        console.print("  1. Generate new images (with same story)")
-        console.print("  2. Modify story and regenerate")
-        console.print("  3. Save story as context")
-        console.print("  4. Start completely over with same parameters")
-
-        try:
-            choice = IntPrompt.ask("Select option", choices=["1", "2", "3", "4", "q"], default="q")
-
-            if str(choice) == "q":
-                return None
-            elif choice == 1:
-                return ExecutionPhase.IMAGE_DECISION
-            elif choice == 2:
-                return ExecutionPhase.STORY_GENERATE
-            elif choice == 3:
-                return ExecutionPhase.CONTEXT_SAVE
-            elif choice == 4:
-                return ExecutionPhase.INIT
-            else:
-                return None
-
-        except (ValueError, KeyboardInterrupt):
-            console.print("[yellow]Selection cancelled.[/yellow]")
-            return None
 
     def cleanup_stale_active_sessions(self, max_age_hours: int = 24) -> int:
         """

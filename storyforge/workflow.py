@@ -23,6 +23,7 @@ from .mcp_models import (
     WorkflowResult,
     WorldResult,
 )
+from .paths import create_output_directory_name, resolve_world_file_path
 from .phase_executor import PhaseExecutor
 from .prompt import Prompt
 
@@ -54,9 +55,7 @@ class StoryForgeWorkflow:
     def _output_directory(requested: str | None, *, extended: bool = False) -> str:
         if requested:
             return requested
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        suffix = "_extended" if extended else ""
-        return f"storyforge_output_{timestamp}{suffix}"
+        return create_output_directory_name(extended=extended)
 
     def _executor(self, manager: CheckpointManager) -> PhaseExecutor:
         return PhaseExecutor(manager, reporter=self.reporter)
@@ -366,16 +365,12 @@ class StoryForgeWorkflow:
         manager = ContextManager()
         path = manager._discover_world_file()
         if path is None:
-            from .StoryForge import _resolve_world_file_path
-
-            path = _resolve_world_file_path()
+            path = resolve_world_file_path()
             return WorldResult(path=str(path), exists=False)
         return WorldResult(path=str(path), exists=True, content=path.read_text(encoding="utf-8"))
 
     def write_world(self, content: str, overwrite: bool = False) -> WorldResult:
-        from .StoryForge import _resolve_world_file_path
-
-        path = _resolve_world_file_path()
+        path = resolve_world_file_path()
         if path.exists() and not overwrite:
             raise FileExistsError(f"World file already exists: {path}")
         path.parent.mkdir(parents=True, exist_ok=True)

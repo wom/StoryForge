@@ -600,8 +600,8 @@ class Prompt:
             "\nReturn only the filename, nothing else."
         )
 
-    @classmethod
-    def get_valid_values(cls) -> dict[str, list[str]]:
+    @staticmethod
+    def get_valid_values() -> dict[str, list[str]]:
         """
         Get all valid values for each parameter from schema (excluding 'random').
 

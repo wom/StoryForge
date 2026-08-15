@@ -1,6 +1,6 @@
 """
 StoryForge configuration schema package.
-Provides schema-driven validation and CLI integration.
+Provides schema-driven configuration validation.
 """
 
 from .config_schema import STORYFORGE_SCHEMA

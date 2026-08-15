@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Any, Literal, cast
 
 from textual import work
@@ -120,7 +122,7 @@ class HomeScreen(StoryForgeScreen):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        with Vertical(id="home"):
+        with Vertical(id="home-panel"):
             yield Static("[bold cyan]StoryForge[/bold cyan]", id="brand")
             yield Static("Create and continue illustrated stories", classes="subtitle")
             with Horizontal(classes="home-row"):
@@ -334,7 +336,10 @@ class ReviewScreen(StoryForgeScreen):
         yield Header()
         with Vertical(id="review"):
             yield Static("[bold cyan]Review Story[/bold cyan]", classes="screen-title")
-            yield VerticalScroll(Static(self.draft.story, id="story-text"), id="story-reader")
+            yield VerticalScroll(
+                Static(self.draft.story, id="story-text", markup=False),
+                id="story-reader",
+            )
             yield Input(placeholder="Optional refinement instructions", id="refinement")
             with Horizontal(classes="actions"):
                 yield Button("Accept", id="accept", variant="success")
@@ -421,7 +426,7 @@ class PickerScreen(StoryForgeScreen):
         items: list[StorySummary] | list[SessionSummary],
     ) -> None:
         super().__init__()
-        self.picker_title = title
+        self.title = title
         self.kind = kind
         self.items = items
 
@@ -641,12 +646,12 @@ class StoryForgeApp(App[None]):
     CSS = """
     Screen { background: $surface; align: center middle; }
     Header { background: $primary-background; }
-    #home, #form, #review, #media-form, #extension-form, #export-form,
+    #home-panel, #form, #review, #media-form, #extension-form, #export-form,
     #progress-panel, #result-panel, #world-screen, #data-screen {
         width: 90%; max-width: 110; height: auto; max-height: 1fr;
         margin: 1 2; padding: 1 2; border: solid $primary;
     }
-    #home { align: center middle; height: 1fr; }
+    #home-panel { align: center middle; height: 1fr; }
     #brand { text-align: center; text-style: bold; width: 100%; }
     .subtitle { color: $text-muted; margin-bottom: 1; text-align: center; width: 100%; }
     .screen-title { margin-bottom: 1; }
@@ -662,8 +667,18 @@ class StoryForgeApp(App[None]):
     #preview-panel { width: 2fr; border: solid $primary; padding: 1 2; overflow-y: auto; }
     #story-reader, #data-reader { height: 1fr; border: solid $primary; padding: 1 2; }
     #world-content { height: 1fr; }
-    #progress-panel, #result-panel { align: center middle; height: 1fr; text-align: center; }
-    LoadingIndicator { height: 5; }
+    #progress-panel {
+        align: center middle;
+        width: 72;
+        max-width: 90%;
+        height: 16;
+        max-height: 80%;
+        padding: 2 4;
+        text-align: center;
+    }
+    #result-panel { align: center middle; height: 1fr; text-align: center; }
+    #progress-message, #progress-value { width: 100%; text-align: center; }
+    LoadingIndicator { width: 100%; height: 5; }
     """
 
     def __init__(
@@ -678,19 +693,54 @@ class StoryForgeApp(App[None]):
         self.client: Any = client
         self._owns_client = client is None
         self._active_worker: Any = None
+        self._client_owner_task: asyncio.Task[None] | None = None
+        self._client_ready = asyncio.Event()
+        self._client_stop = asyncio.Event()
+        self._client_owner_error: BaseException | None = None
 
     async def on_mount(self) -> None:
         try:
             if self.client is None:
-                self.client = StoryForgeMCPClient(progress_callback=self._on_progress)
-                await self.client.__aenter__()
+                self._client_owner_task = asyncio.create_task(
+                    self._run_owned_client(),
+                    name="storyforge-mcp-client",
+                )
+                await self._client_ready.wait()
+                if self._client_owner_error is not None:
+                    await self._client_owner_task
             self.call_after_refresh(self._show_initial_route)
         except Exception as error:
             self.push_screen(ResultScreen("MCP Server Error", str(error), error=True))
 
     async def on_unmount(self) -> None:
-        if self._owns_client and self.client is not None:
-            await self.client.__aexit__(None, None, None)
+        task = self._client_owner_task
+        if not self._owns_client or task is None:
+            return
+
+        self._client_stop.set()
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+        finally:
+            self._client_owner_task = None
+
+    async def _run_owned_client(self) -> None:
+        """Keep the AnyIO-backed MCP context in one asyncio task for its lifetime."""
+        try:
+            async with StoryForgeMCPClient(
+                progress_callback=self._on_progress,
+                suppress_server_output=True,
+            ) as client:
+                self.client = client
+                self._client_ready.set()
+                await self._client_stop.wait()
+        except BaseException as error:
+            self._client_owner_error = error
+            self._client_ready.set()
+            raise
 
     def _show_initial_route(self) -> None:
         routes: dict[str, Callable[[], Any]] = {

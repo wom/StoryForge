@@ -123,10 +123,11 @@ class TestFieldValidation:
 
     def test_image_count_must_be_within_supported_range(self):
         validator = SchemaValidator(STORYFORGE_SCHEMA)
+        field = STORYFORGE_SCHEMA.images.fields["image_count"]
 
-        assert validator.validate_cli_argument("image_count", 3) == []
-        assert validator.validate_cli_argument("image_count", 0)
-        assert validator.validate_cli_argument("image_count", 6)
+        assert validator.validate_field(field, 3) == []
+        assert validator.validate_field(field, 0)
+        assert validator.validate_field(field, 6)
 
     def test_validate_field_with_custom_validator(self):
         """Test validation with custom validator function."""
@@ -407,33 +408,6 @@ class TestConfigValidation:
         # Should not raise error for unknown field
         _ = validator.validate_config(config_dict)
         # Unknown fields are silently ignored
-
-
-class TestCLIArgumentValidation:
-    """Test CLI argument validation."""
-
-    def test_validate_cli_argument_valid(self):
-        """Test valid CLI argument validation."""
-        validator = SchemaValidator(STORYFORGE_SCHEMA)
-
-        errors = validator.validate_cli_argument("length", "short")
-        assert len(errors) == 0
-
-    def test_validate_cli_argument_invalid_value(self):
-        """Test invalid CLI argument value."""
-        validator = SchemaValidator(STORYFORGE_SCHEMA)
-
-        errors = validator.validate_cli_argument("length", "invalid_length")
-        assert len(errors) == 1
-        assert "Invalid value" in errors[0].message
-
-    def test_validate_cli_argument_unknown_field(self):
-        """Test validation of unknown CLI argument."""
-        validator = SchemaValidator(STORYFORGE_SCHEMA)
-
-        errors = validator.validate_cli_argument("unknown_field", "value")
-        assert len(errors) == 1
-        assert "Unknown configuration field" in errors[0].message
 
 
 class TestValidationErrorAccumulation:
