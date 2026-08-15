@@ -371,6 +371,9 @@ class PhaseExecutor:
         checkpoint_data.generated_content["story"] = revised_story
         checkpoint_data.generated_content["refinements"] = self.refinements
         checkpoint_data.user_decisions["story_accepted"] = None
+        # STORY_SAVE ran before the review boundary. Keep the canonical artifact
+        # synchronized with the draft that the user is now reviewing.
+        self._phase_story_save()
         self.checkpoint_manager.save_checkpoint(checkpoint_data)
         self._report("phase", "story_refine_complete", 1.0)
         return checkpoint_data

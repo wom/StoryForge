@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from storyforge.cli import _generation_request, main, normalize_argv, terminal_supports_tui
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -60,6 +62,33 @@ def test_generation_arguments_prefill_tui_request():
     assert request.prompt == "A brave mouse"
     assert request.tone == "gentle"
     assert request.characters == ["Max", "Luna"]
+
+
+def test_generation_adapter_supports_advertised_short_options():
+    request = _generation_request(["A brave mouse", "-w", "world.md", "-v"])
+
+    assert request.world_file == "world.md"
+    assert request.verbose is True
+
+
+def test_generation_adapter_rejects_unknown_options():
+    with pytest.raises(SystemExit) as error:
+        _generation_request(["A brave mouse", "--tonne", "gentle"])
+
+    assert error.value.code == 2
+
+
+def test_classic_generate_continue_routes_to_continue_command():
+    with (
+        patch("storyforge.cli.sys.argv", ["sf", "generate", "--continue"]),
+        patch("storyforge.cli.terminal_supports_tui", return_value=False),
+        patch("storyforge.classic_cli.run_classic", return_value=0) as run_classic,
+        pytest.raises(SystemExit) as error,
+    ):
+        main()
+
+    assert error.value.code == 0
+    run_classic.assert_called_once_with(["continue"], None)
 
 
 def test_terminal_capability_rejects_redirected_streams():
