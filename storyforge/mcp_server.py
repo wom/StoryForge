@@ -19,6 +19,8 @@ from .mcp_models import (
     ExportRequest,
     ExtensionRequest,
     FinalizeRequest,
+    GeneratedStory,
+    GeneratedStorySummary,
     GenerationRequest,
     RefinementRequest,
     SessionSummary,
@@ -120,6 +122,18 @@ async def storyforge_list_stories(chain_only: bool = False) -> list[StorySummary
 async def storyforge_get_story(story_id: str) -> dict[str, Any]:
     """Read a saved story, its complete chain, and parsed metadata."""
     return StoryForgeWorkflow().get_story(story_id)
+
+
+@mcp.tool()
+async def storyforge_list_generated_stories() -> list[GeneratedStorySummary]:
+    """List generated stories found in local StoryForge output directories."""
+    return StoryForgeWorkflow().list_generated_stories()
+
+
+@mcp.tool()
+async def storyforge_get_generated_story(story_id: str) -> GeneratedStory:
+    """Read a generated story and discover its associated output images."""
+    return StoryForgeWorkflow().get_generated_story(story_id)
 
 
 @mcp.tool()

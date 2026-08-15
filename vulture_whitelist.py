@@ -20,6 +20,8 @@ mcp_models.WorkflowResult.output_directory
 # FastMCP registers tools and resources through decorators.
 mcp_server.storyforge_list_stories
 mcp_server.storyforge_get_story
+mcp_server.storyforge_list_generated_stories
+mcp_server.storyforge_get_generated_story
 mcp_server.storyforge_list_sessions
 mcp_server.storyforge_get_session
 mcp_server.storyforge_resume_session
@@ -50,5 +52,10 @@ tui.ProgressScreen.action_cancel
 tui.PickerScreen.on_mount
 tui.PickerScreen.on_option_list_option_highlighted
 tui.PickerScreen.on_option_list_option_selected
+tui.StoryBrowserScreen.on_mount
+tui.StoryBrowserScreen.on_option_list_option_highlighted
+tui.StoryBrowserScreen.on_option_list_option_selected
+tui.ImageViewerScreen.BINDINGS
+tui.TerminalImage.render
 tui.StoryForgeApp.on_unmount
 tui.HomeScreen.on_button_pressed

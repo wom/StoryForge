@@ -6,18 +6,31 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from PIL import Image
 from textual.widgets import Button, Checkbox, Input, OptionList, Select, TextArea
 
-from storyforge.mcp_models import DraftResult, GenerationRequest, SessionSummary, StorySummary, WorkflowResult
+from storyforge.mcp_models import (
+    DraftResult,
+    GeneratedStory,
+    GeneratedStorySummary,
+    GenerationRequest,
+    SessionSummary,
+    StorySummary,
+    WorkflowResult,
+)
 from storyforge.tui import (
     HomeScreen,
+    ImageViewerScreen,
     MediaScreen,
     NewStoryScreen,
     PickerScreen,
     ProgressScreen,
     ResultScreen,
     ReviewScreen,
+    StoryBrowserScreen,
     StoryForgeApp,
+    StoryReaderScreen,
+    TerminalImage,
 )
 
 
@@ -35,6 +48,16 @@ class FakeClient:
                 "system": {},
             }
         }
+        self.generated_story = GeneratedStory(
+            id="/tmp/storyforge_output_test/story.txt",
+            title="The Lantern Fox",
+            story_path="/tmp/storyforge_output_test/story.txt",
+            generated_at="2026-08-14 12:00:00",
+            preview="A fox carried a lantern home.",
+            image_count=0,
+            content="Story: The Lantern Fox\n\nA fox carried a lantern home.",
+            output_directory="/tmp/storyforge_output_test",
+        )
 
     async def create_draft(self, request):
         self.generation_request = request
@@ -57,6 +80,22 @@ class FakeClient:
                 preview="A brave mouse found a map.",
             )
         ]
+
+    async def list_generated_stories(self):
+        return [
+            GeneratedStorySummary(
+                id=self.generated_story.id,
+                title=self.generated_story.title,
+                story_path=self.generated_story.story_path,
+                generated_at=self.generated_story.generated_at,
+                preview=self.generated_story.preview,
+                image_count=self.generated_story.image_count,
+            )
+        ]
+
+    async def get_generated_story(self, story_id):
+        assert story_id == self.generated_story.id
+        return self.generated_story
 
     async def list_sessions(self, limit=15):
         return [
@@ -83,7 +122,7 @@ async def test_home_screen_exposes_all_primary_workflows():
         await pilot.pause()
         assert isinstance(app.screen, HomeScreen)
         ids = {button.id for button in app.screen.query(Button)}
-        assert ids == {"new", "continue", "extend", "export", "world", "config", "models"}
+        assert ids == {"new", "stories", "continue", "extend", "export", "world", "config", "models"}
 
 
 @pytest.mark.asyncio
@@ -96,6 +135,55 @@ async def test_home_panel_is_centered_in_wide_terminal():
         right_space = app.screen.size.width - home.region.right
 
         assert abs(left_space - right_space) <= 1
+
+
+@pytest.mark.asyncio
+async def test_story_browser_opens_generated_story_for_reading():
+    fake = FakeClient()
+    app = StoryForgeApp(client=fake)
+    async with app.run_test(size=(150, 50)) as pilot:
+        await pilot.pause()
+        app.screen.query_one("#stories", Button).press()
+        await pilot.pause()
+
+        assert isinstance(app.screen, StoryBrowserScreen)
+        assert app.screen.query_one("#story-list", OptionList).option_count == 1
+        app.screen.query_one("#read", Button).press()
+        await pilot.pause()
+
+        assert isinstance(app.screen, StoryReaderScreen)
+        assert app.screen.query_one("#library-story-text").content == fake.generated_story.content
+
+
+@pytest.mark.asyncio
+async def test_story_reader_opens_and_navigates_generated_images(tmp_path):
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    Image.new("RGB", (4, 4), "red").save(first)
+    Image.new("RGB", (4, 4), "blue").save(second)
+    story = FakeClient().generated_story.model_copy(
+        update={"image_count": 2, "image_paths": [str(first), str(second)]}
+    )
+    app = StoryForgeApp(client=FakeClient())
+
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        await app.push_screen(StoryReaderScreen(story))
+        app.screen.query_one("#images", Button).press()
+        await pilot.pause()
+
+        assert isinstance(app.screen, ImageViewerScreen)
+        canvas = app.screen.query_one("#image-canvas", TerminalImage)
+        assert canvas.image_path == str(first)
+        app.screen.query_one("#next", Button).press()
+        await pilot.pause()
+        assert canvas.image_path == str(second)
+        assert str(canvas.render())
+        with patch("storyforge.tui.open_path_externally", return_value="Windows Explorer") as opener:
+            app.screen.query_one("#open-external", Button).press()
+            await pilot.pause()
+
+        opener.assert_called_once_with(str(second))
 
 
 @pytest.mark.asyncio

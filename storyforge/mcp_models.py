@@ -84,6 +84,25 @@ class StorySummary(StrictModel):
     chain_length: int = 1
 
 
+class GeneratedStorySummary(StrictModel):
+    """One generated story available in the local output library."""
+
+    id: str
+    title: str
+    story_path: str
+    generated_at: str = ""
+    preview: str = ""
+    image_count: int = 0
+
+
+class GeneratedStory(GeneratedStorySummary):
+    """Full generated story content and its associated local images."""
+
+    content: str
+    output_directory: str
+    image_paths: list[str] = Field(default_factory=list)
+
+
 class SessionSummary(StrictModel):
     """Serializable checkpoint metadata."""
 
