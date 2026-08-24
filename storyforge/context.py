@@ -1219,67 +1219,67 @@ class ContextManager:
                 content = f.read()
 
             # Extract timestamp from **Generated on:** or **Generated:** field
-            generated_match = re.search(r"\*\*Generated(?: on)?:\*\*\s*(.+)", content)
+            generated_match = re.search(r"\*\*Generated(?: on)?:\*\*[ \t]*(\S[^\r\n]*)", content)
             if generated_match:
                 metadata["timestamp"] = generated_match.group(1).strip()
 
             # Extract characters from **Characters:** field
-            characters_match = re.search(r"\*\*Characters:\*\*\s*(.+)", content)
+            characters_match = re.search(r"\*\*Characters:\*\*[ \t]*(\S[^\r\n]*)", content)
             if characters_match:
                 metadata["characters"] = characters_match.group(1).strip()
 
             # Extract theme from **Theme:** field
-            theme_match = re.search(r"\*\*Theme:\*\*\s*(.+)", content)
+            theme_match = re.search(r"\*\*Theme:\*\*[ \t]*(\S[^\r\n]*)", content)
             if theme_match:
                 metadata["theme"] = self._normalize_saved_parameter(theme_match.group(1))
 
             # Extract age group from **Age Group:** field
-            age_match = re.search(r"\*\*Age Group:\*\*\s*(.+)", content)
+            age_match = re.search(r"\*\*Age Group:\*\*[ \t]*(\S[^\r\n]*)", content)
             if age_match:
                 metadata["age_group"] = self._normalize_saved_parameter(age_match.group(1))
 
             # Extract tone from **Tone:** field
-            tone_match = re.search(r"\*\*Tone:\*\*\s*(.+)", content)
+            tone_match = re.search(r"\*\*Tone:\*\*[ \t]*(\S[^\r\n]*)", content)
             if tone_match:
                 metadata["tone"] = self._normalize_saved_parameter(tone_match.group(1))
 
             # Extract art style from **Art Style:** field
-            art_style_match = re.search(r"\*\*Art Style:\*\*\s*(.+)", content)
+            art_style_match = re.search(r"\*\*Art Style:\*\*[ \t]*(\S[^\r\n]*)", content)
             if art_style_match:
                 metadata["art_style"] = self._normalize_saved_parameter(art_style_match.group(1))
 
             # Extract voice archetype from **Voice:** field
-            voice_match = re.search(r"\*\*Voice:\*\*\s*(.+)", content)
+            voice_match = re.search(r"\*\*Voice:\*\*[ \t]*(\S[^\r\n]*)", content)
             if voice_match:
                 metadata["voice"] = self._normalize_saved_parameter(voice_match.group(1))
 
             # Extract style from **Style:** field
-            style_match = re.search(r"\*\*Style:\*\*\s*(.+)", content)
+            style_match = re.search(r"\*\*Style:\*\*[ \t]*(\S[^\r\n]*)", content)
             if style_match:
                 metadata["style"] = self._normalize_saved_parameter(style_match.group(1))
 
             # Extract setting from **Setting:** field
-            setting_match = re.search(r"\*\*Setting:\*\*\s*(.+)", content)
+            setting_match = re.search(r"\*\*Setting:\*\*[ \t]*(\S[^\r\n]*)", content)
             if setting_match:
                 metadata["setting"] = setting_match.group(1).strip()
 
             # Extract length from **Length:** field
-            length_match = re.search(r"\*\*Length:\*\*\s*(.+)", content)
+            length_match = re.search(r"\*\*Length:\*\*[ \t]*(\S[^\r\n]*)", content)
             if length_match:
                 metadata["length"] = self._normalize_saved_parameter(length_match.group(1))
 
             # Extract learning focus from **Learning Focus:** field
-            learning_focus_match = re.search(r"\*\*Learning Focus:\*\*\s*(.+)", content)
+            learning_focus_match = re.search(r"\*\*Learning Focus:\*\*[ \t]*(\S[^\r\n]*)", content)
             if learning_focus_match:
                 metadata["learning_focus"] = self._normalize_saved_parameter(learning_focus_match.group(1))
 
             # Extract original prompt from **Original Prompt:** field
-            prompt_match = re.search(r"\*\*Original Prompt:\*\*\s*(.+)", content)
+            prompt_match = re.search(r"\*\*Original Prompt:\*\*[ \t]*(\S[^\r\n]*)", content)
             if prompt_match:
                 metadata["prompt"] = prompt_match.group(1).strip()
 
             # Extract parent story reference for chain tracking
-            extended_from_match = re.search(r"\*\*Extended From:\*\*\s*(.+)", content)
+            extended_from_match = re.search(r"\*\*Extended From:\*\*[ \t]*(\S[^\r\n]*)", content)
             if extended_from_match:
                 metadata["extended_from"] = extended_from_match.group(1).strip()
 

@@ -152,6 +152,24 @@ A legacy story."""
         assert metadata["length"] == "short"
         assert metadata["learning_focus"] == "colors"
 
+    def test_parse_context_metadata_does_not_read_source_line_as_blank_value(self, tmp_path):
+        """A blank parameter must not consume its provenance line as the value."""
+        ctx_file = tmp_path / "blank_learning_focus.md"
+        ctx_file.write_text(
+            """# Story Context: Blank Learning Focus
+**Learning Focus:**
+
+**Learning Focus Source:** CLI
+
+## Story
+
+A story without an educational focus."""
+        )
+
+        metadata = ContextManager().parse_context_metadata(ctx_file)
+
+        assert "learning_focus" not in metadata
+
     def test_parse_context_metadata_with_story_preview(self, tmp_path):
         """Test that metadata includes story preview."""
         ctx_file = tmp_path / "test.md"

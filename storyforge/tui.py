@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
 from typing import Any, Literal, cast
 
+import pyperclip
 from PIL import Image, UnidentifiedImageError
 from rich.color import Color
 from rich.style import Style
@@ -47,6 +49,7 @@ from .mcp_models import (
     StorySummary,
     WorkflowResult,
 )
+from .portable_text import to_portable_ascii
 
 
 def _request_from_config(
@@ -554,6 +557,13 @@ class StoryReaderScreen(StoryForgeScreen):
     def __init__(self, story: GeneratedStory) -> None:
         super().__init__()
         self.story = story
+        self.portable_story_content = to_portable_ascii(story.content)
+        portable_video_prompt = (
+            to_portable_ascii(story.video_prompt_content) if story.video_prompt_content is not None else None
+        )
+        self.portable_video_prompt_content = (
+            portable_video_prompt if portable_video_prompt != self.portable_story_content else None
+        )
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -570,6 +580,9 @@ class StoryReaderScreen(StoryForgeScreen):
             with Horizontal(classes="actions"):
                 if self.story.image_paths:
                     yield Button(f"View Images ({len(self.story.image_paths)})", id="images", variant="primary")
+                yield Button("Copy Story", id="copy-story")
+                if self.portable_video_prompt_content is not None:
+                    yield Button("Copy Video Prompt", id="copy-video-prompt")
                 yield Button("Back", id="back")
                 yield Button("Home", id="home")
         yield Footer()
@@ -577,10 +590,38 @@ class StoryReaderScreen(StoryForgeScreen):
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "images":
             self.storyforge_app.push_screen(ImageViewerScreen(self.story.image_paths))
+        elif event.button.id == "copy-story":
+            self._copy_content("story", self.portable_story_content)
+        elif event.button.id == "copy-video-prompt" and self.portable_video_prompt_content is not None:
+            self._copy_content("video prompt", self.portable_video_prompt_content)
         elif event.button.id == "back":
             self.action_back()
         elif event.button.id == "home":
             self.storyforge_app.go_home()
+
+    def _copy_content(self, label: str, content: str) -> None:
+        try:
+            pyperclip.copy(content)
+            expected = self._normalize_clipboard_newlines(content)
+            for attempt in range(3):
+                copied = self._normalize_clipboard_newlines(pyperclip.paste())
+                if copied == expected:
+                    self.notify(f"Copied {label} to clipboard")
+                    return
+                if attempt < 2:
+                    time.sleep(0.05)
+            raise RuntimeError("clipboard content did not match the copied text")
+        except Exception as error:
+            detail = str(error).strip() or "no system clipboard is available"
+            self.notify(
+                f"Could not copy {label}: {detail}. On WSL, enable Windows interop for clip.exe; "
+                "on Linux, install wl-clipboard (Wayland) or xclip (X11).",
+                severity="error",
+            )
+
+    @staticmethod
+    def _normalize_clipboard_newlines(content: str) -> str:
+        return content.replace("\r\n", "\n").replace("\r", "\n")
 
 
 class TerminalImage(Static):

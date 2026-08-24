@@ -35,6 +35,8 @@ dependencies = [
     "platformdirs>=4.2.0",
     "pyyaml>=6.0.0",
     "mcp>=2,<3",
+    "anyascii>=0.3.3",
+    "pyperclip>=1.11.0",
 ]
 
 [project.urls]
@@ -54,6 +56,7 @@ dev = [
     "pre-commit>=3.6.0",
     "pip>=25.1.1",
     "textual-dev>=0.00.1",
+    "types-pyperclip>=1.11.0.20260508",
     "types-PyYAML>=6.0.12",
     "vulture>=2.16,<3",
 ]

@@ -100,6 +100,7 @@ class GeneratedStory(GeneratedStorySummary):
 
     content: str
     output_directory: str
+    video_prompt_content: str | None = None
     image_paths: list[str] = Field(default_factory=list)
 
 
