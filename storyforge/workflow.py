@@ -155,10 +155,14 @@ class StoryForgeWorkflow:
             raise FileNotFoundError(f"Generated story not found: {story_id}")
         story_path = Path(summary.story_path)
         images = self._story_images(story_path.parent)
+        video_prompt_path = story_path.parent / "video_prompt.txt"
         return GeneratedStory(
             **summary.model_dump(),
             content=story_path.read_text(encoding="utf-8"),
             output_directory=str(story_path.parent),
+            video_prompt_content=(
+                video_prompt_path.read_text(encoding="utf-8") if video_prompt_path.is_file() else None
+            ),
             image_paths=[str(path) for path in images],
         )
 

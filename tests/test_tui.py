@@ -183,6 +183,140 @@ async def test_story_browser_opens_generated_story_for_reading():
 
         assert isinstance(app.screen, StoryReaderScreen)
         assert app.screen.query_one("#library-story-text").content == fake.generated_story.content
+        assert app.screen.query_one("#copy-story", Button).label == "Copy Story"
+        assert not app.screen.query("#copy-video-prompt")
+
+
+@pytest.mark.asyncio
+async def test_story_reader_copies_portable_story_and_distinct_video_prompt():
+    story = FakeClient().generated_story.model_copy(
+        update={
+            "content": "Léa’s story 😀",
+            "video_prompt_content": "北京 — a cinematic scene",
+        }
+    )
+    app = StoryForgeApp(client=FakeClient())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(StoryReaderScreen(story))
+        with (
+            patch("storyforge.tui.pyperclip.copy") as copy,
+            patch(
+                "storyforge.tui.pyperclip.paste",
+                side_effect=["Lea's story :grinning:", "BeiJing - a cinematic scene"],
+            ),
+            patch("storyforge.tui.StoryReaderScreen.notify") as notify,
+        ):
+            app.screen.query_one("#copy-story", Button).press()
+            await pilot.pause()
+            app.screen.query_one("#copy-video-prompt", Button).press()
+            await pilot.pause()
+
+        assert [call.args[0] for call in copy.call_args_list] == [
+            "Lea's story :grinning:",
+            "BeiJing - a cinematic scene",
+        ]
+        assert [call.args[0] for call in notify.call_args_list] == [
+            "Copied story to clipboard",
+            "Copied video prompt to clipboard",
+        ]
+
+
+@pytest.mark.asyncio
+async def test_story_reader_hides_video_prompt_when_portable_content_matches_story():
+    story = FakeClient().generated_story.model_copy(update={"content": "Cafe", "video_prompt_content": "Café"})
+    app = StoryForgeApp(client=FakeClient())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(StoryReaderScreen(story))
+
+        assert not app.screen.query("#copy-video-prompt")
+
+
+@pytest.mark.asyncio
+async def test_story_reader_reports_actionable_clipboard_failure():
+    app = StoryForgeApp(client=FakeClient())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(StoryReaderScreen(FakeClient().generated_story))
+        with (
+            patch("storyforge.tui.pyperclip.copy", side_effect=RuntimeError("clipboard service unavailable")),
+            patch("storyforge.tui.StoryReaderScreen.notify") as notify,
+        ):
+            app.screen.query_one("#copy-story", Button).press()
+            await pilot.pause()
+
+        message = notify.call_args.args[0]
+        assert "Could not copy story: clipboard service unavailable" in message
+        assert "wl-clipboard" in message
+        assert notify.call_args.kwargs == {"severity": "error"}
+
+
+@pytest.mark.asyncio
+async def test_story_reader_retries_until_clipboard_content_matches():
+    app = StoryForgeApp(client=FakeClient())
+    content = FakeClient().generated_story.content
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(StoryReaderScreen(FakeClient().generated_story))
+        with (
+            patch("storyforge.tui.pyperclip.copy") as copy,
+            patch("storyforge.tui.pyperclip.paste", side_effect=["old", "still old", content]) as paste,
+            patch("storyforge.tui.time.sleep") as sleep,
+            patch("storyforge.tui.StoryReaderScreen.notify") as notify,
+        ):
+            app.screen.query_one("#copy-story", Button).press()
+            await pilot.pause()
+
+        copy.assert_called_once_with(content)
+        assert paste.call_count == 3
+        assert sleep.call_args_list == [((0.05,),), ((0.05,),)]
+        notify.assert_called_once_with("Copied story to clipboard")
+
+
+@pytest.mark.asyncio
+async def test_story_reader_accepts_clipboard_newline_normalization():
+    story = FakeClient().generated_story.model_copy(update={"content": "First line\nSecond line"})
+    app = StoryForgeApp(client=FakeClient())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(StoryReaderScreen(story))
+        with (
+            patch("storyforge.tui.pyperclip.copy"),
+            patch("storyforge.tui.pyperclip.paste", return_value="First line\r\nSecond line"),
+            patch("storyforge.tui.StoryReaderScreen.notify") as notify,
+        ):
+            app.screen.query_one("#copy-story", Button).press()
+            await pilot.pause()
+
+        notify.assert_called_once_with("Copied story to clipboard")
+
+
+@pytest.mark.asyncio
+async def test_story_reader_reports_clipboard_verification_mismatch():
+    app = StoryForgeApp(client=FakeClient())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(StoryReaderScreen(FakeClient().generated_story))
+        with (
+            patch("storyforge.tui.pyperclip.copy"),
+            patch("storyforge.tui.pyperclip.paste", return_value="different content") as paste,
+            patch("storyforge.tui.time.sleep") as sleep,
+            patch("storyforge.tui.StoryReaderScreen.notify") as notify,
+        ):
+            app.screen.query_one("#copy-story", Button).press()
+            await pilot.pause()
+
+        assert paste.call_count == 3
+        assert sleep.call_count == 2
+        assert "clipboard content did not match" in notify.call_args.args[0]
+        assert notify.call_args.kwargs == {"severity": "error"}
 
 
 @pytest.mark.asyncio

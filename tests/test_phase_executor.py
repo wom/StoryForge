@@ -297,6 +297,39 @@ class TestPhaseExecutorPhases:
         metadata_content = written_files.get("/tmp/output/generation_metadata.md", "")
         assert "# Generation Metadata" in metadata_content
 
+    def test_phase_story_save_writes_portable_ascii_without_mutating_story(self, tmp_path):
+        self.phase_executor.story = "Léa’s dragon flew over 北京. 😀"
+        self.checkpoint_data.generated_content["story"] = self.phase_executor.story
+        self.checkpoint_data.resolved_config["output_directory"] = str(tmp_path)
+        self.checkpoint_data.original_inputs["prompt"] = "A café adventure"
+
+        self.phase_executor._phase_story_save()
+
+        saved_story = (tmp_path / "story.txt").read_bytes().decode("ascii")
+        assert saved_story == "Story: A cafe adventure\n\nLea's dragon flew over BeiJing. :grinning:"
+        assert self.phase_executor.story == "Léa’s dragon flew over 北京. 😀"
+        assert self.checkpoint_data.generated_content["story"] == "Léa’s dragon flew over 北京. 😀"
+
+    def test_phase_video_prompt_save_writes_portable_ascii_without_mutating_checkpoint(self, tmp_path):
+        self.checkpoint_data.resolved_config["output_directory"] = str(tmp_path)
+        self.checkpoint_data.user_decisions.update({"wants_video_prompt": True, "num_video_scenes": 1})
+        self.checkpoint_data.original_inputs["prompt"] = "A café adventure"
+        self.phase_executor.story = "Léa’s dragon"
+        self.phase_executor.llm_backend = MagicMock()
+        self.phase_executor.llm_backend.generate_video_prompt.return_value = ["北京 — 😀"]
+
+        with (
+            patch("storyforge.phase_executor.ContextManager") as context_manager,
+            patch("storyforge.phase_executor.Progress"),
+        ):
+            context_manager.return_value.format_registry_for_image_prompt.return_value = ""
+            self.phase_executor._phase_video_prompt_generate()
+
+        saved_prompt = (tmp_path / "video_prompt.txt").read_bytes().decode("ascii")
+        assert "Video Prompt - A cafe adventure" in saved_prompt
+        assert "BeiJing - :grinning:" in saved_prompt
+        assert self.checkpoint_data.generated_content["video_prompts"] == ["北京 — 😀"]
+
     def test_refinement_rewrites_saved_story_artifact(self, tmp_path):
         """The accepted artifact must track the latest staged refinement."""
         self.checkpoint_data.generated_content["story"] = "Original draft"
@@ -1000,6 +1033,16 @@ class TestGenerationMetadata:
         source, value = self.phase_executor._get_parameter_source("image_style")
         assert source == "Default"
         assert value == "chibi"
+
+    def test_get_parameter_source_ignores_blank_values(self):
+        """Blank optional parameters should not be persisted as metadata values."""
+        self.checkpoint_data.original_inputs["cli_arguments"]["learning_focus"] = ""
+        self.checkpoint_data.resolved_config["learning_focus"] = ""
+
+        source, value = self.phase_executor._get_parameter_source("learning_focus")
+
+        assert source == "Default"
+        assert value is None
 
     @patch("storyforge.phase_executor.console")
     def test_build_generation_metadata_includes_backend(self, mock_console):

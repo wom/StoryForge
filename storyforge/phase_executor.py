@@ -20,6 +20,7 @@ from .console import console
 from .context import ContextManager
 from .llm_backend import ERROR_STORY_SENTINEL, classify_story_error, get_backend
 from .paths import create_output_directory_name
+from .portable_text import to_portable_ascii
 from .prompt import Prompt
 
 
@@ -591,10 +592,10 @@ class PhaseExecutor:
         story_path = os.path.join(output_dir, story_filename)
         os.makedirs(output_dir, exist_ok=True)
 
-        with open(story_path, "w", encoding="utf-8") as f:
-            prompt_text = str(self.checkpoint_data.original_inputs.get("prompt", ""))
-            f.write(f"Story: {prompt_text}\n\n")
-            f.write(self.story or "")
+        prompt_text = str(self.checkpoint_data.original_inputs.get("prompt", ""))
+        portable_story = to_portable_ascii(f"Story: {prompt_text}\n\n{self.story or ''}")
+        with open(story_path, "w", encoding="ascii", newline="\n") as f:
+            f.write(portable_story)
 
         console.print(f"[bold green]✅ Story saved as:[/bold green] {story_path}")
 
@@ -634,18 +635,18 @@ class PhaseExecutor:
 
         # Check CLI arguments
         cli_val = cli_args.get(field_name)
-        if cli_val is not None:
+        if cli_val not in (None, ""):
             return ("CLI", str(cli_val))
 
         # Check config file value
         cfg_val = resolved_config.get(field_name)
-        if cfg_val is not None:
+        if cfg_val not in (None, ""):
             return ("Config", str(cfg_val))
 
         # Fall back to default (get from prompt object if available)
         if self.story_prompt:
             val = getattr(self.story_prompt, field_name, None)
-            if val is not None:
+            if val not in (None, ""):
                 return ("Default", str(val))
 
         return ("Default", None)
@@ -952,8 +953,8 @@ class PhaseExecutor:
         video_path = os.path.join(output_dir, "video_prompt.txt")
         os.makedirs(output_dir, exist_ok=True)
 
-        with open(video_path, "w", encoding="utf-8") as f:
-            f.write(formatted)
+        with open(video_path, "w", encoding="ascii", newline="\n") as f:
+            f.write(to_portable_ascii(formatted))
 
         console.print(f"[bold green]✅ Video prompt saved as:[/bold green] {video_path}")
 
