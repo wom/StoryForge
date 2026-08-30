@@ -129,6 +129,7 @@ class StoryForgeWorkflow:
     def list_generated_stories(self) -> list[GeneratedStorySummary]:
         """List story artifacts produced in known StoryForge output directories."""
         stories: list[GeneratedStorySummary] = []
+        context_ids = self._generated_story_context_ids()
         for story_path in self._generated_story_paths():
             try:
                 content = story_path.read_text(encoding="utf-8")
@@ -144,6 +145,7 @@ class StoryForgeWorkflow:
                     generated_at=datetime.fromtimestamp(stat.st_mtime).isoformat(sep=" ", timespec="seconds"),
                     preview=self._story_preview(content),
                     image_count=len(images),
+                    context_id=context_ids.get(story_path),
                 )
             )
         return sorted(stories, key=lambda story: story.generated_at, reverse=True)
@@ -485,6 +487,23 @@ class StoryForgeWorkflow:
             except (OSError, TypeError, ValueError, YAMLError):
                 continue
         return list(paths)
+
+    @staticmethod
+    def _generated_story_context_ids() -> dict[Path, str]:
+        """Map generated story artifacts to their saved extension contexts."""
+        context_ids: dict[Path, str] = {}
+        manager = CheckpointManager(auto_cleanup=False)
+        for checkpoint_path in manager.checkpoint_dir.glob("checkpoint_*.yaml"):
+            try:
+                checkpoint = safe_load(checkpoint_path.read_text(encoding="utf-8")) or {}
+                output_directory = checkpoint.get("resolved_config", {}).get("output_directory")
+                context_file = checkpoint.get("generated_content", {}).get("context_file")
+                if output_directory and context_file and Path(str(context_file)).expanduser().is_file():
+                    story_path = (Path(str(output_directory)).expanduser() / "story.txt").resolve()
+                    context_ids[story_path] = Path(str(context_file)).stem
+            except (AttributeError, OSError, TypeError, ValueError, YAMLError):
+                continue
+        return context_ids
 
     @staticmethod
     def _story_images(output_directory: Path) -> list[Path]:

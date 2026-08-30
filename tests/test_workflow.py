@@ -200,3 +200,27 @@ def test_generated_story_library_discovers_text_and_images(tmp_path, monkeypatch
     assert detail.video_prompt_content == "A lantern glows in a moonlit forest."
     assert detail.image_paths == [str((output / "lantern_01.png").resolve())]
     assert detail_without_prompt.video_prompt_content is None
+
+
+def test_generated_story_library_links_saved_extension_context(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = tmp_path / "storyforge_output_test"
+    output.mkdir()
+    story_path = output / "story.txt"
+    story_path.write_text("Story: Linked Story\n\nOnce upon a test.", encoding="utf-8")
+    context_path = tmp_path / "linked_story.md"
+    context_path.write_text("# Story Context: Linked Story", encoding="utf-8")
+
+    checkpoint_dir = tmp_path / "checkpoints"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "checkpoint_linked.yaml").write_text(
+        f"""resolved_config:\n  output_directory: {output}\ngenerated_content:\n  context_file: {context_path}\n""",
+        encoding="utf-8",
+    )
+    checkpoint_manager = MagicMock()
+    checkpoint_manager.checkpoint_dir = checkpoint_dir
+
+    with patch("storyforge.workflow.CheckpointManager", return_value=checkpoint_manager):
+        story = StoryForgeWorkflow().list_generated_stories()[0]
+
+    assert story.context_id == "linked_story"

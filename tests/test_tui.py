@@ -19,6 +19,7 @@ from storyforge.mcp_models import (
     WorkflowResult,
 )
 from storyforge.tui import (
+    ExtensionOptionsScreen,
     HomeScreen,
     ImageViewerScreen,
     MediaScreen,
@@ -55,6 +56,7 @@ class FakeClient:
             generated_at="2026-08-14 12:00:00",
             preview="A fox carried a lantern home.",
             image_count=0,
+            context_id="story-one",
             content="Story: The Lantern Fox\n\nA fox carried a lantern home.",
             output_directory="/tmp/storyforge_output_test",
         )
@@ -122,7 +124,7 @@ async def test_home_screen_exposes_all_primary_workflows():
         await pilot.pause()
         assert isinstance(app.screen, HomeScreen)
         ids = {button.id for button in app.screen.query(Button)}
-        assert ids == {"new", "stories", "continue", "extend", "export", "world", "config", "models"}
+        assert ids == {"new", "stories", "continue", "export", "world", "config", "models"}
 
 
 @pytest.mark.asyncio
@@ -184,7 +186,36 @@ async def test_story_browser_opens_generated_story_for_reading():
         assert isinstance(app.screen, StoryReaderScreen)
         assert app.screen.query_one("#library-story-text").content == fake.generated_story.content
         assert app.screen.query_one("#copy-story", Button).label == "Copy Story"
+        assert app.screen.query_one("#extend", Button).label == "Extend"
         assert not app.screen.query("#copy-video-prompt")
+
+
+@pytest.mark.asyncio
+async def test_story_reader_extends_the_open_story_without_a_picker():
+    story = FakeClient().generated_story
+    app = StoryForgeApp(client=FakeClient())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(StoryReaderScreen(story))
+        app.screen.query_one("#extend", Button).press()
+        await pilot.pause()
+
+        assert isinstance(app.screen, ExtensionOptionsScreen)
+        assert app.screen.story.id == story.context_id
+        assert app.screen.story.filename == story.title
+
+
+@pytest.mark.asyncio
+async def test_story_reader_hides_extend_when_story_has_no_saved_context():
+    story = FakeClient().generated_story.model_copy(update={"context_id": None})
+    app = StoryForgeApp(client=FakeClient())
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(StoryReaderScreen(story))
+
+        assert not app.screen.query("#extend")
 
 
 @pytest.mark.asyncio

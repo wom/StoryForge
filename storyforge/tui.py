@@ -143,7 +143,6 @@ class HomeScreen(StoryForgeScreen):
                 yield Button("New Story", id="new", variant="primary")
                 yield Button("Stories", id="stories")
                 yield Button("Continue", id="continue")
-                yield Button("Extend", id="extend")
             with Horizontal(classes="home-row"):
                 yield Button("Export Chain", id="export")
                 yield Button("World", id="world")
@@ -160,7 +159,6 @@ class HomeScreen(StoryForgeScreen):
             "new": app.show_new_story,
             "stories": app.show_stories,
             "continue": app.show_continue,
-            "extend": app.show_extend,
             "export": app.show_export,
             "world": app.show_world,
             "config": app.show_config,
@@ -583,6 +581,8 @@ class StoryReaderScreen(StoryForgeScreen):
                 yield Button("Copy Story", id="copy-story")
                 if self.portable_video_prompt_content is not None:
                     yield Button("Copy Video Prompt", id="copy-video-prompt")
+                if self.story.context_id is not None:
+                    yield Button("Extend", id="extend")
                 yield Button("Back", id="back")
                 yield Button("Home", id="home")
         yield Footer()
@@ -594,6 +594,18 @@ class StoryReaderScreen(StoryForgeScreen):
             self._copy_content("story", self.portable_story_content)
         elif event.button.id == "copy-video-prompt" and self.portable_video_prompt_content is not None:
             self._copy_content("video prompt", self.portable_video_prompt_content)
+        elif event.button.id == "extend" and self.story.context_id is not None:
+            self.storyforge_app.push_screen(
+                ExtensionOptionsScreen(
+                    StorySummary(
+                        id=self.story.context_id,
+                        filename=self.story.title,
+                        filepath=self.story.story_path,
+                        timestamp=self.story.generated_at,
+                        preview=self.story.preview,
+                    )
+                )
+            )
         elif event.button.id == "back":
             self.action_back()
         elif event.button.id == "home":
