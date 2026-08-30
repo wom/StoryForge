@@ -19,6 +19,7 @@ from storyforge.mcp_models import (
     WorkflowResult,
 )
 from storyforge.tui import (
+    ConfigScreen,
     ExtensionOptionsScreen,
     HomeScreen,
     ImageViewerScreen,
@@ -541,6 +542,59 @@ async def test_new_story_form_loads_configured_defaults():
         assert app.screen.query_one("#image_style", Select).value == "watercolor"
         assert app.screen.query_one("#output_dir", Input).value == "configured-output"
         assert app.screen.query_one("#use_context", Checkbox).value is False
+
+
+@pytest.mark.asyncio
+async def test_configuration_screen_formats_grouped_values_and_defaults():
+    fake = FakeClient()
+    fake.config_data = {
+        "values": {
+            "story": {"length": "short", "age_range": "middle_grade", "voice": ""},
+            "images": {"image_style": "watercolor", "image_count": "3"},
+            "output": {"use_context": "true", "output_dir": ""},
+            "system": {"backend": "", "debug": "false"},
+        },
+        "path": None,
+    }
+    app = StoryForgeApp(client=fake)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        app.screen.query_one("#config", Button).press()
+        await pilot.pause()
+
+        assert isinstance(app.screen, ConfigScreen)
+        summary = str(app.screen.query_one("#config-summary").content)
+        assert "Story\n" in summary
+        assert "Age range" in summary
+        assert "Middle Grade" in summary
+        assert "Voice                 Not set" in summary
+        assert "Use context           Enabled" in summary
+        assert "Debug                 Disabled" in summary
+        assert app.screen.query_one("#config-path").content == "Using built-in defaults · no configuration file"
+        assert app.screen.query_one("#create-config", Button).label == "Create Config"
+        assert not app.screen.query("#edit-config")
+
+
+@pytest.mark.asyncio
+async def test_configuration_screen_opens_existing_config_for_editing():
+    fake = FakeClient()
+    fake.config_data["path"] = "/tmp/storyforge.ini"
+    app = StoryForgeApp(client=fake)
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(ConfigScreen(fake.config_data))
+        with (
+            patch("storyforge.tui.open_path_externally", return_value="the default editor") as opener,
+            patch("storyforge.tui.ConfigScreen.notify") as notify,
+        ):
+            app.screen.query_one("#edit-config", Button).press()
+            await pilot.pause()
+
+        opener.assert_called_once_with("/tmp/storyforge.ini")
+        notify.assert_called_once_with("Opened the configuration file in the default editor")
+        assert not app.screen.query("#create-config")
 
 
 @pytest.mark.asyncio
