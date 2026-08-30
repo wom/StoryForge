@@ -878,9 +878,9 @@ class WorldScreen(StoryForgeScreen):
 
 
 class DataScreen(StoryForgeScreen):
-    """Simple structured-data screen for config and model cache state."""
+    """Simple structured-data screen for model cache state."""
 
-    def __init__(self, title: str, content: str, kind: Literal["config", "models"]) -> None:
+    def __init__(self, title: str, content: str, kind: Literal["models"]) -> None:
         super().__init__()
         self.data_title = title
         self.content = content
@@ -892,23 +892,114 @@ class DataScreen(StoryForgeScreen):
             yield Static(f"[bold cyan]{self.data_title}[/bold cyan]", classes="screen-title")
             yield VerticalScroll(Static(self.content), id="data-reader")
             with Horizontal(classes="actions"):
-                if self.kind == "config":
-                    yield Button("Initialize Config", id="init", variant="primary")
-                else:
-                    yield Button("Invalidate Cache", id="invalidate", variant="primary")
-                    yield Button("Clear Cache", id="clear", variant="error")
+                yield Button("Invalidate Cache", id="invalidate", variant="primary")
+                yield Button("Clear Cache", id="clear", variant="error")
                 yield Button("Back", id="back")
         yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
             self.action_back()
-        elif event.button.id == "init":
-            self.storyforge_app.init_config()
         elif event.button.id == "invalidate":
             self.storyforge_app.invalidate_models()
         elif event.button.id == "clear":
             self.storyforge_app.clear_models()
+
+
+class ConfigScreen(StoryForgeScreen):
+    """Readable summary of the active StoryForge configuration."""
+
+    SECTION_LABELS = {
+        "story": "Story",
+        "images": "Images",
+        "output": "Output",
+        "system": "System",
+    }
+    FRIENDLY_VALUE_FIELDS = {
+        "age_range",
+        "backend",
+        "image_style",
+        "learning_focus",
+        "length",
+        "style",
+        "theme",
+        "tone",
+        "voice",
+    }
+
+    def __init__(self, data: dict[str, Any]) -> None:
+        super().__init__()
+        values = data.get("values", data)
+        self.values = values if isinstance(values, dict) else {}
+        path = data.get("path")
+        self.config_path = str(path) if path else None
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="config-screen"):
+            yield Static("Configuration", classes="screen-title literal-title", markup=False)
+            source = self.config_path or "Using built-in defaults · no configuration file"
+            yield Static(source, id="config-path", markup=False)
+            yield VerticalScroll(Static(self._summary(), id="config-summary"), id="config-reader")
+            with Horizontal(classes="actions"):
+                if self.config_path is None:
+                    yield Button("Create Config", id="create-config", variant="primary")
+                else:
+                    yield Button("Edit Config File", id="edit-config", variant="primary")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "create-config":
+            self.storyforge_app.init_config()
+        elif event.button.id == "edit-config" and self.config_path is not None:
+            try:
+                viewer = open_path_externally(self.config_path)
+            except (OSError, RuntimeError) as error:
+                self.notify(str(error), severity="error")
+            else:
+                self.notify(f"Opened the configuration file in {viewer}")
+
+    def _summary(self) -> Text:
+        summary = Text()
+        ordered_sections = [*self.SECTION_LABELS, *(key for key in self.values if key not in self.SECTION_LABELS)]
+        rendered_sections = 0
+        for section_name in ordered_sections:
+            settings = self.values.get(section_name)
+            if not isinstance(settings, dict):
+                continue
+            if rendered_sections:
+                summary.append("\n")
+            section_label = self.SECTION_LABELS.get(section_name, self._friendly_label(section_name))
+            summary.append(f"{section_label}\n", style="bold cyan")
+            for field_name, value in settings.items():
+                summary.append(f"  {self._friendly_label(str(field_name)):<22}", style="bold")
+                display_value, style = self._display_value(str(field_name), value)
+                summary.append(f"{display_value}\n", style=style)
+            rendered_sections += 1
+        if not rendered_sections:
+            summary.append("No configuration values are available.", style="dim italic")
+        return summary
+
+    @staticmethod
+    def _friendly_label(value: str) -> str:
+        return value.replace("_", " ").capitalize()
+
+    @classmethod
+    def _display_value(cls, field_name: str, value: Any) -> tuple[str, str]:
+        if value is None or value == "" or value == []:
+            return "Not set", "dim italic"
+        if isinstance(value, list):
+            return ", ".join(str(item) for item in value), ""
+        normalized = str(value).strip()
+        if normalized.lower() in {"true", "false"}:
+            enabled = normalized.lower() == "true"
+            return ("Enabled", "green") if enabled else ("Disabled", "dim")
+        if field_name in cls.FRIENDLY_VALUE_FIELDS:
+            return normalized.replace("_", " ").title(), ""
+        return normalized, ""
 
 
 class StoryForgeApp(App[None]):
@@ -919,7 +1010,7 @@ class StoryForgeApp(App[None]):
     Screen { background: $surface; align: center middle; }
     Header { background: $primary-background; }
     #home-panel, #form, #review, #media-form, #extension-form, #export-form,
-    #progress-panel, #result-panel, #world-screen, #data-screen, #story-browser,
+    #progress-panel, #result-panel, #world-screen, #data-screen, #config-screen, #story-browser,
     #story-viewer, #image-viewer {
         width: 90%; max-width: 110; height: auto; max-height: 1fr;
         margin: 1 2; padding: 1 2; border: solid $primary;
@@ -946,6 +1037,10 @@ class StoryForgeApp(App[None]):
     #story-reader, #library-story-reader, #data-reader {
         height: 1fr; border: solid $primary; padding: 1 2;
     }
+    #config-screen { height: 1fr; }
+    #config-path { color: $text-muted; margin-bottom: 1; }
+    #config-reader { height: 1fr; padding: 0 1; }
+    #config-summary { width: 100%; }
     #library-story-text { width: 100%; }
     .literal-title { color: $accent; text-style: bold; }
     #image-canvas { height: 1fr; width: 100%; content-align: center middle; overflow: hidden; }
@@ -1230,10 +1325,7 @@ class StoryForgeApp(App[None]):
     async def show_config(self) -> None:
         await self._start_progress("Loading Configuration")
         try:
-            data = await self.client.get_config()
-            values = data.get("values", data)
-            content = "\n".join(f"[{section}]\n{settings}" for section, settings in values.items())
-            self.switch_screen(DataScreen("Configuration", content, "config"))
+            self.switch_screen(ConfigScreen(await self.client.get_config()))
         except Exception as error:
             self.switch_screen(ResultScreen("Could Not Load Configuration", str(error), error=True))
 
