@@ -93,6 +93,7 @@ class GeneratedStorySummary(StrictModel):
     generated_at: str = ""
     preview: str = ""
     image_count: int = 0
+    context_id: str | None = None
 
 
 class GeneratedStory(GeneratedStorySummary):
