@@ -545,6 +545,23 @@ async def test_new_story_form_loads_configured_defaults():
 
 
 @pytest.mark.asyncio
+async def test_new_story_form_keeps_field_rows_compact():
+    app = StoryForgeApp(
+        route="generate",
+        initial_request=GenerationRequest(prompt="A compact form"),
+        client=FakeClient(),
+    )
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+
+        rows = list(app.screen.query(".field-row"))
+        assert len(rows) == 6
+        assert {row.region.height for row in rows} == {4}
+        assert app.screen.query_one("#prompt", TextArea).region.height == 5
+
+
+@pytest.mark.asyncio
 async def test_configuration_screen_formats_grouped_values_and_defaults():
     fake = FakeClient()
     fake.config_data = {
