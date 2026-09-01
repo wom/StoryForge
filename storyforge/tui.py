@@ -217,10 +217,13 @@ class NewStoryScreen(StoryForgeScreen):
                         value=initial.tone or "random",
                         id="tone",
                     )
-            yield Label("Characters (comma-separated)")
-            yield Input(value=", ".join(initial.characters or []), id="characters")
-            yield Label("Setting")
-            yield Input(value=initial.setting or "", id="setting")
+            with Horizontal(classes="field-row"):
+                with Vertical(classes="field"):
+                    yield Label("Characters (comma-separated)")
+                    yield Input(value=", ".join(initial.characters or []), id="characters")
+                with Vertical(classes="field"):
+                    yield Label("Setting")
+                    yield Input(value=initial.setting or "", id="setting")
             with Horizontal(classes="field-row"):
                 with Vertical(classes="field"):
                     yield Label("Theme")
@@ -265,10 +268,13 @@ class NewStoryScreen(StoryForgeScreen):
                         value=initial.image_style or "chibi",
                         id="image_style",
                     )
-            yield Label("Backend (leave blank for automatic selection)")
-            yield Input(value=initial.backend or "", id="backend")
-            yield Label("Output directory (leave blank for automatic name)")
-            yield Input(value=initial.output_dir or "", id="output_dir")
+            with Horizontal(classes="field-row"):
+                with Vertical(classes="field"):
+                    yield Label("Backend (blank for automatic selection)")
+                    yield Input(value=initial.backend or "", id="backend")
+                with Vertical(classes="field"):
+                    yield Label("Output directory (blank for automatic name)")
+                    yield Input(value=initial.output_dir or "", id="output_dir")
             yield Label("World file override")
             yield Input(value=initial.world_file or "", id="world_file")
             yield Checkbox("Use saved story context", value=initial.use_context is not False, id="use_context")
@@ -1019,12 +1025,13 @@ class StoryForgeApp(App[None]):
     #brand { text-align: center; text-style: bold; width: 100%; }
     .subtitle { color: $text-muted; margin-bottom: 1; text-align: center; width: 100%; }
     .screen-title { margin-bottom: 1; }
-    .home-row, .field-row, .actions { height: auto; margin-top: 1; }
+    .home-row, .actions { height: auto; margin-top: 1; }
+    .field-row { height: 4; margin-top: 1; }
     .home-row { align-horizontal: center; }
     .home-row Button { min-width: 18; margin: 0 1; }
-    .field { width: 1fr; margin-right: 1; }
+    .field { width: 1fr; height: 4; margin-right: 1; }
     .actions Button { margin-right: 1; }
-    TextArea#prompt { height: 8; }
+    TextArea#prompt { height: 5; }
     #picker-layout { height: 1fr; }
     #item-list { width: 1fr; min-width: 30; border: solid $primary; }
     #item-list:focus { border: solid $accent; }
