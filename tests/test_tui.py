@@ -148,6 +148,28 @@ async def test_home_panel_is_centered_in_wide_terminal():
 
 
 @pytest.mark.asyncio
+async def test_arrow_keys_navigate_home_menu_spatially():
+    app = StoryForgeApp(client=FakeClient())
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        new_button = app.screen.query_one("#new", Button)
+        app.screen.set_focus(new_button)
+
+        await pilot.press("right")
+        assert app.screen.focused is app.screen.query_one("#stories", Button)
+
+        await pilot.press("down")
+        assert app.screen.focused in {
+            app.screen.query_one("#world", Button),
+            app.screen.query_one("#config", Button),
+        }
+
+        await pilot.press("left")
+        assert isinstance(app.screen.focused, Button)
+        assert app.screen.focused.id in {"export", "world"}
+
+
+@pytest.mark.asyncio
 async def test_escape_from_home_exits_without_exposing_textual_root_screen():
     app = StoryForgeApp(client=FakeClient())
     async with app.run_test() as pilot:
@@ -649,6 +671,22 @@ async def test_failed_config_save_returns_to_editor_with_unsaved_content():
             "Could not save configuration: Invalid story length",
             severity="error",
         )
+
+
+@pytest.mark.asyncio
+async def test_editor_arrow_keys_remain_available_for_cursor_movement():
+    app = StoryForgeApp(client=FakeClient())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(ConfigEditorScreen("/tmp/storyforge.ini", "abc"))
+        editor = app.screen.query_one("#config-content", TextArea)
+        app.screen.set_focus(editor)
+        editor.cursor_location = (0, 3)
+
+        await pilot.press("left")
+
+        assert app.screen.focused is editor
+        assert editor.cursor_location == (0, 2)
 
 
 @pytest.mark.asyncio

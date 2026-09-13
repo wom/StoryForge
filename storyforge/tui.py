@@ -111,7 +111,13 @@ def _request_from_config(
 class StoryForgeScreen(Screen[None]):
     """Base screen with consistent shell and navigation."""
 
-    BINDINGS = [Binding("escape", "back", "Back", show=True)]
+    BUTTON_NAVIGATION_BINDINGS = [
+        Binding("left", "focus_button('left')", show=False),
+        Binding("right", "focus_button('right')", show=False),
+        Binding("up", "focus_button('up')", show=False),
+        Binding("down", "focus_button('down')", show=False),
+    ]
+    BINDINGS = [Binding("escape", "back", "Back", show=True), *BUTTON_NAVIGATION_BINDINGS]
 
     @property
     def storyforge_app(self) -> StoryForgeApp:
@@ -125,6 +131,48 @@ class StoryForgeScreen(Screen[None]):
         else:
             app.exit()
 
+    def action_focus_button(self, direction: Literal["left", "right", "up", "down"]) -> None:
+        """Move focus spatially between visible buttons without intercepting field navigation."""
+        buttons = [
+            button
+            for button in self.query(Button)
+            if button.is_mounted and button.display and button.visible and not button.disabled and button.region.area
+        ]
+        if not buttons:
+            return
+
+        focused = self.focused
+        if not isinstance(focused, Button):
+            if focused is None:
+                self.set_focus(buttons[0])
+            return
+
+        current = focused.region
+        current_x = current.x + current.width / 2
+        current_y = current.y + current.height / 2
+        candidates: list[tuple[tuple[float, float], Button]] = []
+        for button in buttons:
+            if button is focused:
+                continue
+            target = button.region
+            target_x = target.x + target.width / 2
+            target_y = target.y + target.height / 2
+            delta_x = target_x - current_x
+            delta_y = target_y - current_y
+
+            if direction in {"left", "right"}:
+                same_row = target.y < current.bottom and current.y < target.bottom
+                correct_direction = delta_x < 0 if direction == "left" else delta_x > 0
+                if same_row and correct_direction:
+                    candidates.append(((abs(delta_x), abs(delta_y)), button))
+            else:
+                correct_direction = delta_y < 0 if direction == "up" else delta_y > 0
+                if correct_direction:
+                    candidates.append(((abs(delta_x), abs(delta_y)), button))
+
+        if candidates:
+            self.set_focus(min(candidates, key=lambda candidate: candidate[0])[1])
+
 
 class HomeScreen(StoryForgeScreen):
     """StoryForge workflow launcher."""
@@ -132,6 +180,7 @@ class HomeScreen(StoryForgeScreen):
     BINDINGS = [
         Binding("escape", "quit", "Quit", show=True),
         Binding("q", "quit", "Quit", show=True),
+        *StoryForgeScreen.BUTTON_NAVIGATION_BINDINGS,
     ]
 
     def compose(self) -> ComposeResult:
