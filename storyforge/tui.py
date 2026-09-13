@@ -932,29 +932,111 @@ class WorldScreen(StoryForgeScreen):
             self.storyforge_app.save_world(self.query_one("#world-content", TextArea).text)
 
 
-class DataScreen(StoryForgeScreen):
-    """Simple structured-data screen for model cache state."""
+class ModelsScreen(StoryForgeScreen):
+    """Select provider models from cached discovery results."""
 
-    def __init__(self, title: str, content: str, kind: Literal["models"]) -> None:
+    PROVIDERS = ("gemini", "openai", "anthropic")
+    MODEL_FIELDS = {
+        "gemini": ("gemini_story_model", "gemini_image_model"),
+        "openai": ("openai_story_model", "openai_image_model"),
+        "anthropic": ("anthropic_story_model", None),
+    }
+
+    def __init__(self, models: dict[str, list[dict[str, Any]]], config: dict[str, Any]) -> None:
         super().__init__()
-        self.data_title = title
-        self.content = content
-        self.kind = kind
+        self.models = models
+        values = config.get("values", config)
+        system = values.get("system", {}) if isinstance(values, dict) else {}
+        self.system = system if isinstance(system, dict) else {}
+        configured_backend = str(self.system.get("backend", ""))
+        self.initial_backend = (
+            configured_backend
+            if configured_backend in self.PROVIDERS
+            else next((provider for provider in self.PROVIDERS if self.models.get(provider)), "gemini")
+        )
 
     def compose(self) -> ComposeResult:
-        yield Header()
-        with Vertical(id="data-screen"):
-            yield Static(f"[bold cyan]{self.data_title}[/bold cyan]", classes="screen-title")
-            yield VerticalScroll(Static(self.content), id="data-reader")
+        backend = self.initial_backend
+        story_value = self._configured_model(backend, "story")
+        image_value = self._configured_model(backend, "image")
+        with Vertical(id="models-screen"):
+            yield Static("[bold cyan]Models[/bold cyan]", classes="screen-title")
+            yield Static("Choose models from the provider lists cached by StoryForge.", classes="subtitle")
+            yield Label("Provider")
+            yield Select(
+                [(provider.title(), provider) for provider in self.PROVIDERS],
+                value=backend,
+                allow_blank=False,
+                id="model-backend",
+            )
+            yield Label("Story model")
+            yield Select(
+                self._model_options(backend, "story"),
+                value=story_value,
+                allow_blank=False,
+                id="story-model",
+            )
+            yield Label("Image model")
+            yield Select(
+                self._model_options(backend, "image"),
+                value=image_value,
+                allow_blank=False,
+                disabled=backend == "anthropic",
+                id="image-model",
+            )
+            yield Static(self._cache_summary(), id="model-cache-summary")
             with Horizontal(classes="actions"):
+                yield Button("Save Selection", id="save-models", variant="success")
                 yield Button("Invalidate Cache", id="invalidate", variant="primary")
                 yield Button("Clear Cache", id="clear", variant="error")
                 yield Button("Back", id="back")
         yield Footer()
 
+    def _configured_model(self, backend: str, purpose: Literal["story", "image"]) -> str:
+        field = self.MODEL_FIELDS[backend][0 if purpose == "story" else 1]
+        return str(self.system.get(field, "")) if field else ""
+
+    def _model_options(self, backend: str, purpose: Literal["story", "image"]) -> list[tuple[str, str]]:
+        configured = self._configured_model(backend, purpose)
+        names = {configured} if configured else set()
+        for entry in self.models.get(backend, []):
+            raw_name = str(entry.get("name") or entry.get("id") or "")
+            name = raw_name.removeprefix("models/")
+            is_image = any(marker in name.lower() for marker in ("image", "imagen", "dall-e"))
+            if not name or (purpose == "story" and is_image) or (purpose == "image" and not is_image):
+                continue
+            names.add(name)
+
+        return [("Automatic / configured default", ""), *((name, name) for name in sorted(names))]
+
+    def _cache_summary(self) -> str:
+        counts = " · ".join(f"{provider.title()}: {len(self.models.get(provider, []))}" for provider in self.PROVIDERS)
+        return f"Cached models — {counts}"
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id != "model-backend" or event.value is Select.NULL:
+            return
+        backend = str(event.value)
+        story_select = self.query_one("#story-model", Select)
+        image_select = self.query_one("#image-model", Select)
+        story_select.set_options(self._model_options(backend, "story"))
+        story_select.value = self._configured_model(backend, "story")
+        image_select.set_options(self._model_options(backend, "image"))
+        image_select.value = self._configured_model(backend, "image")
+        image_select.disabled = backend == "anthropic"
+
+    @staticmethod
+    def _selected_value(select: Select) -> str:
+        return "" if select.value is Select.NULL else str(select.value)
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
             self.action_back()
+        elif event.button.id == "save-models":
+            backend = self._selected_value(self.query_one("#model-backend", Select))
+            story_model = self._selected_value(self.query_one("#story-model", Select))
+            image_model = self._selected_value(self.query_one("#image-model", Select))
+            self.storyforge_app.configure_models(backend, story_model, image_model)
         elif event.button.id == "invalidate":
             self.storyforge_app.invalidate_models()
         elif event.button.id == "clear":
@@ -1087,7 +1169,8 @@ class StoryForgeApp(App[None]):
     Screen { background: $surface; align: center middle; }
     Header { background: $primary-background; }
     #home-panel, #form, #review, #media-form, #extension-form, #export-form,
-    #progress-panel, #result-panel, #world-screen, #data-screen, #config-screen, #config-editor-screen, #story-browser,
+    #progress-panel, #result-panel, #world-screen, #models-screen, #config-screen,
+    #config-editor-screen, #story-browser,
     #story-viewer, #image-viewer {
         width: 90%; max-width: 110; height: auto; max-height: 1fr;
         margin: 1 2; padding: 1 2; border: solid $primary;
@@ -1112,7 +1195,7 @@ class StoryForgeApp(App[None]):
     #story-list { width: 2fr; min-width: 32; border: solid $primary; }
     #story-list:focus { border: solid $accent; }
     #story-preview { width: 3fr; height: 1fr; border: solid $primary; padding: 1 2; overflow-y: auto; }
-    #story-reader, #library-story-reader, #data-reader {
+    #story-reader, #library-story-reader {
         height: 1fr; border: solid $primary; padding: 1 2;
     }
     #config-screen { height: 1fr; }
@@ -1127,6 +1210,8 @@ class StoryForgeApp(App[None]):
     .image-actions { align-horizontal: center; }
     #world-content { height: 1fr; }
     #config-content { height: 1fr; }
+    #models-screen Select { margin-bottom: 1; }
+    #model-cache-summary { color: $text-muted; margin-top: 1; }
     #progress-panel {
         align: center middle;
         width: 72;
@@ -1434,14 +1519,21 @@ class StoryForgeApp(App[None]):
         await self._start_progress("Loading Model Cache")
         try:
             models = await self.client.list_models()
-            lines = []
-            for backend, entries in models.items():
-                lines.append(f"[bold cyan]{backend.title()}[/bold cyan] · {len(entries)} cached")
-                lines.extend(f"  • {entry.get('name', entry.get('id', 'unknown'))}" for entry in entries)
-                lines.append("")
-            self.switch_screen(DataScreen("Model Cache", "\n".join(lines) or "No cached models.", "models"))
+            config = await self.client.get_config()
+            self.switch_screen(ModelsScreen(models, config))
         except Exception as error:
             self.switch_screen(ResultScreen("Could Not Load Models", str(error), error=True))
+
+    @work(exclusive=True)
+    async def configure_models(self, backend: str, story_model: str, image_model: str) -> None:
+        await self._start_progress("Saving Model Selection")
+        try:
+            result = await self.client.configure_models(backend, story_model, image_model)
+            self.switch_screen(ResultScreen("Models Updated", f"Saved {result.get('path', '')}"))
+        except Exception as error:
+            if isinstance(self.screen, ProgressScreen) and len(self.screen_stack) > 1:
+                self.pop_screen()
+            self.notify(f"Could not save model selection: {error}", severity="error")
 
     @work(exclusive=True)
     async def invalidate_models(self) -> None:

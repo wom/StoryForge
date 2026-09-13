@@ -25,6 +25,7 @@ from storyforge.tui import (
     HomeScreen,
     ImageViewerScreen,
     MediaScreen,
+    ModelsScreen,
     NewStoryScreen,
     PickerScreen,
     ProgressScreen,
@@ -53,6 +54,18 @@ class FakeClient:
             "content": "[story]\nlength = short\n",
         }
         self.saved_config = None
+        self.model_selection = None
+        self.model_data = {
+            "gemini": [
+                {"name": "models/gemini-3.0-pro"},
+                {"name": "models/gemini-3.0-flash-image"},
+            ],
+            "openai": [
+                {"name": "gpt-5.5"},
+                {"name": "gpt-image-1.5"},
+            ],
+            "anthropic": [{"name": "claude-sonnet-4-6"}],
+        }
         self.generated_story = GeneratedStory(
             id="/tmp/storyforge_output_test/story.txt",
             title="The Lantern Fox",
@@ -119,6 +132,13 @@ class FakeClient:
     async def write_config(self, content):
         self.saved_config = content
         return {"path": self.config_data.get("path")}
+
+    async def list_models(self):
+        return self.model_data
+
+    async def configure_models(self, backend, story_model, image_model):
+        self.model_selection = (backend, story_model, image_model)
+        return {"path": self.config_data.get("path") or "/tmp/storyforge.ini"}
 
     async def finalize_story(self, request):
         self.finalize_request = request
@@ -687,6 +707,36 @@ async def test_editor_arrow_keys_remain_available_for_cursor_movement():
 
         assert app.screen.focused is editor
         assert editor.cursor_location == (0, 2)
+
+
+@pytest.mark.asyncio
+async def test_models_screen_selects_and_saves_provider_models():
+    fake = FakeClient()
+    fake.config_data["values"]["system"] = {
+        "backend": "openai",
+        "openai_story_model": "gpt-5.5",
+        "openai_image_model": "gpt-image-1.5",
+    }
+    app = StoryForgeApp(client=fake)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await app.push_screen(ModelsScreen(fake.model_data, fake.config_data))
+
+        assert app.screen.query_one("#model-backend", Select).value == "openai"
+        assert app.screen.query_one("#story-model", Select).value == "gpt-5.5"
+        assert app.screen.query_one("#image-model", Select).value == "gpt-image-1.5"
+
+        app.screen.query_one("#model-backend", Select).value = "gemini"
+        await pilot.pause()
+        app.screen.query_one("#story-model", Select).value = "gemini-3.0-pro"
+        app.screen.query_one("#image-model", Select).value = "gemini-3.0-flash-image"
+        app.screen.query_one("#save-models", Button).press()
+        await pilot.pause()
+
+        assert fake.model_selection == ("gemini", "gemini-3.0-pro", "gemini-3.0-flash-image")
+        assert isinstance(app.screen, ResultScreen)
+        assert app.screen.result_title == "Models Updated"
 
 
 @pytest.mark.asyncio

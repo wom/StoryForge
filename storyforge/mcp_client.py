@@ -189,6 +189,15 @@ class StoryForgeMCPClient:
     async def write_config(self, content: str) -> dict[str, Any]:
         return dict(await self._call("storyforge_write_config", {"content": content}) or {})
 
+    async def configure_models(self, backend: str, story_model: str, image_model: str = "") -> dict[str, Any]:
+        return dict(
+            await self._call(
+                "storyforge_configure_models",
+                {"backend": backend, "story_model": story_model, "image_model": image_model},
+            )
+            or {}
+        )
+
     async def read_world(self) -> dict[str, Any]:
         return dict(await self._call("storyforge_read_world") or {})
 

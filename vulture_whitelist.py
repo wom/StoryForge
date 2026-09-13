@@ -33,6 +33,7 @@ mcp_server.storyforge_export_chain
 mcp_server.storyforge_get_config
 mcp_server.storyforge_init_config
 mcp_server.storyforge_write_config
+mcp_server.storyforge_configure_models
 mcp_server.storyforge_read_world
 mcp_server.storyforge_write_world
 mcp_server.storyforge_list_models
@@ -57,6 +58,7 @@ tui.PickerScreen.on_option_list_option_selected
 tui.StoryBrowserScreen.on_mount
 tui.StoryBrowserScreen.on_option_list_option_highlighted
 tui.StoryBrowserScreen.on_option_list_option_selected
+tui.ModelsScreen.on_select_changed
 tui.ImageViewerScreen.BINDINGS
 tui.TerminalImage.render
 tui.StoryForgeApp.get_default_screen

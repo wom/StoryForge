@@ -197,6 +197,39 @@ def test_write_config_rejects_invalid_content_without_overwriting(tmp_path, monk
     assert target.read_text(encoding="utf-8") == original
 
 
+def test_configure_models_updates_provider_fields_and_preserves_config(tmp_path, monkeypatch):
+    target = tmp_path / "storyforge.ini"
+    target.write_text(
+        "# User comment\n[story]\nlength = short\n\n[system]\nbackend = gemini\nverbose = true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("STORYFORGE_CONFIG", str(target))
+
+    result = StoryForgeWorkflow().configure_models("openai", "gpt-5.5", "gpt-image-1.5")
+
+    content = target.read_text(encoding="utf-8")
+    assert result.values["system"]["backend"] == "openai"
+    assert "# User comment" in content
+    assert "length = short" in content
+    assert "backend = openai" in content
+    assert "openai_story_model = gpt-5.5" in content
+    assert "openai_image_model = gpt-image-1.5" in content
+
+
+def test_configure_models_creates_config_when_missing(tmp_path):
+    target = tmp_path / "storyforge.ini"
+
+    with (
+        patch("storyforge.config.Config.get_config_paths", return_value=[target]),
+        patch("storyforge.config.Config.get_default_config_path", return_value=target),
+    ):
+        result = StoryForgeWorkflow().configure_models("anthropic", "claude-sonnet-4-6")
+
+    assert result.path == str(target)
+    assert result.values["system"]["backend"] == "anthropic"
+    assert result.values["system"]["anthropic_story_model"] == "claude-sonnet-4-6"
+
+
 def test_generated_story_library_discovers_text_and_images(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     output = tmp_path / "storyforge_output_20260814_120000"
