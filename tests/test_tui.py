@@ -19,6 +19,7 @@ from storyforge.mcp_models import (
     WorkflowResult,
 )
 from storyforge.tui import (
+    ConfigEditorScreen,
     ConfigScreen,
     ExtensionOptionsScreen,
     HomeScreen,
@@ -48,8 +49,10 @@ class FakeClient:
                 "images": {},
                 "output": {},
                 "system": {},
-            }
+            },
+            "content": "[story]\nlength = short\n",
         }
+        self.saved_config = None
         self.generated_story = GeneratedStory(
             id="/tmp/storyforge_output_test/story.txt",
             title="The Lantern Fox",
@@ -112,6 +115,10 @@ class FakeClient:
 
     async def get_config(self):
         return self.config_data
+
+    async def write_config(self, content):
+        self.saved_config = content
+        return {"path": self.config_data.get("path")}
 
     async def finalize_story(self, request):
         self.finalize_request = request
@@ -594,7 +601,7 @@ async def test_configuration_screen_formats_grouped_values_and_defaults():
 
 
 @pytest.mark.asyncio
-async def test_configuration_screen_opens_existing_config_for_editing():
+async def test_configuration_screen_opens_existing_config_in_app_for_editing():
     fake = FakeClient()
     fake.config_data["path"] = "/tmp/storyforge.ini"
     app = StoryForgeApp(client=fake)
@@ -602,16 +609,46 @@ async def test_configuration_screen_opens_existing_config_for_editing():
     async with app.run_test() as pilot:
         await pilot.pause()
         await app.push_screen(ConfigScreen(fake.config_data))
-        with (
-            patch("storyforge.tui.open_path_externally", return_value="the default editor") as opener,
-            patch("storyforge.tui.ConfigScreen.notify") as notify,
-        ):
-            app.screen.query_one("#edit-config", Button).press()
+        app.screen.query_one("#edit-config", Button).press()
+        await pilot.pause()
+
+        assert isinstance(app.screen, ConfigEditorScreen)
+        assert app.screen.query_one("#config-content", TextArea).text == "[story]\nlength = short\n"
+
+        app.screen.query_one("#config-content", TextArea).text = "[story]\nlength = long\n"
+        app.screen.query_one("#save", Button).press()
+        await pilot.pause()
+
+        assert fake.saved_config == "[story]\nlength = long\n"
+        assert isinstance(app.screen, ResultScreen)
+        assert app.screen.result_title == "Configuration Saved"
+
+
+@pytest.mark.asyncio
+async def test_failed_config_save_returns_to_editor_with_unsaved_content():
+    fake = FakeClient()
+    fake.config_data["path"] = "/tmp/storyforge.ini"
+    fake.write_config = AsyncMock(side_effect=RuntimeError("Invalid story length"))
+    app = StoryForgeApp(client=fake)
+    invalid_content = "[story]\nlength = invalid\n"
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        await app.push_screen(ConfigScreen(fake.config_data))
+        app.screen.query_one("#edit-config", Button).press()
+        await pilot.pause()
+        app.screen.query_one("#config-content", TextArea).text = invalid_content
+
+        with patch.object(app, "notify") as notify:
+            app.screen.query_one("#save", Button).press()
             await pilot.pause()
 
-        opener.assert_called_once_with("/tmp/storyforge.ini")
-        notify.assert_called_once_with("Opened the configuration file in the default editor")
-        assert not app.screen.query("#create-config")
+        assert isinstance(app.screen, ConfigEditorScreen)
+        assert app.screen.query_one("#config-content", TextArea).text == invalid_content
+        notify.assert_called_once_with(
+            "Could not save configuration: Invalid story length",
+            severity="error",
+        )
 
 
 @pytest.mark.asyncio

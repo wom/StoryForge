@@ -200,6 +200,12 @@ async def storyforge_init_config(path: str | None = None, overwrite: bool = Fals
 
 
 @mcp.tool()
+async def storyforge_write_config(content: str) -> ConfigResult:
+    """Validate and replace the active StoryForge configuration file."""
+    return StoryForgeWorkflow().write_config(content)
+
+
+@mcp.tool()
 async def storyforge_read_world() -> WorldResult:
     """Read the active world definition and resolved path."""
     return StoryForgeWorkflow().read_world()

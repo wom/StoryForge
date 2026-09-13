@@ -186,6 +186,9 @@ class StoryForgeMCPClient:
             {"path": path, "overwrite": overwrite},
         )
 
+    async def write_config(self, content: str) -> dict[str, Any]:
+        return dict(await self._call("storyforge_write_config", {"content": content}) or {})
+
     async def read_world(self) -> dict[str, Any]:
         return dict(await self._call("storyforge_read_world") or {})
 

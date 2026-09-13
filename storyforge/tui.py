@@ -939,6 +939,7 @@ class ConfigScreen(StoryForgeScreen):
         self.values = values if isinstance(values, dict) else {}
         path = data.get("path")
         self.config_path = str(path) if path else None
+        self.config_content = str(data.get("content", ""))
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -961,12 +962,7 @@ class ConfigScreen(StoryForgeScreen):
         elif event.button.id == "create-config":
             self.storyforge_app.init_config()
         elif event.button.id == "edit-config" and self.config_path is not None:
-            try:
-                viewer = open_path_externally(self.config_path)
-            except (OSError, RuntimeError) as error:
-                self.notify(str(error), severity="error")
-            else:
-                self.notify(f"Opened the configuration file in {viewer}")
+            self.storyforge_app.push_screen(ConfigEditorScreen(self.config_path, self.config_content))
 
     def _summary(self) -> Text:
         summary = Text()
@@ -1008,6 +1004,32 @@ class ConfigScreen(StoryForgeScreen):
         return normalized, ""
 
 
+class ConfigEditorScreen(StoryForgeScreen):
+    """In-app editor for the active StoryForge configuration file."""
+
+    def __init__(self, path: str, content: str) -> None:
+        super().__init__()
+        self.config_path = path
+        self.config_content = content
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="config-editor-screen"):
+            yield Static("[bold cyan]Edit Configuration[/bold cyan]", classes="screen-title")
+            yield Static(self.config_path, classes="subtitle", markup=False)
+            yield TextArea(self.config_content, id="config-content")
+            with Horizontal(classes="actions"):
+                yield Button("Save", id="save", variant="success")
+                yield Button("Back", id="back")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "back":
+            self.action_back()
+        elif event.button.id == "save":
+            self.storyforge_app.save_config(self.query_one("#config-content", TextArea).text)
+
+
 class StoryForgeApp(App[None]):
     """Full-screen StoryForge MCP client."""
 
@@ -1016,7 +1038,7 @@ class StoryForgeApp(App[None]):
     Screen { background: $surface; align: center middle; }
     Header { background: $primary-background; }
     #home-panel, #form, #review, #media-form, #extension-form, #export-form,
-    #progress-panel, #result-panel, #world-screen, #data-screen, #config-screen, #story-browser,
+    #progress-panel, #result-panel, #world-screen, #data-screen, #config-screen, #config-editor-screen, #story-browser,
     #story-viewer, #image-viewer {
         width: 90%; max-width: 110; height: auto; max-height: 1fr;
         margin: 1 2; padding: 1 2; border: solid $primary;
@@ -1045,6 +1067,7 @@ class StoryForgeApp(App[None]):
         height: 1fr; border: solid $primary; padding: 1 2;
     }
     #config-screen { height: 1fr; }
+    #config-editor-screen { height: 1fr; }
     #config-path { color: $text-muted; margin-bottom: 1; }
     #config-reader { height: 1fr; padding: 0 1; }
     #config-summary { width: 100%; }
@@ -1054,6 +1077,7 @@ class StoryForgeApp(App[None]):
     #image-title, #image-position { width: 100%; text-align: center; }
     .image-actions { align-horizontal: center; }
     #world-content { height: 1fr; }
+    #config-content { height: 1fr; }
     #progress-panel {
         align: center middle;
         width: 72;
@@ -1344,6 +1368,17 @@ class StoryForgeApp(App[None]):
             self.switch_screen(ResultScreen("Configuration Ready", result.message, result.artifacts))
         except Exception as error:
             self.switch_screen(ResultScreen("Could Not Initialize Configuration", str(error), error=True))
+
+    @work(exclusive=True)
+    async def save_config(self, content: str) -> None:
+        await self._start_progress("Saving Configuration")
+        try:
+            result = await self.client.write_config(content)
+            self.switch_screen(ResultScreen("Configuration Saved", f"Saved {result.get('path', '')}"))
+        except Exception as error:
+            if isinstance(self.screen, ProgressScreen) and len(self.screen_stack) > 1:
+                self.pop_screen()
+            self.notify(f"Could not save configuration: {error}", severity="error")
 
     @work(exclusive=True)
     async def show_models(self) -> None:

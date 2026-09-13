@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from configparser import Error as ConfigParserError
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from typing import Any
 from yaml import YAMLError, safe_load
 
 from .checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
-from .config import Config, load_config
+from .config import Config, ConfigError, load_config
 from .context import ContextManager
 from .mcp_models import (
     ConfigResult,
@@ -398,8 +399,28 @@ class StoryForgeWorkflow:
 
     def get_config(self) -> ConfigResult:
         config = load_config(verbose=False)
-        path = next((str(path) for path in config.get_config_paths() if path.exists()), None)
-        return ConfigResult(values=config.to_dict(), path=path)
+        path = str(config.config_path) if config.config_path is not None else None
+        content = Path(path).read_text(encoding="utf-8") if path else ""
+        return ConfigResult(values=config.to_dict(), path=path, content=content)
+
+    def write_config(self, content: str) -> ConfigResult:
+        active_config = load_config(verbose=False)
+        path = active_config.config_path
+        if path is None:
+            raise FileNotFoundError("No StoryForge configuration file exists")
+
+        candidate = Config()
+        try:
+            candidate.config.read_string(content)
+        except ConfigParserError as error:
+            raise ConfigError(f"Invalid configuration syntax: {error}") from error
+
+        errors = candidate.validate_config()
+        if errors:
+            raise ConfigError("Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors))
+
+        path.write_text(content, encoding="utf-8")
+        return ConfigResult(values=candidate.to_dict(), path=str(path), content=content)
 
     def init_config(self, path: str | None = None, overwrite: bool = False) -> WorkflowResult:
         config = Config()
