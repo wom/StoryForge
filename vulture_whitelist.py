@@ -32,6 +32,7 @@ mcp_server.storyforge_finalize_story
 mcp_server.storyforge_export_chain
 mcp_server.storyforge_get_config
 mcp_server.storyforge_init_config
+mcp_server.storyforge_write_config
 mcp_server.storyforge_read_world
 mcp_server.storyforge_write_world
 mcp_server.storyforge_list_models

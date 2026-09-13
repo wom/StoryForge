@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from storyforge.checkpoint import CheckpointData, ExecutionPhase
+from storyforge.config import ConfigError
 from storyforge.mcp_models import ExtensionRequest, GenerationRequest
 from storyforge.workflow import POST_STORY_PHASES, StoryForgeWorkflow
 
@@ -167,6 +168,33 @@ def test_init_config_create_overwrite_contract(tmp_path):
     assert created.artifacts == [str(target)]
     assert overwritten.artifacts == [str(target)]
     assert target.exists()
+
+
+def test_get_and_write_config_content(tmp_path, monkeypatch):
+    target = tmp_path / "storyforge.ini"
+    target.write_text("[story]\nlength = short\n", encoding="utf-8")
+    monkeypatch.setenv("STORYFORGE_CONFIG", str(target))
+    workflow = StoryForgeWorkflow()
+
+    loaded = workflow.get_config()
+    saved = workflow.write_config("[story]\nlength = bedtime\n")
+
+    assert loaded.content == "[story]\nlength = short\n"
+    assert saved.path == str(target)
+    assert saved.values["story"]["length"] == "bedtime"
+    assert target.read_text(encoding="utf-8") == "[story]\nlength = bedtime\n"
+
+
+def test_write_config_rejects_invalid_content_without_overwriting(tmp_path, monkeypatch):
+    target = tmp_path / "storyforge.ini"
+    original = "[story]\nlength = short\n"
+    target.write_text(original, encoding="utf-8")
+    monkeypatch.setenv("STORYFORGE_CONFIG", str(target))
+
+    with pytest.raises(ConfigError, match="Invalid configuration syntax"):
+        StoryForgeWorkflow().write_config("[story\nlength = long\n")
+
+    assert target.read_text(encoding="utf-8") == original
 
 
 def test_generated_story_library_discovers_text_and_images(tmp_path, monkeypatch):

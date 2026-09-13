@@ -151,3 +151,4 @@ class ConfigResult(StrictModel):
 
     values: dict[str, Any]
     path: str | None = None
+    content: str = ""
