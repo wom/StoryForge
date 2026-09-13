@@ -12,7 +12,7 @@ from typing import Any
 from yaml import YAMLError, safe_load
 
 from .checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
-from .config import Config, ConfigError, load_config
+from .config import Config, ConfigError, load_config, update_config_values
 from .context import ContextManager
 from .mcp_models import (
     ConfigResult,
@@ -421,6 +421,25 @@ class StoryForgeWorkflow:
 
         path.write_text(content, encoding="utf-8")
         return ConfigResult(values=candidate.to_dict(), path=str(path), content=content)
+
+    def configure_models(self, backend: str, story_model: str, image_model: str = "") -> ConfigResult:
+        if backend not in {"gemini", "openai", "anthropic"}:
+            raise ValueError(f"Unsupported model backend: {backend}")
+
+        active_config = load_config(verbose=False)
+        path = active_config.config_path
+        if path is None:
+            path = Config().create_default_config()
+
+        updates = {
+            "backend": backend,
+            f"{backend}_story_model": story_model,
+        }
+        if backend != "anthropic":
+            updates[f"{backend}_image_model"] = image_model
+
+        content = path.read_text(encoding="utf-8")
+        return self.write_config(update_config_values(content, "system", updates))
 
     def init_config(self, path: str | None = None, overwrite: bool = False) -> WorkflowResult:
         config = Config()

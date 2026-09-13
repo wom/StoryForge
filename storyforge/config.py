@@ -15,6 +15,7 @@ Configuration file priority:
 
 import logging
 import os
+import re
 from configparser import ConfigParser
 from pathlib import Path
 from typing import Any
@@ -63,6 +64,45 @@ def _generate_config_template_from_schema() -> str:
         lines.append("")  # Extra empty line after each section
 
     return "\n".join(lines).rstrip() + "\n"
+
+
+def update_config_values(content: str, section_name: str, values: dict[str, str]) -> str:
+    """Update INI values while retaining comments, ordering, and unrelated settings."""
+    newline = "\r\n" if "\r\n" in content else "\n"
+    trailing_newline = content.endswith(("\n", "\r"))
+    lines = content.splitlines()
+    section_pattern = re.compile(rf"^\s*\[{re.escape(section_name)}\]\s*$", re.IGNORECASE)
+    section_start = next((index for index, line in enumerate(lines) if section_pattern.match(line)), None)
+
+    if section_start is None:
+        if lines and lines[-1].strip():
+            lines.append("")
+        lines.append(f"[{section_name}]")
+        section_start = len(lines) - 1
+
+    for key, value in values.items():
+        section_end = next(
+            (index for index in range(section_start + 1, len(lines)) if lines[index].lstrip().startswith("[")),
+            len(lines),
+        )
+        value_pattern = re.compile(rf"^(\s*{re.escape(key)}\s*=\s*).*$", re.IGNORECASE)
+        existing = next(
+            (index for index in range(section_start + 1, section_end) if value_pattern.match(lines[index])),
+            None,
+        )
+        if existing is not None:
+            prefix = value_pattern.match(lines[existing])
+            assert prefix is not None
+            lines[existing] = f"{prefix.group(1)}{value}"
+            continue
+
+        insertion_index = section_end
+        while insertion_index > section_start + 1 and not lines[insertion_index - 1].strip():
+            insertion_index -= 1
+        lines.insert(insertion_index, f"{key} = {value}")
+
+    result = newline.join(lines)
+    return result + newline if trailing_newline else result
 
 
 class ConfigError(Exception):

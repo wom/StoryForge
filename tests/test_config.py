@@ -5,7 +5,23 @@ from unittest.mock import patch
 
 import pytest
 
-from storyforge.config import Config, ConfigError, load_config
+from storyforge.config import Config, ConfigError, load_config, update_config_values
+
+
+def test_update_config_values_preserves_comments_and_unrelated_settings():
+    content = "# Keep this comment\n[story]\nlength = short\n\n[system]\nbackend = gemini\nverbose = true\n"
+
+    updated = update_config_values(
+        content,
+        "system",
+        {"backend": "openai", "openai_story_model": "gpt-5.5"},
+    )
+
+    assert "# Keep this comment" in updated
+    assert "length = short" in updated
+    assert "backend = openai" in updated
+    assert "openai_story_model = gpt-5.5" in updated
+    assert "verbose = true" in updated
 
 
 class TestConfigPathResolution:

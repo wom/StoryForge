@@ -206,6 +206,12 @@ async def storyforge_write_config(content: str) -> ConfigResult:
 
 
 @mcp.tool()
+async def storyforge_configure_models(backend: str, story_model: str, image_model: str = "") -> ConfigResult:
+    """Persist the selected provider models in StoryForge configuration."""
+    return StoryForgeWorkflow().configure_models(backend, story_model, image_model)
+
+
+@mcp.tool()
 async def storyforge_read_world() -> WorldResult:
     """Read the active world definition and resolved path."""
     return StoryForgeWorkflow().read_world()
