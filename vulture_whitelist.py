@@ -45,6 +45,7 @@ mcp_server.session_resource
 
 # Textual discovers these names and class variables through its event system.
 tui.StoryForgeScreen.BINDINGS
+tui.StoryForgeScreen.action_focus_button
 tui.StoryForgeApp.TITLE
 tui.StoryForgeApp.CSS
 tui.HomeScreen.compose
