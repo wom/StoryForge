@@ -8,7 +8,7 @@ import pytest
 from mcp import Client
 
 from storyforge.mcp_client import StoryForgeMCPClient
-from storyforge.mcp_models import DraftResult, GenerationRequest
+from storyforge.mcp_models import DraftResult, GenerationRequest, ModelRefreshResult
 from storyforge.mcp_server import mcp
 
 
@@ -29,6 +29,7 @@ async def test_server_exposes_expected_tools_and_resources():
         "storyforge_get_generated_story",
         "storyforge_write_config",
         "storyforge_configure_models",
+        "storyforge_refresh_models",
     } <= names
     assert {str(resource.uri) for resource in resources.resources} >= {
         "storyforge://config",
@@ -44,6 +45,20 @@ async def test_typed_client_consumes_structured_results():
             result = await client.list_models()
 
     assert result == cached
+
+
+@pytest.mark.asyncio
+async def test_typed_client_consumes_model_refresh_status():
+    expected = ModelRefreshResult(
+        models={"gemini": [{"name": "gemini-test"}], "openai": [], "anthropic": []},
+        statuses={"gemini": "refreshed: 1 models", "openai": "skipped", "anthropic": "skipped"},
+        message="Model refresh complete.",
+    )
+    with patch("storyforge.workflow.StoryForgeWorkflow.refresh_models", return_value=expected):
+        async with StoryForgeMCPClient(server=mcp) as client:
+            result = await client.refresh_models()
+
+    assert result == expected
 
 
 @pytest.mark.asyncio

@@ -22,6 +22,7 @@ from .mcp_models import (
     GeneratedStory,
     GeneratedStorySummary,
     GenerationRequest,
+    ModelRefreshResult,
     RefinementRequest,
     SessionSummary,
     StorySummary,
@@ -230,9 +231,9 @@ async def storyforge_list_models() -> dict[str, list[dict[str, Any]]]:
 
 
 @mcp.tool()
-async def storyforge_invalidate_models() -> WorkflowResult:
-    """Invalidate model caches so the next generation rediscovers models."""
-    return StoryForgeWorkflow().invalidate_models()
+async def storyforge_refresh_models() -> ModelRefreshResult:
+    """Query configured providers now and atomically refresh their model caches."""
+    return StoryForgeWorkflow().refresh_models()
 
 
 @mcp.tool()

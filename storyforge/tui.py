@@ -49,6 +49,7 @@ from .mcp_models import (
     StorySummary,
     WorkflowResult,
 )
+from .model_ranking import model_supports_purpose
 from .portable_text import to_portable_ascii
 
 
@@ -942,9 +943,15 @@ class ModelsScreen(StoryForgeScreen):
         "anthropic": ("anthropic_story_model", None),
     }
 
-    def __init__(self, models: dict[str, list[dict[str, Any]]], config: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        models: dict[str, list[dict[str, Any]]],
+        config: dict[str, Any],
+        status: str = "",
+    ) -> None:
         super().__init__()
         self.models = models
+        self.status = status
         values = config.get("values", config)
         system = values.get("system", {}) if isinstance(values, dict) else {}
         self.system = system if isinstance(system, dict) else {}
@@ -961,7 +968,7 @@ class ModelsScreen(StoryForgeScreen):
         image_value = self._configured_model(backend, "image")
         with Vertical(id="models-screen"):
             yield Static("[bold cyan]Models[/bold cyan]", classes="screen-title")
-            yield Static("Choose models from the provider lists cached by StoryForge.", classes="subtitle")
+            yield Static("Choose models discovered from your configured providers.", classes="subtitle")
             yield Label("Provider")
             yield Select(
                 [(provider.title(), provider) for provider in self.PROVIDERS],
@@ -985,9 +992,11 @@ class ModelsScreen(StoryForgeScreen):
                 id="image-model",
             )
             yield Static(self._cache_summary(), id="model-cache-summary")
+            if self.status:
+                yield Static(self.status, id="model-refresh-status")
             with Horizontal(classes="actions"):
                 yield Button("Save Selection", id="save-models", variant="success")
-                yield Button("Invalidate Cache", id="invalidate", variant="primary")
+                yield Button("Refresh Models", id="refresh", variant="primary")
                 yield Button("Clear Cache", id="clear", variant="error")
                 yield Button("Back", id="back")
         yield Footer()
@@ -1002,8 +1011,8 @@ class ModelsScreen(StoryForgeScreen):
         for entry in self.models.get(backend, []):
             raw_name = str(entry.get("name") or entry.get("id") or "")
             name = raw_name.removeprefix("models/")
-            is_image = any(marker in name.lower() for marker in ("image", "imagen", "dall-e"))
-            if not name or (purpose == "story" and is_image) or (purpose == "image" and not is_image):
+            model_purpose = "text" if purpose == "story" else "image"
+            if not name or not model_supports_purpose(entry, backend, model_purpose):
                 continue
             names.add(name)
 
@@ -1037,9 +1046,33 @@ class ModelsScreen(StoryForgeScreen):
             story_model = self._selected_value(self.query_one("#story-model", Select))
             image_model = self._selected_value(self.query_one("#image-model", Select))
             self.storyforge_app.configure_models(backend, story_model, image_model)
-        elif event.button.id == "invalidate":
-            self.storyforge_app.invalidate_models()
+        elif event.button.id == "refresh":
+            self.storyforge_app.refresh_models()
         elif event.button.id == "clear":
+            self.storyforge_app.push_screen(ClearModelCacheScreen())
+
+
+class ClearModelCacheScreen(StoryForgeScreen):
+    """Require an explicit confirmation before deleting discovered model metadata."""
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Vertical(id="clear-model-cache-screen"):
+            yield Static("[bold red]Clear Model Cache?[/bold red]", classes="screen-title")
+            yield Static(
+                "This removes locally cached model lists. Your saved model selection is not changed.",
+                classes="subtitle",
+            )
+            with Horizontal(classes="actions"):
+                yield Button("Clear Cache", id="confirm-clear", variant="error")
+                yield Button("Cancel", id="cancel", variant="primary")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "cancel":
+            self.action_back()
+        elif event.button.id == "confirm-clear":
+            self.storyforge_app.pop_screen()
             self.storyforge_app.clear_models()
 
 
@@ -1170,7 +1203,7 @@ class StoryForgeApp(App[None]):
     Header { background: $primary-background; }
     #home-panel, #form, #review, #media-form, #extension-form, #export-form,
     #progress-panel, #result-panel, #world-screen, #models-screen, #config-screen,
-    #config-editor-screen, #story-browser,
+    #config-editor-screen, #clear-model-cache-screen, #story-browser,
     #story-viewer, #image-viewer {
         width: 90%; max-width: 110; height: auto; max-height: 1fr;
         margin: 1 2; padding: 1 2; border: solid $primary;
@@ -1536,20 +1569,23 @@ class StoryForgeApp(App[None]):
             self.notify(f"Could not save model selection: {error}", severity="error")
 
     @work(exclusive=True)
-    async def invalidate_models(self) -> None:
-        await self._start_progress("Invalidating Model Cache")
+    async def refresh_models(self) -> None:
+        await self._start_progress("Refreshing Models")
         try:
-            result = await self.client.invalidate_models()
-            self.switch_screen(ResultScreen("Cache Invalidated", result.message))
+            result = await self.client.refresh_models()
+            config = await self.client.get_config()
+            self.switch_screen(ModelsScreen(result.models, config, result.message))
         except Exception as error:
-            self.switch_screen(ResultScreen("Could Not Invalidate Cache", str(error), error=True))
+            self.switch_screen(ResultScreen("Could Not Refresh Models", str(error), error=True))
 
     @work(exclusive=True)
     async def clear_models(self) -> None:
         await self._start_progress("Clearing Model Cache")
         try:
             result = await self.client.clear_models(confirmed=True)
-            self.switch_screen(ResultScreen("Cache Cleared", result.message))
+            models = await self.client.list_models()
+            config = await self.client.get_config()
+            self.switch_screen(ModelsScreen(models, config, result.message))
         except Exception as error:
             self.switch_screen(ResultScreen("Could Not Clear Cache", str(error), error=True))
 

@@ -79,3 +79,78 @@ jobs:
           ANNOTATE_MISSING_LINES: true
           MINIMUM_GREEN: 90
           MINIMUM_ORANGE: 20
+
+  package-smoke:
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Build source and wheel distributions
+        run: uv build --out-dir dist-smoke
+
+      - name: Verify required package data
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tarfile
+          import zipfile
+
+          distribution = Path("dist-smoke")
+          wheel = next(distribution.glob("*.whl"))
+          source = next(distribution.glob("*.tar.gz"))
+          required = {"storyforge/py.typed", "storyforge/test_story.txt"}
+          with zipfile.ZipFile(wheel) as archive:
+              assert required <= set(archive.namelist())
+          with tarfile.open(source) as archive:
+              names = archive.getnames()
+              assert all(any(name.endswith(f"/{item}") for name in names) for item in required)
+          PY
+
+      - name: Install the wheel in a clean environment
+        run: |
+          uv venv .package-venv
+          uv pip install --python .package-venv/bin/python dist-smoke/*.whl
+
+      - name: Smoke-test installed entry points and offline debug mode
+        env:
+          XDG_CONFIG_HOME: ${{ runner.temp }}/storyforge-config
+          XDG_DATA_HOME: ${{ runner.temp }}/storyforge-data
+          STORYFORGE_SMOKE_OUTPUT: ${{ runner.temp }}/storyforge-output
+        run: |
+          cd "$RUNNER_TEMP"
+          "$GITHUB_WORKSPACE/.package-venv/bin/sf" --help
+          "$GITHUB_WORKSPACE/.package-venv/bin/sf" --version
+          "$GITHUB_WORKSPACE/.package-venv/bin/storyforge" --help
+          test -x "$GITHUB_WORKSPACE/.package-venv/bin/storyforge-mcp"
+          "$GITHUB_WORKSPACE/.package-venv/bin/python" - <<'PY'
+          import os
+
+          from storyforge.mcp_models import FinalizeRequest, GenerationRequest
+          from storyforge.phase_executor import _load_debug_story
+          from storyforge.workflow import StoryForgeWorkflow
+
+          provider_keys = ("GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "LLM_BACKEND")
+          assert not any(os.environ.get(key) for key in provider_keys)
+          assert _load_debug_story().startswith("Ethan and Isaac")
+          workflow = StoryForgeWorkflow()
+          draft = workflow.create_draft(
+              GenerationRequest(
+                  prompt="Installed offline smoke test",
+                  debug=True,
+                  use_context=False,
+                  output_dir=os.environ["STORYFORGE_SMOKE_OUTPUT"],
+              )
+          )
+          result = workflow.finalize_story(FinalizeRequest(session_id=draft.session_id))
+          assert result.status == "completed"
+          PY

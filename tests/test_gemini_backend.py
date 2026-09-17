@@ -8,6 +8,33 @@ from storyforge.prompt import Prompt
 
 @patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
 @patch("storyforge.gemini_backend.genai.Client")
+def test_configured_models_are_instance_scoped(mock_client):
+    first_config = MagicMock()
+    first_config.get_field_value.side_effect = lambda _section, field: {
+        "gemini_story_model": "gemini-first-story",
+        "gemini_image_model": "gemini-first-image",
+    }[field]
+    second_config = MagicMock()
+    second_config.get_field_value.side_effect = lambda _section, field: {
+        "gemini_story_model": "gemini-second-story",
+        "gemini_image_model": "gemini-second-image",
+    }[field]
+
+    first = GeminiBackend(first_config)
+    second = GeminiBackend(second_config)
+
+    assert first.get_model_info() == {
+        "story_model": "gemini-first-story",
+        "image_model": "gemini-first-image",
+    }
+    assert second.get_model_info() == {
+        "story_model": "gemini-second-story",
+        "image_model": "gemini-second-image",
+    }
+
+
+@patch.dict(os.environ, {"GEMINI_API_KEY": "test_key"})
+@patch("storyforge.gemini_backend.genai.Client")
 def test_generate_story_success(mock_client):
     backend = GeminiBackend()
     mock_response = MagicMock()

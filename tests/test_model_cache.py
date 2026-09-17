@@ -28,7 +28,7 @@ class TestModelCache:
 
     def test_cache_set_and_get(self, cache, sample_models):
         """Set models, get them back."""
-        cache.set("openai", sample_models)
+        assert cache.set("openai", sample_models) is True
         result = cache.get("openai")
         assert result == sample_models
 

@@ -74,6 +74,9 @@ build-backend = "setuptools.build_meta"
 include = ["storyforge*"]
 exclude = ["data*", "tests*"]
 
+[tool.setuptools.package-data]
+storyforge = ["py.typed", "test_story.txt"]
+
 [tool.setuptools.dynamic]
 version = {attr = "storyforge.__version__"}
 

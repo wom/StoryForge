@@ -22,6 +22,7 @@ from typing import Any
 
 from platformdirs import user_config_dir
 
+from .atomic_io import atomic_write_text
 from .console import console
 
 # Import schema-driven components
@@ -207,13 +208,8 @@ class Config:
         if path is None:
             path = self.get_default_config_path()
 
-        # Create directory if it doesn't exist
-        path.parent.mkdir(parents=True, exist_ok=True)
-
-        # Write default configuration from schema
         template = _generate_config_template_from_schema()
-        with open(path, "w", encoding="utf-8") as f:
-            f.write(template)
+        atomic_write_text(path, template)
 
         return path
 

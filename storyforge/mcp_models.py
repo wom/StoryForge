@@ -152,3 +152,11 @@ class ConfigResult(StrictModel):
     values: dict[str, Any]
     path: str | None = None
     content: str = ""
+
+
+class ModelRefreshResult(StrictModel):
+    """Provider model metadata and status returned by an explicit refresh."""
+
+    models: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    statuses: dict[str, str] = Field(default_factory=dict)
+    message: str = ""

@@ -219,6 +219,29 @@ def _should_skip(name: str, purpose: str, provider: str) -> bool:
     return False
 
 
+def model_supports_purpose(model: dict[str, Any], provider: str, purpose: str) -> bool:
+    """Return whether discovered metadata indicates that a model can serve a picker purpose."""
+    raw_name = str(model.get("name") or model.get("id") or "")
+    name = raw_name.removeprefix("models/")
+    if not name or purpose not in {"text", "image"}:
+        return False
+
+    name_lower = name.lower()
+    image_named = bool(IMAGE_PATTERNS.search(name))
+    if provider == "anthropic":
+        return purpose == "text" and name_lower.startswith("claude-")
+    if provider == "openai":
+        return image_named if purpose == "image" else not image_named
+    if provider == "gemini":
+        methods = {str(method).lower() for method in model.get("supported_generation_methods", [])}
+        if methods and "generatecontent" not in methods:
+            return False
+        modalities = {str(modality).lower() for modality in model.get("output_modalities", [])}
+        image_capable = any("image" in modality for modality in modalities) or image_named
+        return image_capable if purpose == "image" else not image_capable
+    return False
+
+
 def score_model(name: str, provider: str) -> ModelScore | None:
     """Compute a composite score for a model. Higher = better.
 

@@ -19,6 +19,7 @@ from .mcp_models import (
     GeneratedStory,
     GeneratedStorySummary,
     GenerationRequest,
+    ModelRefreshResult,
     RefinementRequest,
     SessionSummary,
     StorySummary,
@@ -210,8 +211,8 @@ class StoryForgeMCPClient:
             or {}
         )
 
-    async def invalidate_models(self) -> WorkflowResult:
-        return await self._model("storyforge_invalidate_models", WorkflowResult)
+    async def refresh_models(self) -> ModelRefreshResult:
+        return await self._model("storyforge_refresh_models", ModelRefreshResult)
 
     async def clear_models(self, confirmed: bool = False) -> WorkflowResult:
         return await self._model("storyforge_clear_models", WorkflowResult, {"confirmed": confirmed})
