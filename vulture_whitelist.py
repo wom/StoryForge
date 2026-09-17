@@ -37,7 +37,7 @@ mcp_server.storyforge_configure_models
 mcp_server.storyforge_read_world
 mcp_server.storyforge_write_world
 mcp_server.storyforge_list_models
-mcp_server.storyforge_invalidate_models
+mcp_server.storyforge_refresh_models
 mcp_server.storyforge_clear_models
 mcp_server.config_resource
 mcp_server.world_resource

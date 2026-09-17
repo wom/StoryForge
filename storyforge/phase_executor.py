@@ -9,6 +9,7 @@ import logging
 import os
 from collections.abc import Callable
 from datetime import datetime
+from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,7 @@ from .prompt import Prompt
 
 def _load_debug_story() -> str:
     """Load the bundled deterministic story used by debug workflows."""
-    return Path(__file__).with_name("test_story.txt").read_text(encoding="utf-8").strip()
+    return files("storyforge").joinpath("test_story.txt").read_text(encoding="utf-8").strip()
 
 
 class PhaseExecutor:
@@ -176,7 +177,8 @@ class PhaseExecutor:
         self.story_prompt.original_story = self.story
         self.story_prompt.refinement_instructions = self.refinements
         self._report("phase", "story_refine", None)
-        revised_story = self.llm_backend.generate_story(self.story_prompt)
+        backend = self._require_backend("Story refinement")
+        revised_story = backend.generate_story(self.story_prompt)
         if revised_story is None or revised_story.startswith(ERROR_STORY_SENTINEL):
             error_msg, _ = classify_story_error(revised_story or ERROR_STORY_SENTINEL)
             raise RuntimeError(error_msg)
@@ -345,6 +347,18 @@ class PhaseExecutor:
         """Initialize LLM backend phase."""
         if self.checkpoint_data is None:
             raise RuntimeError("Checkpoint data must be initialized")
+        if self.checkpoint_data.resolved_config.get("debug", False):
+            if self.checkpoint_data.resolved_config.get("verbose", False):
+                console.print("[dim]Offline debug mode: deferring AI backend initialization.[/dim]")
+            self.llm_backend = None
+            return
+
+        self._initialize_backend()
+
+    def _initialize_backend(self) -> None:
+        """Initialize the configured backend, including for a lazily requested feature."""
+        if self.checkpoint_data is None:
+            raise RuntimeError("Checkpoint data must be initialized")
         backend_name = self.checkpoint_data.resolved_config.get("backend")
         config_backend = self.checkpoint_data.resolved_config.get("config_backend")
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
@@ -375,6 +389,18 @@ class PhaseExecutor:
 
         if verbose and self.llm_backend:
             console.print(f"[dim]Using {self.llm_backend.name} backend[/dim]")
+
+    def _require_backend(self, feature: str) -> Any:
+        """Return an initialized backend for an optional provider-dependent feature."""
+        if self.llm_backend is None:
+            try:
+                self._initialize_backend()
+            except RuntimeError as error:
+                raise RuntimeError(
+                    f"{feature} requires a configured AI provider and valid API key. "
+                    "The debug story itself remains available offline."
+                ) from error
+        return self.llm_backend
 
     def _phase_prompt_confirm(self) -> None:
         """Validate that confirmation was handled by the calling client."""
@@ -891,6 +917,7 @@ class PhaseExecutor:
             console.print("[red]No output directory configured.[/red]")
             return
 
+        backend = self._require_backend("Video prompt generation")
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
 
         # Build context for video prompts (same as image prompts)
@@ -913,7 +940,7 @@ class PhaseExecutor:
 
         # Inject character descriptions from registry
         try:
-            max_tokens = self.llm_backend.get_context_token_budget()
+            max_tokens = backend.get_context_token_budget()
             ctx_mgr = ContextManager(max_tokens=max_tokens)
             registry_descriptions = ctx_mgr.format_registry_for_image_prompt()
             if registry_descriptions:
@@ -933,7 +960,7 @@ class PhaseExecutor:
         ) as progress:
             progress.add_task("video_prompt", total=None)
 
-            video_prompts = self.llm_backend.generate_video_prompt(
+            video_prompts = backend.generate_video_prompt(
                 story=self.story or "",
                 context=video_context,
                 num_scenes=num_scenes,
@@ -1000,15 +1027,12 @@ class PhaseExecutor:
         msg = f"Generating {num_images} image{'s' if num_images > 1 else ''}..."
         console.print(f"[bold blue]{msg}[/bold blue]")
 
+        backend = self._require_backend("Image generation")
         try:
             # Generate image prompts from story
             verbose = self.checkpoint_data.resolved_config.get("verbose", False)
             if verbose:
                 console.print("[dim]Generating image prompts...[/dim]")
-
-            if not self.llm_backend:
-                console.print("[red]No LLM backend available for image generation.[/red]")
-                return
 
             # Enrich context with world file and character visual descriptions
             image_context = self.context or ""
@@ -1027,7 +1051,7 @@ class PhaseExecutor:
                     char_descriptions_parts.append(world_chars)
 
             try:
-                max_tokens = self.llm_backend.get_context_token_budget()
+                max_tokens = backend.get_context_token_budget()
                 ctx_mgr = ContextManager(max_tokens=max_tokens)
                 registry_descriptions = ctx_mgr.format_registry_for_image_prompt()
                 if registry_descriptions:
@@ -1039,7 +1063,7 @@ class PhaseExecutor:
 
             char_descriptions = "\n".join(char_descriptions_parts)
 
-            image_prompts = self.llm_backend.generate_image_prompt(
+            image_prompts = backend.generate_image_prompt(
                 story=self.story or "",
                 context=image_context,
                 num_prompts=num_images,
@@ -1065,7 +1089,7 @@ class PhaseExecutor:
 
                     # Generate image - backends return (image_object, image_bytes)
                     try:
-                        image_object, image_bytes = self.llm_backend.generate_image(
+                        image_object, image_bytes = backend.generate_image(
                             self.story_prompt,
                             reference_image_bytes=None,
                             override_prompt=image_prompt,
@@ -1086,7 +1110,7 @@ class PhaseExecutor:
                             image_format = image_object.format.lower()
 
                         # Generate filename
-                        image_name = self.llm_backend.generate_image_name(self.story_prompt, self.story)
+                        image_name = backend.generate_image_name(self.story_prompt, self.story)
                         image_filename = f"{image_name}_{i:02d}.{image_format}"
                         image_path = Path(output_dir) / image_filename
 

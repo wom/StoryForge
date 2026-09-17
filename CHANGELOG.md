@@ -4,6 +4,45 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Added
+- Bundled typed MCP server and client used by both terminal presentations.
+- Unified Textual home, generation, review, story library, image viewer, world, configuration, and model-selection
+  screens.
+- In-app configuration editing with validation, unsaved-text recovery after failures, and atomic file replacement.
+- Provider model picker with immediate discovery refresh, per-provider status, purpose-aware choices, and confirmed
+  cache clearing.
+- Spatial arrow-key navigation for button menus while preserving normal cursor, list, and selector behavior.
+- Portable-ASCII story output and verified clipboard copying for stories and video prompts.
+- Installed-distribution CI smoke coverage for entry points, package data, and provider-key-free debug mode.
+
+### Changed
+- Replaced the Typer entry point with a strict argparse router. The full-screen TUI is selected automatically in a
+  capable terminal, with a Rich fallback for redirected or explicitly non-TUI use.
+- Explicit config, world, model-cache, and parameterized export actions now execute directly rather than losing nested
+  arguments during TUI routing.
+- `models refresh` now queries providers immediately and preserves valid cached data when an individual provider fails.
+- Gemini model selections are instance-scoped, so a newly saved choice applies without restarting the MCP server.
+- Debug story generation defers provider initialization; refinement and media features initialize a provider only when
+  requested.
+
+### Fixed
+- Included `storyforge/test_story.txt` and `storyforge/py.typed` explicitly in wheels and source distributions.
+- Failed configuration saves return to the editor with the candidate text intact.
+- Configuration and world-file saves preserve the original file when an atomic replacement fails.
+- Restored review, resume, extension, and configuration transitions across the MCP client boundary.
+- Prevented failed client tasks from being awaited twice in the TUI.
+
+### Removed
+- Removed the legacy `StoryForge.py` Typer application, schema CLI integration, and standalone story-picker module.
+- Removed tracked generated story-chain exports from the repository.
+
+### Tests
+- Added workflow, MCP contract, CLI routing, Textual pilot, external-viewer, portable-text, atomic-write, model refresh,
+  and installed-wheel regression coverage. Provider APIs remain mocked in the automated suite.
+
+### Documentation
+- Updated the README, development guide, configuration reference, and repository guidance for the MCP/TUI architecture.
+
 ## [0.0.9] - 2026-05-24
 
 ### Added

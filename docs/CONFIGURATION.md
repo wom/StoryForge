@@ -8,13 +8,13 @@ StoryForge provides a convenient CLI command to create a default config file:
 
 ```bash
 # Create config file (won't overwrite an existing file)
-storyforge config init
+sf config init
 
 # Force overwrite an existing config file
-storyforge config init --force
+sf config init --force
 
 # Specify a custom path
-storyforge config init --path /path/to/custom/storyforge.ini
+sf config init --path /path/to/custom/storyforge.ini
 ```
 
 The default location is the XDG config directory (typically `~/.config/storyforge/storyforge.ini`). You can override the location by setting the `STORYFORGE_CONFIG` environment variable:
@@ -44,7 +44,12 @@ The first configuration file found in this order is used. Higher priority locati
 ## How values are resolved
 - Values in the config file are loaded and validated against a schema defined in `storyforge/schema/config_schema.py`.
 - Command line arguments override config file values.
-- Environment variables are not directly supported for individual fields (except `STORYFORGE_CONFIG` to choose file), but config is validated after loading.
+- Environment variables are not generally supported for individual fields. `STORYFORGE_CONFIG` selects the file,
+  `LLM_BACKEND` selects a backend, and `GEMINI_IMAGE_MODEL` remains a provider-specific image-model override.
+- Backend selection priority is: explicit command/request value → `LLM_BACKEND` → `system.backend` → API-key auto-detection.
+- Explicit model fields take precedence over discovery. An empty model field means automatic selection from the fresh
+  provider cache or provider API. `GEMINI_IMAGE_MODEL` is a legacy environment override with precedence over
+  `system.gemini_image_model`.
 
 ## Sections and fields
 Below is a concise reference of available configuration options, their defaults, and acceptable values.
@@ -89,6 +94,9 @@ Below is a concise reference of available configuration options, their defaults,
   - Description: Directory where stories and images are saved.
 - `use_context` (boolean) — Default: `true`
   - Description: Whether to load context files from the `context/` directory and include them in prompt generation.
+- `world_file` (path) — Default: `` (auto-discover)
+  - Description: Explicit world-definition file included verbatim in each story prompt. When empty, StoryForge checks
+    the local context directory and then its platform user-data directory.
 
 ### [system]
 - `backend` (string) — Default: `` (auto-detect)
@@ -97,6 +105,12 @@ Below is a concise reference of available configuration options, their defaults,
   - Description: OpenAI model used for story generation (e.g., `gpt-5.5`, `gpt-4o`).
 - `openai_image_model` (string) — Default: `gpt-image-1.5`
   - Description: OpenAI model used for image generation (e.g., `gpt-image-1.5`, `dall-e-3`).
+- `anthropic_story_model` (string) — Default: `` (automatic)
+  - Description: Anthropic model used for story and prompt generation. Anthropic does not render images.
+- `gemini_story_model` (string) — Default: `` (automatic)
+  - Description: Gemini model used for story and prompt generation.
+- `gemini_image_model` (string) — Default: `` (automatic)
+  - Description: Gemini model used for image rendering. `GEMINI_IMAGE_MODEL` overrides this field when set.
 - `verbose` (boolean) — Default: `false`
   - Description: Enable verbose output for debugging and more detailed logs.
 - `debug` (boolean) — Default: `false`
@@ -132,14 +146,24 @@ image_style = chibi
 
 [output]
 # Default output directory (leave empty for auto-generated timestamp)
-output_dir = 
+output_dir =
 
 # Whether to use context files by default: true, false
 use_context = true
 
+# Explicit world file (leave empty for auto-discovery)
+world_file =
+
 [system]
 # LLM backend options: gemini, openai, anthropic (leave empty for auto-detection)
 backend = openai
+
+# Provider-specific model choices. Empty values use automatic discovery.
+openai_story_model = gpt-5.5
+openai_image_model = gpt-image-1.5
+anthropic_story_model =
+gemini_story_model =
+gemini_image_model =
 
 # Enable verbose output by default: true, false
 verbose = false
@@ -151,8 +175,22 @@ debug = false
 ## Validation and errors
 - When loading configuration, StoryForge validates values against the schema and will raise a `ConfigError` if validation fails.
 - Use `Config.validate_config()` to programmatically get a list of validation errors.
+- Run `sf config` to edit the active file in the TUI. StoryForge validates the complete candidate before replacing the
+  file atomically. Failed saves return to the editor with the unsaved text intact.
+
+## Model discovery cache
+
+Run `sf models` to open the provider/model picker. The automatic option stores an empty model value and lets
+StoryForge choose a suitable model. Anthropic has no image-model selection because it cannot render images.
+
+Provider model lists are cached for seven days under the platform user-data directory, normally
+`~/.local/share/storyforge/model_cache/` on Linux. `sf models refresh` immediately queries each provider with an
+available API key and reports refreshed, skipped, empty, or failed status separately. A failed refresh preserves any
+still-valid previous cache. `sf models clear` deletes only cached discovery metadata and does not remove saved model
+choices from this configuration file.
 
 ## Tips
 - Prefer using the XDG config path or set `STORYFORGE_CONFIG` to keep your project-level settings separate.
-- Use `debug = true` while developing to avoid calling external APIs.
+- Use `debug = true` to load the bundled story without a provider key. Refinement, video prompts, and image generation
+  still require a provider if requested.
 - If you need reproducible runs, enable context and consider tracking the files used (the application stores context metadata in the session checkpoint).

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from storyforge.cli import build_parser, main, normalize_argv, terminal_supports_tui
+from storyforge.cli import _requires_direct_execution, build_parser, main, normalize_argv, terminal_supports_tui
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -120,6 +120,96 @@ def test_parser_rejects_abbreviated_options():
     assert error.value.code == 2
 
 
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["config", "show"],
+        ["config", "init", "--path", "storyforge.ini", "--force"],
+        ["world", "show"],
+        ["world", "path"],
+        ["world", "edit"],
+        ["world", "init", "--force"],
+        ["models", "list"],
+        ["models", "refresh"],
+        ["models", "clear"],
+        ["export-chain", "--context", "story"],
+        ["export-chain", "--output", "complete.txt"],
+    ],
+)
+def test_explicit_actions_and_export_options_require_direct_execution(arguments):
+    namespace = build_parser().parse_args(arguments)
+
+    assert _requires_direct_execution(namespace) is True
+
+
+@pytest.mark.parametrize("arguments", [["config"], ["world"], ["models"], ["export-chain"]])
+def test_bare_management_groups_may_open_tui(arguments):
+    namespace = build_parser().parse_args(arguments)
+
+    assert _requires_direct_execution(namespace) is False
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["config", "show"],
+        ["config", "init", "--path", "storyforge.ini", "--force"],
+        ["world", "show"],
+        ["world", "path"],
+        ["world", "edit"],
+        ["world", "init", "--force"],
+        ["models", "list"],
+        ["models", "refresh"],
+        ["models", "clear"],
+        ["export-chain", "--context", "story", "--output", "complete.txt"],
+    ],
+)
+def test_explicit_actions_execute_directly_in_tty(arguments):
+    with (
+        patch("storyforge.cli.terminal_supports_tui", return_value=True),
+        patch("storyforge.classic_cli.run_classic", return_value=0) as run_classic,
+        patch("storyforge.tui.run_tui") as run_tui,
+        pytest.raises(SystemExit) as error,
+    ):
+        main(arguments)
+
+    assert error.value.code == 0
+    run_classic.assert_called_once_with(arguments, None)
+    run_tui.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("arguments", "route"),
+    [
+        (["config"], "config"),
+        (["world"], "world"),
+        (["models"], "models"),
+        (["export-chain"], "export"),
+    ],
+)
+def test_bare_management_group_opens_tui_in_tty(arguments, route):
+    with (
+        patch("storyforge.cli.terminal_supports_tui", return_value=True),
+        patch("storyforge.tui.run_tui") as run_tui,
+    ):
+        main(arguments)
+
+    run_tui.assert_called_once_with(route, None)
+
+
+def test_force_tui_does_not_discard_explicit_action():
+    with (
+        patch("storyforge.classic_cli.run_classic", return_value=0) as run_classic,
+        patch("storyforge.tui.run_tui") as run_tui,
+        pytest.raises(SystemExit) as error,
+    ):
+        main(["--tui", "world", "path"])
+
+    assert error.value.code == 0
+    run_classic.assert_called_once_with(["world", "path"], None)
+    run_tui.assert_not_called()
+
+
 def test_classic_generate_continue_routes_to_continue_command():
     with (
         patch("storyforge.cli.sys.argv", ["sf", "generate", "--continue"]),
@@ -150,11 +240,19 @@ def test_module_entrypoint_routes_bare_prompt_to_generate():
 
     assert result.returncode == 0, result.stderr
     assert "usage:" in result.stdout
-    assert "storyforge generate" in result.stdout
+    assert "sf generate" in result.stdout
 
 
 def test_module_entrypoint_supports_explicit_generate_command():
     result = run_module_cli("generate", "--help")
 
     assert result.returncode == 0, result.stderr
-    assert "storyforge generate" in result.stdout
+    assert "sf generate" in result.stdout
+
+
+def test_models_help_describes_immediate_refresh():
+    result = run_module_cli("models", "--help")
+
+    assert result.returncode == 0, result.stderr
+    assert "Query providers and refresh cached models" in result.stdout
+    assert "Invalidate cached models" not in result.stdout

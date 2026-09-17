@@ -60,11 +60,15 @@ pre-commit install
 
 ## Debug Mode
 
-Use the `--debug` flag to load a test story from [`storyforge/test_story.txt`](storyforge/test_story.txt) instead of calling the API:
+Use the `--debug` flag to load the packaged test story from [`storyforge/test_story.txt`](storyforge/test_story.txt)
+without initializing a provider:
 
 ```bash
-storyforge "Any prompt here" --debug
+sf "Any prompt here" --debug
 ```
+
+Accepting and saving that draft remains API-free. Refinement, video prompts, and image generation initialize a provider
+only when requested and therefore require the corresponding API key.
 
 ## Project Structure
 
@@ -72,21 +76,26 @@ storyforge "Any prompt here" --debug
 storyforge/
 ├── __init__.py
 ├── anthropic_backend.py # Anthropic Claude API integration
+├── atomic_io.py         # Atomic replacement for user-authored text files
 ├── checkpoint.py        # Session persistence and resume
 ├── classic_cli.py       # Rich MCP client
 ├── cli.py               # argparse entry point and UI routing
 ├── config.py            # Configuration loading and validation
 ├── console.py           # Shared Rich console instance
 ├── context.py           # Context management, character registry, summarization
+├── external_viewer.py   # Platform-aware external file/image opening
 ├── gemini_backend.py    # Gemini API integration
 ├── llm_backend.py       # LLM backend interface and shared helpers
-├── model_discovery.py   # Dynamic Gemini model discovery
+├── model_cache.py       # Atomic, TTL-based provider model cache
+├── model_discovery.py   # Provider model-list API adapters
+├── model_ranking.py     # Provider-aware model filtering and ranking
 ├── mcp_client.py        # Shared typed stdio MCP client
 ├── mcp_models.py        # MCP request/result schemas
 ├── mcp_server.py        # Bundled StoryForge MCP server
 ├── openai_backend.py    # OpenAI API integration (GPT + image models)
 ├── paths.py             # Shared output and world-file path helpers
 ├── phase_executor.py    # Phase-based execution engine
+├── portable_text.py     # Clipboard/export ASCII normalization
 ├── prompt.py            # Prompt handling and validation
 ├── py.typed             # PEP 561 type marker
 ├── test_story.txt       # Test story for debug mode
@@ -131,6 +140,31 @@ pyproject.toml           # Project configuration
 - Long mutations run on one bounded server worker; MCP progress notifications are bridged back to the active client.
 - Workflow services contain no Textual, Rich, or MCP imports and should be tested independently.
 - MCP tools never prompt. Clients collect review, refinement, media, overwrite, and destructive-operation decisions explicitly.
+
+### Test Strategy
+
+- Test workflow behavior directly without starting Textual or a subprocess MCP server.
+- Use the in-process MCP server for protocol contract tests.
+- Use Textual pilot tests for screen transitions, focus behavior, and failed-operation recovery.
+- Mock every provider API. Unit and CI tests must never require credentials or perform provider network calls.
+- Run filesystem-producing tests under `tmp_path`; a clean temporary working-directory run must leave no generated
+  story or `MagicMock/` artifacts behind.
+
+### Distribution Smoke Test
+
+Source-checkout tests do not prove that runtime data is packaged. Build and inspect both artifacts, then install the
+wheel into a fresh environment:
+
+```bash
+DIST_AUDIT_DIR="$(mktemp -d)"
+UV_CACHE_DIR=/tmp/storyforge-uv-cache uv build --out-dir "$DIST_AUDIT_DIR"
+uv venv "$DIST_AUDIT_DIR/venv"
+uv pip install --python "$DIST_AUDIT_DIR/venv/bin/python" "$DIST_AUDIT_DIR"/*.whl
+```
+
+Verify that the wheel and sdist contain `storyforge/py.typed` and `storyforge/test_story.txt`, run `sf --help` and
+`sf --version` from the fresh environment, and exercise debug draft creation with all provider keys unset. CI performs
+the same check in its `package-smoke` job.
 
 ## Contributing Workflow
 
@@ -189,7 +223,7 @@ uv venv .venv && source .venv/bin/activate && uv pip install .[dev]
 
 ## Release Process
 
-1. **Update version** in both `pyproject.toml` and `storyforge/__init__.py`
+1. **Update version** in `storyforge/__init__.py` (`pyproject.toml` reads it dynamically)
 2. **Update CHANGELOG.md** — move `[Unreleased]` items into a new versioned section with today's date
 3. **Validate**: `make lint && make lint-check && make test && make coverage`
 4. **Commit**: `git commit -am "release: v0.0.X"`

@@ -7,18 +7,20 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from PIL import Image
-from textual.widgets import Button, Checkbox, Input, OptionList, Select, TextArea
+from textual.widgets import Button, Checkbox, Input, OptionList, Select, Static, TextArea
 
 from storyforge.mcp_models import (
     DraftResult,
     GeneratedStory,
     GeneratedStorySummary,
     GenerationRequest,
+    ModelRefreshResult,
     SessionSummary,
     StorySummary,
     WorkflowResult,
 )
 from storyforge.tui import (
+    ClearModelCacheScreen,
     ConfigEditorScreen,
     ConfigScreen,
     ExtensionOptionsScreen,
@@ -55,6 +57,8 @@ class FakeClient:
         }
         self.saved_config = None
         self.model_selection = None
+        self.model_refreshes = 0
+        self.model_clears = 0
         self.model_data = {
             "gemini": [
                 {"name": "models/gemini-3.0-pro"},
@@ -139,6 +143,21 @@ class FakeClient:
     async def configure_models(self, backend, story_model, image_model):
         self.model_selection = (backend, story_model, image_model)
         return {"path": self.config_data.get("path") or "/tmp/storyforge.ini"}
+
+    async def refresh_models(self):
+        self.model_refreshes += 1
+        self.model_data["openai"].append({"name": "gpt-6.0"})
+        return ModelRefreshResult(
+            models=self.model_data,
+            statuses={"openai": "refreshed: 3 models"},
+            message="Model refresh complete.",
+        )
+
+    async def clear_models(self, confirmed=False):
+        assert confirmed is True
+        self.model_clears += 1
+        self.model_data = {provider: [] for provider in self.model_data}
+        return WorkflowResult(message="All cached model data cleared.")
 
     async def finalize_story(self, request):
         self.finalize_request = request
@@ -737,6 +756,51 @@ async def test_models_screen_selects_and_saves_provider_models():
         assert fake.model_selection == ("gemini", "gemini-3.0-pro", "gemini-3.0-flash-image")
         assert isinstance(app.screen, ResultScreen)
         assert app.screen.result_title == "Models Updated"
+
+
+@pytest.mark.asyncio
+async def test_models_screen_refreshes_and_reloads_selectors():
+    fake = FakeClient()
+    app = StoryForgeApp(client=fake)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await app.push_screen(ModelsScreen(fake.model_data, fake.config_data))
+        app.screen.query_one("#refresh", Button).press()
+        await pilot.pause()
+
+        assert fake.model_refreshes == 1
+        assert isinstance(app.screen, ModelsScreen)
+        assert ("gpt-6.0", "gpt-6.0") in app.screen._model_options("openai", "story")
+        assert "Model refresh complete." in str(app.screen.query_one("#model-refresh-status", Static).render())
+
+
+@pytest.mark.asyncio
+async def test_models_screen_clear_requires_confirmation_and_cancel_preserves_cache():
+    fake = FakeClient()
+    app = StoryForgeApp(client=fake)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await app.push_screen(ModelsScreen(fake.model_data, fake.config_data))
+        app.screen.query_one("#clear", Button).press()
+        await pilot.pause()
+
+        assert isinstance(app.screen, ClearModelCacheScreen)
+        app.screen.query_one("#cancel", Button).press()
+        await pilot.pause()
+        assert isinstance(app.screen, ModelsScreen)
+        assert fake.model_clears == 0
+        assert fake.model_data["openai"]
+
+        app.screen.query_one("#clear", Button).press()
+        await pilot.pause()
+        app.screen.query_one("#confirm-clear", Button).press()
+        await pilot.pause()
+
+        assert fake.model_clears == 1
+        assert isinstance(app.screen, ModelsScreen)
+        assert all(not entries for entries in fake.model_data.values())
 
 
 @pytest.mark.asyncio

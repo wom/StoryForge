@@ -217,11 +217,11 @@ class ClassicCLI:
     async def _models(self, client: StoryForgeMCPClient, args: list[str]) -> int:
         action = args[0] if args else "list"
         if action == "refresh":
-            result = await client.invalidate_models()
-            console.print(f"[green]{result.message}[/green]")
+            refresh_result = await client.refresh_models()
+            console.print(f"[green]{refresh_result.message}[/green]")
         elif action == "clear":
-            result = await client.clear_models(confirmed=True)
-            console.print(f"[green]{result.message}[/green]")
+            clear_result = await client.clear_models(confirmed=True)
+            console.print(f"[green]{clear_result.message}[/green]")
         else:
             models = await client.list_models()
             for backend, entries in models.items():

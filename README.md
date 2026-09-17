@@ -14,6 +14,8 @@ A full-screen TUI and MCP server that generate illustrated children's stories us
 - 🔄 Context summarization with temporal sampling, sentence deduplication, and token budget management
 - 🔁 Automatic retry with exponential backoff for transient API errors
 - 🔌 **Bundled MCP server** — the TUI and classic CLI share one typed workflow API that can also be registered with other MCP hosts
+- ⚙️ **In-app configuration editor** — edit and validate the active INI file without leaving the TUI
+- 🤖 **Provider model picker** — refresh available models and persist separate story/image choices
 
 **Backends:** [Google Gemini](https://aistudio.google.com/apikey) ✅ | [OpenAI](https://platform.openai.com/api-keys) ✅ | [Anthropic](https://console.anthropic.com/) (text only)
 
@@ -65,9 +67,10 @@ sf extend
 sf export-chain
 ```
 
-> **Tip:** `sf` is a shorthand alias for `storyforge`. All commands work with either.
+Both `storyforge` and the shorter `sf` entry point are installed; examples use `sf`. `storyforge-mcp` is the separate
+stdio protocol server entry point.
 
-StoryForge launches the full-screen interface when stdin and stdout are attached to a capable terminal. Existing arguments prefill the matching screen. Use `--no-tui` for the Rich prompt interface, or set `STORYFORGE_NO_TUI=1`; redirected input/output selects that interface automatically. Both interfaces execute application workflows through the bundled local MCP server.
+StoryForge launches the full-screen interface when stdin and stdout are attached to a capable terminal. A bare management group such as `sf config`, `sf world`, or `sf models` opens its corresponding screen. Explicit actions such as `sf world path`, `sf config init`, and `sf models refresh` always execute directly so their arguments are never discarded. Use `--no-tui` for the Rich prompt interface, or set `STORYFORGE_NO_TUI=1`; redirected input/output selects that interface automatically. Both interfaces execute application workflows through the bundled local MCP server.
 
 ### Story Options
 
@@ -92,11 +95,18 @@ sf generate "prompt" [options]  # Explicit generation command
 sf continue                     # Resume a previous session
 sf extend                       # Extend a previous story
 sf export-chain [-c NAME] [-o FILE]  # Export story chain
+sf config                         # Open the in-app configuration screen
+sf config show                    # Print resolved configuration
 sf config init [--force]        # Generate default config file
+sf world                          # Open the in-app world editor
 sf world init                   # Create world.md template
 sf world edit                   # Open world.md in $EDITOR
 sf world show                   # Display world.md contents
 sf world path                   # Show world.md location
+sf models                         # Open the model picker
+sf models list                    # List fresh cached provider models
+sf models refresh                 # Query configured providers now
+sf models clear                   # Delete cached provider model lists
 sf --tui                        # Force the full-screen interface
 sf --no-tui "prompt"           # Force the Rich MCP client
 sf --help                       # Full help
@@ -139,6 +149,9 @@ sf config init
 
 Config file location (first found wins): `$STORYFORGE_CONFIG` → `~/.config/storyforge/storyforge.ini` → `~/.storyforge.ini` → `./storyforge.ini`
 
+Run `sf config` to view the resolved configuration and edit the active file inside the TUI. Candidates are validated
+before an atomic replacement; if validation or saving fails, the editor keeps the unsaved text so it can be corrected.
+
 See [**docs/CONFIGURATION.md**](docs/CONFIGURATION.md) for the full reference of all options, defaults, and examples.
 
 ## World Definitions
@@ -147,7 +160,8 @@ Define your story universe in a persistent `world.md` file — characters, place
 
 ```bash
 sf world init     # Create from template
-sf world edit     # Open in $EDITOR (creates if missing)
+sf world          # Open the in-app viewer/editor
+sf world edit     # Open in $EDITOR in the classic interface
 sf world show     # Display current contents
 sf world path     # Show file location
 ```
@@ -167,6 +181,17 @@ Always wears purple rain boots, even on sunny days.
 
 **File location:** `./context/world.md` if a local `context/` directory exists, otherwise `~/.local/share/storyforge/context/world.md`.
 
+## Models and cache
+
+Run `sf models` to choose a provider and separate story/image models. Anthropic is text-only, so its image selector is
+disabled. **Automatic / configured default** leaves the field empty and lets StoryForge discover and rank a suitable
+model. Saving a choice updates the active configuration and applies to the next generation without restarting.
+
+Discovered provider lists are cached for seven days in the platform user-data directory (normally
+`~/.local/share/storyforge/model_cache/` on Linux). **Refresh Models** queries every provider whose API key is available
+and preserves a valid previous cache if a provider fails. **Clear Cache** requires confirmation and removes only the
+discovered lists; it does not erase configured model choices.
+
 ## Story Chains
 
 When you extend stories multiple times, StoryForge tracks the full chain. During extension, the chain lineage is displayed. Use `sf export-chain` to combine all parts into a single file.
@@ -179,8 +204,8 @@ Stories are saved to timestamped directories containing `story.txt` and `*.png` 
 
 ## Tips
 
-- **Tab completion:** `sf --install-completion` (or `eval "$(sf --show-completion)"` for manual setup)
-- **Offline dev mode:** `sf "any prompt" --debug` loads a test story instead of calling APIs
+- **Offline dev mode:** `sf "any prompt" --debug` loads the bundled test story without a provider key. Refinement,
+  video prompts, and images initialize a provider only if requested.
 - **Verbose output:** `sf "prompt" --verbose` for detailed generation logs
 
 ## Development

@@ -13,10 +13,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from platformdirs import user_data_dir
+
 logger = logging.getLogger(__name__)
 
 DEFAULT_TTL_SECONDS = 604800  # 7 days
-DEFAULT_CACHE_DIR = Path.home() / ".local" / "share" / "storyforge" / "model_cache"
+DEFAULT_CACHE_DIR = Path(user_data_dir("storyforge", "storyforge")) / "model_cache"
 
 
 class ModelCache:
@@ -48,8 +50,8 @@ class ModelCache:
             logger.warning("Failed to read model cache for %s: %s", backend_name, e)
             return None
 
-    def set(self, backend_name: str, models: list[dict[str, Any]]) -> None:
-        """Write models to cache with current timestamp and TTL metadata."""
+    def set(self, backend_name: str, models: list[dict[str, Any]]) -> bool:
+        """Write models atomically and report whether the cache was replaced."""
         self._cache_dir.mkdir(parents=True, exist_ok=True)
 
         data = {
@@ -65,6 +67,7 @@ class ModelCache:
                 with os.fdopen(fd, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
                 os.replace(tmp_path, path)
+                return True
             except BaseException:
                 # Clean up temp file on failure
                 try:
@@ -74,6 +77,7 @@ class ModelCache:
                 raise
         except OSError as e:
             logger.warning("Failed to write model cache for %s: %s", backend_name, e)
+            return False
 
     def is_valid(self, backend_name: str) -> bool:
         """Check if cache exists and hasn't expired."""

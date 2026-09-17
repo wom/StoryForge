@@ -7,7 +7,14 @@ import pytest
 
 from storyforge.checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
 from storyforge.llm_backend import ERROR_STORY_SENTINEL
-from storyforge.phase_executor import PhaseExecutor
+from storyforge.phase_executor import PhaseExecutor, _load_debug_story
+
+
+def test_load_debug_story_reads_bundled_fixture():
+    story = _load_debug_story()
+
+    assert story.startswith("Ethan and Isaac")
+    assert "Mystery Animal Map" in story
 
 
 class TestPhaseExecutorPhases:
@@ -75,6 +82,34 @@ class TestPhaseExecutorPhases:
         mock_get_backend.assert_called_once_with(
             backend_name=None, config_backend=None, config=self.phase_executor.config
         )
+
+    @patch("storyforge.phase_executor.get_backend")
+    def test_phase_backend_init_defers_provider_in_debug_mode(self, mock_get_backend):
+        self.checkpoint_data.resolved_config["debug"] = True
+
+        self.phase_executor._phase_backend_init()
+
+        assert self.phase_executor.llm_backend is None
+        mock_get_backend.assert_not_called()
+
+    @patch("storyforge.phase_executor.get_backend")
+    def test_debug_mode_initializes_provider_when_optional_feature_requires_it(self, mock_get_backend):
+        backend = MagicMock()
+        mock_get_backend.return_value = backend
+        self.checkpoint_data.resolved_config["debug"] = True
+
+        result = self.phase_executor._require_backend("Story refinement")
+
+        assert result is backend
+        mock_get_backend.assert_called_once()
+
+    @patch("storyforge.phase_executor.get_backend")
+    def test_debug_optional_feature_reports_missing_provider(self, mock_get_backend):
+        mock_get_backend.side_effect = RuntimeError("No LLM backend available")
+        self.checkpoint_data.resolved_config["debug"] = True
+
+        with pytest.raises(RuntimeError, match="Story refinement requires a configured AI provider"):
+            self.phase_executor._require_backend("Story refinement")
 
     @patch("storyforge.phase_executor.console")
     @patch("storyforge.phase_executor.get_backend")

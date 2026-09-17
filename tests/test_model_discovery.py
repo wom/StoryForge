@@ -3,6 +3,8 @@
 import os
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from storyforge.model_discovery import (
     find_anthropic_text_model,
     find_image_generation_model,
@@ -13,6 +15,7 @@ from storyforge.model_discovery import (
     list_gemini_models,
     list_openai_models,
 )
+from storyforge.model_ranking import model_supports_purpose
 
 
 def test_find_image_generation_model_with_gemini_2_5():
@@ -174,6 +177,14 @@ def test_list_gemini_models_error_handling(mock_client_class):
     assert models == []  # Returns empty list on error
 
 
+@patch("storyforge.model_discovery.genai.Client")
+def test_list_gemini_models_can_surface_refresh_error(mock_client_class):
+    mock_client_class.return_value.models.list.side_effect = Exception("API error")
+
+    with pytest.raises(RuntimeError, match="Gemini model discovery failed"):
+        list_gemini_models("fake-api-key", raise_errors=True)
+
+
 def test_list_gemini_models_no_api_key():
     """Test that list_gemini_models raises error when no API key provided."""
     import os
@@ -244,6 +255,16 @@ class TestOpenAIDiscovery:
 
         models = list_openai_models("test-key")
         assert models == []
+
+    @patch.dict("sys.modules", {"openai": MagicMock()})
+    def test_list_openai_models_can_surface_refresh_error(self):
+        import sys
+
+        mock_openai = sys.modules["openai"]
+        mock_openai.OpenAI.return_value.models.list.side_effect = Exception("API error")
+
+        with pytest.raises(RuntimeError, match="OpenAI model discovery failed"):
+            list_openai_models("test-key", raise_errors=True)
 
     @patch.dict(os.environ, {}, clear=True)
     def test_list_openai_models_no_api_key(self, monkeypatch):
@@ -336,6 +357,16 @@ class TestAnthropicDiscovery:
         models = list_anthropic_models("test-key")
         assert models == []
 
+    @patch.dict("sys.modules", {"anthropic": MagicMock()})
+    def test_list_anthropic_models_can_surface_refresh_error(self):
+        import sys
+
+        mock_anthropic = sys.modules["anthropic"]
+        mock_anthropic.Anthropic.return_value.models.list.side_effect = Exception("API error")
+
+        with pytest.raises(RuntimeError, match="Anthropic model discovery failed"):
+            list_anthropic_models("test-key", raise_errors=True)
+
     @patch.dict(os.environ, {}, clear=True)
     def test_list_anthropic_models_no_api_key(self, monkeypatch):
         """No env var, returns empty."""
@@ -366,3 +397,40 @@ class TestAnthropicDiscovery:
         """Empty list returns default."""
         result = find_anthropic_text_model([])
         assert result == "claude-sonnet-4-6"
+
+
+@pytest.mark.parametrize(
+    ("model", "provider", "purpose", "expected"),
+    [
+        ({"name": "gpt-6.0"}, "openai", "text", True),
+        ({"name": "gpt-6.0"}, "openai", "image", False),
+        ({"name": "gpt-image-2"}, "openai", "text", False),
+        ({"name": "gpt-image-2"}, "openai", "image", True),
+        ({"name": "claude-sonnet-4-6"}, "anthropic", "text", True),
+        ({"name": "claude-sonnet-4-6"}, "anthropic", "image", False),
+        (
+            {"name": "models/gemini-3.0-pro", "supported_generation_methods": ["generateContent"]},
+            "gemini",
+            "text",
+            True,
+        ),
+        (
+            {
+                "name": "models/gemini-3.0-flash",
+                "supported_generation_methods": ["generateContent"],
+                "output_modalities": ["IMAGE"],
+            },
+            "gemini",
+            "image",
+            True,
+        ),
+        (
+            {"name": "models/gemini-embedding", "supported_generation_methods": ["embedContent"]},
+            "gemini",
+            "text",
+            False,
+        ),
+    ],
+)
+def test_model_supports_picker_purpose(model, provider, purpose, expected):
+    assert model_supports_purpose(model, provider, purpose) is expected

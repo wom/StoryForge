@@ -88,7 +88,7 @@ def _add_generation_arguments(parser: argparse.ArgumentParser) -> None:
 def build_parser() -> argparse.ArgumentParser:
     """Build the single strict parser used by both terminal presentations."""
     parser = StoryForgeArgumentParser(
-        prog="storyforge",
+        prog="sf",
         description="Create and continue illustrated stories through the bundled MCP server.",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -123,7 +123,7 @@ def build_parser() -> argparse.ArgumentParser:
     models = subparsers.add_parser("models", help="Manage the model cache")
     model_commands = models.add_subparsers(dest="models_action", metavar="ACTION")
     model_commands.add_parser("list", help="List cached models")
-    model_commands.add_parser("refresh", help="Invalidate cached models")
+    model_commands.add_parser("refresh", help="Query providers and refresh cached models")
     model_commands.add_parser("clear", help="Clear cached model data")
     return parser
 
@@ -163,6 +163,22 @@ def _parse_args(args: Sequence[str]) -> tuple[list[str], argparse.Namespace]:
     return normalized, build_parser().parse_args(normalized)
 
 
+def _requires_direct_execution(namespace: argparse.Namespace) -> bool:
+    """Return whether routing to a general TUI screen would discard an explicit action."""
+    action_fields = {
+        "config": "config_action",
+        "world": "world_action",
+        "models": "models_action",
+    }
+    action_field = action_fields.get(namespace.command)
+    if action_field is not None and getattr(namespace, action_field, None) is not None:
+        return True
+    return bool(
+        namespace.command == "export-chain"
+        and (getattr(namespace, "context", None) is not None or getattr(namespace, "output", None) is not None)
+    )
+
+
 def main(argv: Sequence[str] | None = None) -> None:
     """Run StoryForge from a console script or ``python -m storyforge``."""
     args = list(sys.argv[1:] if argv is None else argv)
@@ -186,8 +202,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         "continue" if namespace.command == "generate" and namespace.continue_session else TUI_ROUTES[namespace.command]
     )
     generation_request = _request_from_namespace(namespace) if namespace.command == "generate" else None
+    direct_execution = _requires_direct_execution(namespace)
 
-    if not no_tui and (force_tui or terminal_supports_tui()):
+    if not direct_execution and not no_tui and (force_tui or terminal_supports_tui()):
         from .tui import run_tui
 
         run_tui(route, generation_request if route == "generate" else None)

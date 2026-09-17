@@ -14,7 +14,7 @@ from google import genai
 logger = logging.getLogger(__name__)
 
 
-def list_gemini_models(api_key: str | None = None) -> list[dict[str, Any]]:
+def list_gemini_models(api_key: str | None = None, *, raise_errors: bool = False) -> list[dict[str, Any]]:
     """List all available Gemini models.
 
     Args:
@@ -39,14 +39,19 @@ def list_gemini_models(api_key: str | None = None) -> list[dict[str, Any]]:
             model_info = {
                 "name": getattr(model, "name", ""),
                 "display_name": getattr(model, "display_name", ""),
-                "supported_generation_methods": getattr(model, "supported_generation_methods", []),
+                "supported_generation_methods": [
+                    str(method) for method in (getattr(model, "supported_generation_methods", []) or [])
+                ],
                 "description": getattr(model, "description", ""),
                 "input_token_limit": getattr(model, "input_token_limit", None),
                 "output_token_limit": getattr(model, "output_token_limit", None),
+                "output_modalities": [str(modality) for modality in (getattr(model, "output_modalities", []) or [])],
             }
             models.append(model_info)
-    except Exception:
+    except Exception as error:
         logger.warning("Failed to list Gemini models", exc_info=True)
+        if raise_errors:
+            raise RuntimeError(f"Gemini model discovery failed: {error}") from error
 
     return models
 
@@ -115,7 +120,7 @@ def find_text_generation_model(models: list[dict[str, Any]] | None = None) -> st
     return "gemini-pro-latest"
 
 
-def list_openai_models(api_key: str | None = None) -> list[dict[str, Any]]:
+def list_openai_models(api_key: str | None = None, *, raise_errors: bool = False) -> list[dict[str, Any]]:
     """List available OpenAI models.
 
     Args:
@@ -132,6 +137,8 @@ def list_openai_models(api_key: str | None = None) -> list[dict[str, Any]]:
 
     key = api_key or os.environ.get("OPENAI_API_KEY")
     if not key:
+        if raise_errors:
+            raise RuntimeError("OPENAI_API_KEY environment variable not set.")
         logger.warning("OPENAI_API_KEY not set, cannot list models")
         return []
 
@@ -152,8 +159,10 @@ def list_openai_models(api_key: str | None = None) -> list[dict[str, Any]]:
                     "created": getattr(model, "created", None),
                 }
             )
-    except Exception:
+    except Exception as error:
         logger.warning("Failed to list OpenAI models", exc_info=True)
+        if raise_errors:
+            raise RuntimeError(f"OpenAI model discovery failed: {error}") from error
 
     return models
 
@@ -214,7 +223,7 @@ def find_openai_image_model(models: list[dict[str, Any]] | None = None) -> str:
     return "gpt-image-1.5"
 
 
-def list_anthropic_models(api_key: str | None = None) -> list[dict[str, Any]]:
+def list_anthropic_models(api_key: str | None = None, *, raise_errors: bool = False) -> list[dict[str, Any]]:
     """List available Anthropic models.
 
     Args:
@@ -231,6 +240,8 @@ def list_anthropic_models(api_key: str | None = None) -> list[dict[str, Any]]:
 
     key = api_key or os.environ.get("ANTHROPIC_API_KEY")
     if not key:
+        if raise_errors:
+            raise RuntimeError("ANTHROPIC_API_KEY environment variable not set.")
         logger.warning("ANTHROPIC_API_KEY not set, cannot list models")
         return []
 
@@ -239,15 +250,18 @@ def list_anthropic_models(api_key: str | None = None) -> list[dict[str, Any]]:
 
     try:
         for model in client.models.list():
+            created_at = getattr(model, "created_at", None)
             models.append(
                 {
                     "name": getattr(model, "id", ""),
                     "display_name": getattr(model, "display_name", ""),
-                    "created_at": getattr(model, "created_at", None),
+                    "created_at": str(created_at) if created_at is not None else None,
                 }
             )
-    except Exception:
+    except Exception as error:
         logger.warning("Failed to list Anthropic models", exc_info=True)
+        if raise_errors:
+            raise RuntimeError(f"Anthropic model discovery failed: {error}") from error
 
     return models
 

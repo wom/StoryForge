@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json
+import os
 from collections.abc import Callable
 from configparser import Error as ConfigParserError
 from datetime import datetime
@@ -11,6 +11,7 @@ from typing import Any
 
 from yaml import YAMLError, safe_load
 
+from .atomic_io import atomic_write_text
 from .checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
 from .config import Config, ConfigError, load_config, update_config_values
 from .context import ContextManager
@@ -23,6 +24,7 @@ from .mcp_models import (
     GeneratedStory,
     GeneratedStorySummary,
     GenerationRequest,
+    ModelRefreshResult,
     SessionSummary,
     StorySummary,
     WorkflowResult,
@@ -419,7 +421,7 @@ class StoryForgeWorkflow:
         if errors:
             raise ConfigError("Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors))
 
-        path.write_text(content, encoding="utf-8")
+        atomic_write_text(path, content)
         return ConfigResult(values=candidate.to_dict(), path=str(path), content=content)
 
     def configure_models(self, backend: str, story_model: str, image_model: str = "") -> ConfigResult:
@@ -461,33 +463,58 @@ class StoryForgeWorkflow:
         path = resolve_world_file_path()
         if path.exists() and not overwrite:
             raise FileExistsError(f"World file already exists: {path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+        atomic_write_text(path, content)
         return WorldResult(path=str(path), exists=True, content=content)
 
     def list_models(self) -> dict[str, list[dict[str, Any]]]:
         from .model_cache import ModelCache
 
         cache = ModelCache()
-        result: dict[str, list[dict[str, Any]]] = {}
-        for backend in ("gemini", "openai", "anthropic"):
-            path = cache.cache_path(backend)
-            if not path.exists():
-                result[backend] = []
+        return {backend: cache.get(backend) or [] for backend in ("gemini", "openai", "anthropic")}
+
+    def refresh_models(self) -> ModelRefreshResult:
+        """Discover provider models now while preserving valid cache data on failures."""
+        from .model_cache import ModelCache
+        from .model_discovery import list_anthropic_models, list_gemini_models, list_openai_models
+        from .model_ranking import model_supports_purpose
+
+        providers = {
+            "gemini": ("GEMINI_API_KEY", list_gemini_models),
+            "openai": ("OPENAI_API_KEY", list_openai_models),
+            "anthropic": ("ANTHROPIC_API_KEY", list_anthropic_models),
+        }
+        cache = ModelCache()
+        models: dict[str, list[dict[str, Any]]] = {}
+        statuses: dict[str, str] = {}
+
+        for provider, (key_name, discover) in providers.items():
+            previous = cache.get(provider) or []
+            models[provider] = previous
+            api_key = os.environ.get(key_name)
+            if not api_key:
+                statuses[provider] = f"skipped: {key_name} is not set"
                 continue
             try:
-                result[backend] = list(json.loads(path.read_text(encoding="utf-8")).get("models", []))
-            except (OSError, json.JSONDecodeError, TypeError):
-                result[backend] = []
-        return result
+                discovered = discover(api_key, raise_errors=True)
+            except Exception as error:
+                statuses[provider] = f"error: {error}"
+                continue
+            usable = [
+                model
+                for model in discovered
+                if model_supports_purpose(model, provider, "text") or model_supports_purpose(model, provider, "image")
+            ]
+            if not usable:
+                statuses[provider] = "empty: provider returned no usable models"
+                continue
+            if not cache.set(provider, usable):
+                statuses[provider] = "error: could not write model cache"
+                continue
+            models[provider] = usable
+            statuses[provider] = f"refreshed: {len(usable)} models"
 
-    def invalidate_models(self) -> WorkflowResult:
-        from .model_cache import ModelCache
-
-        cache = ModelCache()
-        for backend in ("gemini", "openai", "anthropic"):
-            cache.invalidate(backend)
-        return WorkflowResult(message="All model caches invalidated.")
+        summary = "; ".join(f"{provider}: {status}" for provider, status in statuses.items())
+        return ModelRefreshResult(models=models, statuses=statuses, message=f"Model refresh complete. {summary}")
 
     def clear_models(self, confirmed: bool = False) -> WorkflowResult:
         if not confirmed:

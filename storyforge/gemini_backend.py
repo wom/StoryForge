@@ -10,7 +10,7 @@ env var, otherwise it auto-discovers the best available image generation model
 import logging
 import os
 from io import BytesIO
-from typing import Any, ClassVar
+from typing import Any
 
 from google import genai
 from google.genai import types
@@ -26,8 +26,6 @@ logger = logging.getLogger(__name__)
 
 class GeminiBackend(LLMBackend):
     name = "gemini"
-    _image_model: ClassVar[str | None] = None
-    _text_model: ClassVar[str | None] = None
 
     # Token limit configuration
     DEFAULT_IMAGE_INPUT_LIMIT = 30000  # Conservative fallback for image models
@@ -57,26 +55,21 @@ class GeminiBackend(LLMBackend):
         # Env var override for image model (highest priority)
         env_image = os.environ.get("GEMINI_IMAGE_MODEL")
 
-        if GeminiBackend._text_model is None or GeminiBackend._image_model is None:
-            if configured_text and (configured_image or env_image):
-                # Both models explicitly configured, no need for discovery
-                GeminiBackend._text_model = GeminiBackend._text_model or configured_text
-                GeminiBackend._image_model = GeminiBackend._image_model or (env_image or configured_image)
-            else:
-                # Need discovery for at least one model
-                models = self._get_models(api_key)
-                if GeminiBackend._text_model is None:
-                    GeminiBackend._text_model = configured_text or find_text_generation_model(models)
-                if GeminiBackend._image_model is None:
-                    GeminiBackend._image_model = env_image or configured_image or find_image_generation_model(models)
+        if configured_text and (configured_image or env_image):
+            # Both models explicitly configured, no need for discovery.
+            self._text_model = configured_text
+            self._image_model = env_image or configured_image
+        else:
+            # Need discovery for at least one model.
+            models = self._get_models(api_key)
+            self._text_model = configured_text or find_text_generation_model(models)
+            self._image_model = env_image or configured_image or find_image_generation_model(models)
 
         # Extract and cache token limits for the selected models
         self._image_input_limit = self._get_model_input_limit(
-            GeminiBackend._image_model, self.DEFAULT_IMAGE_INPUT_LIMIT, "image"
+            self._image_model, self.DEFAULT_IMAGE_INPUT_LIMIT, "image"
         )
-        self._text_input_limit = self._get_model_input_limit(
-            GeminiBackend._text_model, self.DEFAULT_TEXT_INPUT_LIMIT, "text"
-        )
+        self._text_input_limit = self._get_model_input_limit(self._text_model, self.DEFAULT_TEXT_INPUT_LIMIT, "text")
 
     def _get_models(self, api_key: str) -> list[dict[str, Any]]:
         """Get model list from disk cache or API discovery."""
