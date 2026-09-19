@@ -10,9 +10,6 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 import pyperclip
-from PIL import Image, UnidentifiedImageError
-from rich.color import Color
-from rich.style import Style
 from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
@@ -33,6 +30,7 @@ from textual.widgets import (
     TextArea,
 )
 from textual.worker import get_current_worker
+from textual_image.widget import Image as TerminalImage
 
 from .external_viewer import open_path_externally
 from .mcp_client import StoryForgeMCPClient
@@ -692,61 +690,6 @@ class StoryReaderScreen(StoryForgeScreen):
         return content.replace("\r\n", "\n").replace("\r", "\n")
 
 
-class TerminalImage(Static):
-    """Render a local raster image with true-color half-block terminal cells."""
-
-    def __init__(self, image_path: str, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
-        self.image_path = image_path
-        self._cache_key: tuple[str, int, int] | None = None
-        self._cached_render = Text()
-
-    def set_image(self, image_path: str) -> None:
-        self.image_path = image_path
-        self._cache_key = None
-        self.refresh()
-
-    def render(self) -> Text:
-        width = max(1, self.size.width)
-        height = max(1, self.size.height)
-        cache_key = (self.image_path, width, height)
-        if cache_key == self._cache_key:
-            return self._cached_render
-
-        try:
-            with Image.open(self.image_path) as source:
-                image = source.convert("RGB")
-                image.thumbnail((width, height * 2), Image.Resampling.LANCZOS)
-                rendered = self._render_half_blocks(image)
-        except (OSError, UnidentifiedImageError):
-            rendered = Text("This image could not be displayed.", justify="center", style="red")
-
-        self._cache_key = cache_key
-        self._cached_render = rendered
-        return rendered
-
-    @staticmethod
-    def _render_half_blocks(image: Image.Image) -> Text:
-        rendered = Text(justify="center", no_wrap=True, overflow="crop")
-        pixels = image.load()
-        assert pixels is not None
-        for y in range(0, image.height, 2):
-            bottom_y = min(y + 1, image.height - 1)
-            for x in range(image.width):
-                top = cast(tuple[int, int, int], pixels[x, y])
-                bottom = cast(tuple[int, int, int], pixels[x, bottom_y])
-                rendered.append(
-                    "▀",
-                    Style(
-                        color=Color.from_rgb(*top),
-                        bgcolor=Color.from_rgb(*bottom),
-                    ),
-                )
-            if y + 2 < image.height:
-                rendered.append("\n")
-        return rendered
-
-
 class ImageViewerScreen(StoryForgeScreen):
     """Navigate generated illustrations without leaving StoryForge."""
 
@@ -805,7 +748,7 @@ class ImageViewerScreen(StoryForgeScreen):
         self.image_index = index % len(self.image_paths)
         path = self.image_paths[self.image_index]
         self.query_one("#image-title", Static).update(Path(path).name)
-        self.query_one("#image-canvas", TerminalImage).set_image(path)
+        self.query_one("#image-canvas", TerminalImage).image = path
         self.query_one("#image-position", Static).update(self._position_text())
 
     def _position_text(self) -> str:

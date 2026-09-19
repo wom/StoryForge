@@ -12,6 +12,7 @@ from typing import Any, cast
 
 from mcp.server import MCPServer
 from mcp.server.mcpserver import Context
+from mcp.server.mcpserver.exceptions import ToolError
 
 from .mcp_models import (
     ConfigResult,
@@ -239,7 +240,9 @@ async def storyforge_refresh_models() -> ModelRefreshResult:
 @mcp.tool()
 async def storyforge_clear_models(confirmed: bool = False) -> WorkflowResult:
     """Delete all model cache files; confirmed must be true."""
-    return StoryForgeWorkflow().clear_models(confirmed)
+    if not confirmed:
+        raise ToolError("Clearing model caches requires confirmed=true")
+    return StoryForgeWorkflow().clear_models(confirmed=True)
 
 
 @mcp.resource("storyforge://config")

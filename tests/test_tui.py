@@ -438,11 +438,11 @@ async def test_story_reader_opens_and_navigates_generated_images(tmp_path):
 
         assert isinstance(app.screen, ImageViewerScreen)
         canvas = app.screen.query_one("#image-canvas", TerminalImage)
-        assert canvas.image_path == str(first)
+        assert canvas.image == str(first)
         app.screen.query_one("#next", Button).press()
         await pilot.pause()
-        assert canvas.image_path == str(second)
-        assert str(canvas.render())
+        assert canvas.image == str(second)
+        assert canvas.render()
         with patch("storyforge.tui.open_path_externally", return_value="Windows Explorer") as opener:
             app.screen.query_one("#open-external", Button).press()
             await pilot.pause()

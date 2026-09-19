@@ -27,6 +27,10 @@ All notable changes to this project will be documented in this file.
 
 ### Fixed
 - Included `storyforge/test_story.txt` and `storyforge/py.typed` explicitly in wheels and source distributions.
+- The in-app image viewer now uses native Sixel or Kitty terminal graphics when supported, with a portable Unicode
+  fallback.
+- Anthropic requests no longer send the removed top-level `temperature` parameter, restoring compatibility with the
+  current SDK.
 - Failed configuration saves return to the editor with the candidate text intact.
 - Configuration and world-file saves preserve the original file when an atomic replacement fails.
 - Restored review, resume, extension, and configuration transitions across the MCP client boundary.

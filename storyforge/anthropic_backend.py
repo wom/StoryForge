@@ -191,7 +191,6 @@ class AnthropicBackend(LLMBackend):
                 response = self.client.messages.create(
                     model=self._story_model,
                     max_tokens=4000,
-                    temperature=0.7,
                     messages=[{"role": "user", "content": story_prompt}],
                 )
                 text = self._extract_text(response)
@@ -251,7 +250,6 @@ class AnthropicBackend(LLMBackend):
             response = self.client.messages.create(
                 model=self._story_model,
                 max_tokens=100,
-                temperature=0.3,  # Lower temperature for more consistent naming
                 messages=[{"role": "user", "content": name_prompt}],
             )
 
@@ -291,7 +289,6 @@ class AnthropicBackend(LLMBackend):
             response = self.client.messages.create(
                 model=self._story_model,
                 max_tokens=2000,
-                temperature=0.5,
                 messages=[{"role": "user", "content": image_prompt_request}],
             )
 
@@ -329,7 +326,6 @@ class AnthropicBackend(LLMBackend):
             response = self.client.messages.create(
                 model=self._story_model,
                 max_tokens=2000,
-                temperature=0.5,
                 messages=[{"role": "user", "content": video_prompt_request}],
             )
 
