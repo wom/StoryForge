@@ -6,6 +6,8 @@ A full-screen TUI and MCP server that generate illustrated children's stories us
 
 - 📖 Story generation from simple prompts with customizable age range, length, tone, theme, and style
 - 🎨 AI illustrations in multiple art styles (chibi, realistic, cartoon, watercolor, sketch)
+- 🖼️ **In-app image viewer** — uses Sixel or Kitty graphics when the terminal supports them, with a portable Unicode
+  fallback
 - 🗣️ **Voice archetypes** — narrator styles (anapestic, sardonic, picaresque, gothic, lyrical, and more)
 - 🌍 **World definitions** — persistent `world.md` for characters, places, and lore across stories
 - 📚 **Story extension** — continue stories with an interactive TUI picker; chain tracking and export

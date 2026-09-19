@@ -31,6 +31,7 @@ dependencies = [
     "requests>=2.31.0",
     "pillow>=11.2.1",
     "textual[syntax]>=0.54.1",
+    "textual-image[textual]>=0.14.0,<1",
     "rich>=13.0.0",
     "platformdirs>=4.2.0",
     "pyyaml>=6.0.0",
