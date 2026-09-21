@@ -60,6 +60,20 @@ _HOME_EMBLEM = "\n".join(
     )
 )
 
+_VOICE_OPTIONS = [
+    ("None — Default narration", ""),
+    ("Anapestic — Bouncy rhymes (Dr. Seuss)", "anapestic"),
+    ("Sardonic — Dark asides (Dahl → Snicket)", "sardonic"),
+    ("Picaresque — Quest (Twain → Colfer)", "picaresque"),
+    ("Iambic — Verse (Shakespeare → Donaldson)", "iambic"),
+    ("Fable — Moral tale (Aesop → Lobel)", "fable"),
+    ("Gothic — Eerie tale (Andersen → Gaiman)", "gothic"),
+    ("Nonsense — Wordplay (Carroll → Seuss)", "nonsense"),
+    ("Lyrical — Bedtime prose (Brown → Yolen)", "lyrical"),
+    ("Epistolary — Kid diary (Cleary → Kinney)", "epistolary"),
+    ("Random — Choose automatically", "random"),
+]
+
 
 def _request_from_config(
     data: dict[str, Any],
@@ -293,25 +307,12 @@ class NewStoryScreen(StoryForgeScreen):
                         id="theme",
                     )
                 with Vertical(classes="field"):
-                    yield Label("Voice")
+                    yield Label("Voice — narrator style (classic → modern)")
                     yield Select(
-                        self._options(
-                            [
-                                "",
-                                "anapestic",
-                                "sardonic",
-                                "picaresque",
-                                "iambic",
-                                "fable",
-                                "gothic",
-                                "nonsense",
-                                "lyrical",
-                                "epistolary",
-                                "random",
-                            ]
-                        ),
+                        _VOICE_OPTIONS,
                         value=initial.voice or "",
                         id="voice",
+                        allow_blank=False,
                     )
             with Horizontal(classes="field-row"):
                 with Vertical(classes="field"):
