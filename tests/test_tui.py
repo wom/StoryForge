@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from PIL import Image
+from textual.containers import Container
 from textual.widgets import Button, Checkbox, Input, OptionList, Select, Static, TextArea
 
 from storyforge.mcp_models import (
@@ -423,8 +424,8 @@ async def test_story_reader_reports_clipboard_verification_mismatch():
 async def test_story_reader_opens_and_navigates_generated_images(tmp_path):
     first = tmp_path / "first.png"
     second = tmp_path / "second.png"
-    Image.new("RGB", (4, 4), "red").save(first)
-    Image.new("RGB", (4, 4), "blue").save(second)
+    Image.new("RGB", (40, 10), "red").save(first)
+    Image.new("RGB", (10, 40), "blue").save(second)
     story = FakeClient().generated_story.model_copy(
         update={"image_count": 2, "image_paths": [str(first), str(second)]}
     )
@@ -438,10 +439,19 @@ async def test_story_reader_opens_and_navigates_generated_images(tmp_path):
 
         assert isinstance(app.screen, ImageViewerScreen)
         canvas = app.screen.query_one("#image-canvas", TerminalImage)
+        frame = app.screen.query_one("#image-frame", Container)
         assert canvas.image == str(first)
+        assert canvas.styles.width.is_auto
+        assert canvas.styles.height.is_auto
+        assert canvas.size.width > canvas.size.height
+        assert canvas.region.center[0] == pytest.approx(frame.region.center[0], abs=0.5)
+        assert canvas.region.center[1] == pytest.approx(frame.region.center[1], abs=0.5)
         app.screen.query_one("#next", Button).press()
         await pilot.pause()
         assert canvas.image == str(second)
+        assert canvas.size.height > canvas.size.width
+        assert canvas.region.center[0] == pytest.approx(frame.region.center[0], abs=0.5)
+        assert canvas.region.center[1] == pytest.approx(frame.region.center[1], abs=0.5)
         assert canvas.render()
         with patch("storyforge.tui.open_path_externally", return_value="Windows Explorer") as opener:
             app.screen.query_one("#open-external", Button).press()

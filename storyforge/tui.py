@@ -14,7 +14,7 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
+from textual.containers import Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import (
     Button,
@@ -710,7 +710,8 @@ class ImageViewerScreen(StoryForgeScreen):
         yield Header()
         with Vertical(id="image-viewer"):
             yield Static(current.name, id="image-title", classes="screen-title literal-title", markup=False)
-            yield TerminalImage(str(current), id="image-canvas")
+            with Container(id="image-frame"):
+                yield TerminalImage(str(current), id="image-canvas")
             yield Static(self._position_text(), id="image-position", classes="subtitle")
             with Horizontal(classes="actions image-actions"):
                 yield Button("Previous", id="previous")
@@ -1181,7 +1182,8 @@ class StoryForgeApp(App[None]):
     #config-summary { width: 100%; }
     #library-story-text { width: 100%; }
     .literal-title { color: $accent; text-style: bold; }
-    #image-canvas { height: 1fr; width: 100%; content-align: center middle; overflow: hidden; }
+    #image-frame { height: 1fr; width: 100%; align: center middle; overflow: hidden; }
+    #image-canvas { height: auto; width: auto; }
     #image-title, #image-position { width: 100%; text-align: center; }
     .image-actions { align-horizontal: center; }
     #world-content { height: 1fr; }
