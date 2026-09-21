@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from collections.abc import Callable
 from contextlib import suppress
@@ -11,7 +12,7 @@ from typing import Any, Literal, cast
 
 import pyperclip
 from rich.text import Text
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Center, Container, Horizontal, Vertical, VerticalScroll
@@ -47,7 +48,7 @@ from .mcp_models import (
     StorySummary,
     WorkflowResult,
 )
-from .model_ranking import model_supports_purpose
+from .model_ranking import model_supports_purpose, rank_models
 from .portable_text import to_portable_ascii
 
 _HOME_EMBLEM = "\n".join(
@@ -73,6 +74,12 @@ _VOICE_OPTIONS = [
     ("Epistolary — Kid diary (Cleary → Kinney)", "epistolary"),
     ("Random — Choose automatically", "random"),
 ]
+
+_MODEL_PROVIDERS: dict[str, tuple[str, str]] = {
+    "gemini": ("Gemini", "GEMINI_API_KEY"),
+    "openai": ("OpenAI", "OPENAI_API_KEY"),
+    "anthropic": ("Anthropic", "ANTHROPIC_API_KEY"),
+}
 
 
 def _request_from_config(
@@ -891,9 +898,9 @@ class WorldScreen(StoryForgeScreen):
 
 
 class ModelsScreen(StoryForgeScreen):
-    """Select provider models from cached discovery results."""
+    """Configure provider roles from cached discovery results."""
 
-    PROVIDERS = ("gemini", "openai", "anthropic")
+    PROVIDERS = tuple(_MODEL_PROVIDERS)
     MODEL_FIELDS = {
         "gemini": ("gemini_story_model", "gemini_image_model"),
         "openai": ("openai_story_model", "openai_image_model"),
@@ -905,10 +912,12 @@ class ModelsScreen(StoryForgeScreen):
         models: dict[str, list[dict[str, Any]]],
         config: dict[str, Any],
         status: str = "",
+        provider_statuses: dict[str, str] | None = None,
     ) -> None:
         super().__init__()
         self.models = models
         self.status = status
+        self.provider_statuses = provider_statuses or {}
         values = config.get("values", config)
         system = values.get("system", {}) if isinstance(values, dict) else {}
         self.system = system if isinstance(system, dict) else {}
@@ -918,95 +927,288 @@ class ModelsScreen(StoryForgeScreen):
             if configured_backend in self.PROVIDERS
             else next((provider for provider in self.PROVIDERS if self.models.get(provider)), "gemini")
         )
+        self.selected_backend = self.initial_backend
+        self._drafts = {
+            provider: {
+                "story": self._configured_model(provider, "story"),
+                "image": self._configured_model(provider, "image"),
+            }
+            for provider in self.PROVIDERS
+        }
 
     def compose(self) -> ComposeResult:
         backend = self.initial_backend
-        story_value = self._configured_model(backend, "story")
-        image_value = self._configured_model(backend, "image")
-        with Vertical(id="models-screen"):
+        story_value = self._drafts[backend]["story"]
+        image_value = self._drafts[backend]["image"]
+        yield Header()
+        with VerticalScroll(id="models-screen"):
             yield Static("[bold cyan]Models[/bold cyan]", classes="screen-title")
-            yield Static("Choose models discovered from your configured providers.", classes="subtitle")
-            yield Label("Provider")
-            yield Select(
-                [(provider.title(), provider) for provider in self.PROVIDERS],
-                value=backend,
-                allow_blank=False,
-                id="model-backend",
-            )
-            yield Label("Story model")
-            yield Select(
-                self._model_options(backend, "story"),
-                value=story_value,
-                allow_blank=False,
-                id="story-model",
-            )
-            yield Label("Image model")
-            yield Select(
-                self._model_options(backend, "image"),
-                value=image_value,
-                allow_blank=False,
-                disabled=backend == "anthropic",
-                id="image-model",
-            )
-            yield Static(self._cache_summary(), id="model-cache-summary")
-            if self.status:
-                yield Static(self.status, id="model-refresh-status")
-            with Horizontal(classes="actions"):
-                yield Button("Save Selection", id="save-models", variant="success")
-                yield Button("Refresh Models", id="refresh", variant="primary")
-                yield Button("Clear Cache", id="clear", variant="error")
-                yield Button("Back", id="back")
+            yield Static("Choose a provider, then assign its story and illustration roles.", classes="subtitle")
+            with Horizontal(id="provider-strip"):
+                for provider in self.PROVIDERS:
+                    yield Button(
+                        self._provider_label(provider),
+                        id=f"provider-{provider}",
+                        classes="provider-button",
+                        variant="primary" if provider == backend else "default",
+                    )
+            with Horizontal(id="model-role-cards"):
+                with Vertical(classes="model-role-card"):
+                    yield Static("[bold]Story[/bold]", classes="role-title")
+                    yield Static("Writes and revises stories.", classes="role-description")
+                    yield Select(
+                        self._model_options(backend, "story"),
+                        value=story_value,
+                        allow_blank=False,
+                        id="story-model",
+                    )
+                with Vertical(classes="model-role-card"):
+                    yield Static("[bold]Illustration[/bold]", classes="role-title")
+                    yield Static("Creates story illustrations.", classes="role-description")
+                    yield Select(
+                        self._model_options(backend, "image"),
+                        value=image_value,
+                        allow_blank=False,
+                        disabled=backend == "anthropic",
+                        id="image-model",
+                    )
+                    yield Static(
+                        "Anthropic is text-only; illustrations require Gemini or OpenAI.",
+                        id="image-unavailable",
+                    )
+            yield Static(self._usage_summary(), id="model-usage-summary", markup=False)
+            yield Static(self._override_warning(), id="model-override-warning")
+            yield Static(self.status, id="model-refresh-status")
+            with Horizontal(id="model-actions"):
+                with Horizontal(classes="model-action-group primary-model-actions"):
+                    yield Button("Save", id="save-models", variant="success")
+                    yield Button("Back", id="back")
+                with Horizontal(classes="model-action-group secondary-model-actions"):
+                    yield Button("API Key Help", id="api-key-help")
+                    yield Button("Refresh Models", id="refresh", variant="primary")
+                    yield Button("Clear Cache", id="clear", variant="error")
         yield Footer()
+
+    def on_mount(self) -> None:
+        self._set_compact_layout(self.size.width)
+        self._update_provider_view()
+        self.query_one("#model-refresh-status", Static).display = bool(self.status)
+
+    def on_resize(self, event: events.Resize) -> None:
+        self._set_compact_layout(event.size.width)
+
+    def _set_compact_layout(self, width: int) -> None:
+        cards = self.query_one("#model-role-cards", Horizontal)
+        cards.set_class(width < 100, "compact")
+        actions = self.query_one("#model-actions", Horizontal)
+        actions.set_class(width < 100, "compact")
 
     def _configured_model(self, backend: str, purpose: Literal["story", "image"]) -> str:
         field = self.MODEL_FIELDS[backend][0 if purpose == "story" else 1]
         return str(self.system.get(field, "")) if field else ""
 
+    @staticmethod
+    def _has_api_key(provider: str) -> bool:
+        value = os.environ.get(_MODEL_PROVIDERS[provider][1], "")
+        return bool(value.strip())
+
+    def _eligible_models(self, backend: str, purpose: Literal["story", "image"]) -> list[dict[str, Any]]:
+        model_purpose = "text" if purpose == "story" else "image"
+        return [
+            entry for entry in self.models.get(backend, []) if model_supports_purpose(entry, backend, model_purpose)
+        ]
+
+    def _recommended_model(self, backend: str, purpose: Literal["story", "image"]) -> str | None:
+        normalized = []
+        for entry in self._eligible_models(backend, purpose):
+            name = str(entry.get("name") or entry.get("id") or "")
+            normalized.append({**entry, "name": name})
+        return rank_models(normalized, backend, "text" if purpose == "story" else "image")
+
     def _model_options(self, backend: str, purpose: Literal["story", "image"]) -> list[tuple[str, str]]:
-        configured = self._configured_model(backend, purpose)
-        names = {configured} if configured else set()
-        for entry in self.models.get(backend, []):
+        selected = self._drafts[backend][purpose]
+        names = {selected} if selected else set()
+        for entry in self._eligible_models(backend, purpose):
             raw_name = str(entry.get("name") or entry.get("id") or "")
             name = raw_name.removeprefix("models/")
-            model_purpose = "text" if purpose == "story" else "image"
-            if not name or not model_supports_purpose(entry, backend, model_purpose):
-                continue
-            names.add(name)
+            if name:
+                names.add(name)
 
-        return [("Automatic / configured default", ""), *((name, name) for name in sorted(names))]
+        recommendation = self._recommended_model(backend, purpose)
+        automatic_label = (
+            f"Automatic — recommended: {recommendation}" if recommendation else "Automatic — provider default"
+        )
+        return [(automatic_label, ""), *((name, name) for name in sorted(names))]
 
-    def _cache_summary(self) -> str:
-        counts = " · ".join(f"{provider.title()}: {len(self.models.get(provider, []))}" for provider in self.PROVIDERS)
-        return f"Cached models — {counts}"
+    def _provider_label(self, provider: str) -> str:
+        name = _MODEL_PROVIDERS[provider][0]
+        key_status = "Key ready" if self._has_api_key(provider) else "No key"
+        story_count = len(self._eligible_models(provider, "story"))
+        if provider == "anthropic":
+            model_summary = f"Story {story_count} · Text only"
+        else:
+            image_count = len(self._eligible_models(provider, "image"))
+            model_summary = f"Story {story_count} · Image {image_count}"
+        return f"{name}\n{key_status} · {model_summary}"
 
-    def on_select_changed(self, event: Select.Changed) -> None:
-        if event.select.id != "model-backend" or event.value is Select.NULL:
-            return
-        backend = str(event.value)
+    def _selection_description(self, purpose: Literal["story", "image"]) -> str:
+        selected = self._drafts[self.selected_backend][purpose]
+        if selected:
+            return selected
+        recommendation = self._recommended_model(self.selected_backend, purpose)
+        return f"Auto → {recommendation}" if recommendation else "Auto → provider default"
+
+    def _usage_summary(self) -> str:
+        provider_name = _MODEL_PROVIDERS[self.selected_backend][0]
+        story = self._selection_description("story")
+        image = "Not available" if self.selected_backend == "anthropic" else self._selection_description("image")
+        return f"Active setup: {provider_name}\nStory: {story}   ·   Illustration: {image}"
+
+    def _override_warning(self) -> str:
+        warnings = []
+        backend_override = os.environ.get("LLM_BACKEND", "").strip().lower()
+        if backend_override:
+            display = _MODEL_PROVIDERS.get(backend_override, (backend_override, ""))[0]
+            warnings.append(f"LLM_BACKEND selects {display} and overrides the saved provider.")
+        if self.selected_backend == "gemini" and os.environ.get("GEMINI_IMAGE_MODEL", "").strip():
+            warnings.append("GEMINI_IMAGE_MODEL overrides the saved illustration model.")
+        return " ".join(warnings)
+
+    def _remember_current_values(self) -> None:
+        story_select = self.query_one("#story-model", Select)
+        image_select = self.query_one("#image-model", Select)
+        self._drafts[self.selected_backend]["story"] = self._selected_value(story_select)
+        if self.selected_backend != "anthropic":
+            self._drafts[self.selected_backend]["image"] = self._selected_value(image_select)
+
+    def _update_provider_view(self) -> None:
+        backend = self.selected_backend
+        for provider in self.PROVIDERS:
+            button = self.query_one(f"#provider-{provider}", Button)
+            button.label = self._provider_label(provider)
+            button.variant = "primary" if provider == backend else "default"
+
         story_select = self.query_one("#story-model", Select)
         image_select = self.query_one("#image-model", Select)
         story_select.set_options(self._model_options(backend, "story"))
-        story_select.value = self._configured_model(backend, "story")
+        story_select.value = self._drafts[backend]["story"]
         image_select.set_options(self._model_options(backend, "image"))
-        image_select.value = self._configured_model(backend, "image")
+        image_select.value = self._drafts[backend]["image"]
+        image_select.display = backend != "anthropic"
         image_select.disabled = backend == "anthropic"
+        self.query_one("#image-unavailable", Static).display = backend == "anthropic"
+        self._update_summary()
+
+    def _update_summary(self) -> None:
+        self.query_one("#model-usage-summary", Static).update(self._usage_summary())
+        warning = self._override_warning()
+        warning_widget = self.query_one("#model-override-warning", Static)
+        warning_widget.update(warning)
+        warning_widget.display = bool(warning)
+
+    def apply_saved(self, result: dict[str, Any]) -> None:
+        """Reflect a successful save without navigating away from the screen."""
+        values = result.get("values", result)
+        system = values.get("system", {}) if isinstance(values, dict) else {}
+        if isinstance(system, dict):
+            self.system = system
+        path = result.get("path")
+        message = f"Saved model selection{f' to {path}' if path else ''}."
+        self.set_status(message)
+        self._update_summary()
+
+    def set_status(self, message: str) -> None:
+        """Show operation feedback in place."""
+        self.status = message
+        status_widget = self.query_one("#model-refresh-status", Static)
+        status_widget.update(message)
+        status_widget.display = bool(message)
+
+    def apply_model_data(
+        self,
+        models: dict[str, list[dict[str, Any]]],
+        status: str,
+        provider_statuses: dict[str, str] | None = None,
+    ) -> None:
+        """Refresh cached options and status while preserving draft selections."""
+        self._remember_current_values()
+        self.models = models
+        self.provider_statuses = provider_statuses or {}
+        self.set_status(status)
+        self._update_provider_view()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id not in {"story-model", "image-model"}:
+            return
+        purpose: Literal["story", "image"] = "story" if event.select.id == "story-model" else "image"
+        if purpose == "image" and self.selected_backend == "anthropic":
+            return
+        self._drafts[self.selected_backend][purpose] = "" if event.value is Select.NULL else str(event.value)
+        self._update_summary()
 
     @staticmethod
     def _selected_value(select: Select) -> str:
         return "" if select.value is Select.NULL else str(select.value)
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
+        button_id = event.button.id or ""
+        if button_id.startswith("provider-"):
+            self._remember_current_values()
+            self.selected_backend = button_id.removeprefix("provider-")
+            self._update_provider_view()
+        elif button_id == "back":
+            self.action_back()
+        elif button_id == "save-models":
+            self._remember_current_values()
+            selections = self._drafts[self.selected_backend]
+            self.storyforge_app.configure_models(
+                self.selected_backend,
+                selections["story"],
+                selections["image"] if self.selected_backend != "anthropic" else "",
+            )
+        elif button_id == "api-key-help":
+            self.storyforge_app.push_screen(ApiKeyHelpScreen(self.selected_backend))
+        elif button_id == "refresh":
+            self.storyforge_app.refresh_models()
+        elif button_id == "clear":
+            self.storyforge_app.push_screen(ClearModelCacheScreen())
+
+
+class ApiKeyHelpScreen(StoryForgeScreen):
+    """Explain environment-only API key setup without exposing credentials."""
+
+    def __init__(self, provider: str) -> None:
+        super().__init__()
+        self.provider = provider
+
+    def compose(self) -> ComposeResult:
+        provider_name, variable = _MODEL_PROVIDERS[self.provider]
+        configured = ModelsScreen._has_api_key(self.provider)
+        status = "Configured in this StoryForge process." if configured else "Missing from this StoryForge process."
+        yield Header()
+        with VerticalScroll(id="api-key-help-screen"):
+            yield Static(f"[bold cyan]{provider_name} API Key[/bold cyan]", classes="screen-title")
+            yield Static(status, id="api-key-status")
+            yield Static(
+                f"StoryForge reads {variable} from the environment. It never stores or displays the key.",
+                classes="api-key-copy",
+            )
+            yield Label("Unix shells (bash, zsh)")
+            yield Static(f'export {variable}="your-key"', classes="command-example", markup=False)
+            yield Label("PowerShell")
+            yield Static(f'$env:{variable} = "your-key"', classes="command-example", markup=False)
+            yield Static(
+                "Add the setting to your shell profile if you want it to persist, then restart StoryForge. "
+                "Configured means the variable is present; Refresh Models verifies provider access.",
+                classes="api-key-copy",
+            )
+            with Horizontal(classes="actions"):
+                yield Button("Back", id="back", variant="primary")
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "back":
             self.action_back()
-        elif event.button.id == "save-models":
-            backend = self._selected_value(self.query_one("#model-backend", Select))
-            story_model = self._selected_value(self.query_one("#story-model", Select))
-            image_model = self._selected_value(self.query_one("#image-model", Select))
-            self.storyforge_app.configure_models(backend, story_model, image_model)
-        elif event.button.id == "refresh":
-            self.storyforge_app.refresh_models()
-        elif event.button.id == "clear":
-            self.storyforge_app.push_screen(ClearModelCacheScreen())
 
 
 class ClearModelCacheScreen(StoryForgeScreen):
@@ -1159,7 +1361,7 @@ class StoryForgeApp(App[None]):
     Screen { background: $surface; align: center middle; }
     Header { background: $primary-background; }
     #home-panel, #form, #review, #media-form, #extension-form, #export-form,
-    #progress-panel, #result-panel, #world-screen, #models-screen, #config-screen,
+    #progress-panel, #result-panel, #world-screen, #models-screen, #api-key-help-screen, #config-screen,
     #config-editor-screen, #clear-model-cache-screen, #story-browser,
     #story-viewer, #image-viewer {
         width: 90%; max-width: 110; height: auto; max-height: 1fr;
@@ -1207,8 +1409,28 @@ class StoryForgeApp(App[None]):
     .image-actions { align-horizontal: center; }
     #world-content { height: 1fr; }
     #config-content { height: 1fr; }
-    #models-screen Select { margin-bottom: 1; }
-    #model-cache-summary { color: $text-muted; margin-top: 1; }
+    #provider-strip { height: 5; margin-bottom: 1; }
+    .provider-button { width: 1fr; min-width: 19; height: 5; margin-right: 1; }
+    #model-role-cards { height: auto; }
+    .model-role-card {
+        width: 1fr; min-width: 28; height: 10; padding: 1 2; margin-right: 1;
+        border: solid $primary-background-lighten-2;
+    }
+    .role-title { color: $accent; }
+    .role-description { color: $text-muted; margin-bottom: 1; }
+    #image-unavailable { color: $text-muted; }
+    #model-usage-summary {
+        height: 3; margin: 1 1 0 1; color: $text-muted;
+    }
+    #model-override-warning { color: $warning; margin-top: 1; }
+    #model-refresh-status { color: $text-muted; margin-top: 1; }
+    #model-actions { height: 3; margin-top: 1; align-horizontal: center; }
+    .model-action-group { width: auto; height: 3; }
+    #model-actions Button { width: auto; min-width: 10; margin-right: 1; }
+    #api-key-help-screen { height: auto; max-height: 1fr; }
+    #api-key-status { color: $accent; margin-bottom: 1; }
+    .api-key-copy { margin: 1 0; }
+    .command-example { background: $primary-background; padding: 1 2; margin-bottom: 1; }
     #progress-panel {
         align: center middle;
         width: 72;
@@ -1221,6 +1443,12 @@ class StoryForgeApp(App[None]):
     #result-panel { align: center middle; height: 1fr; text-align: center; }
     #progress-message, #progress-value { width: 100%; text-align: center; }
     LoadingIndicator { width: 100%; height: 5; }
+    #model-role-cards.compact { layout: vertical; }
+    #model-role-cards.compact .model-role-card {
+        width: 100%; margin-right: 0; margin-bottom: 1;
+    }
+    #model-actions.compact { layout: vertical; height: 6; }
+    #model-actions.compact .model-action-group { width: 100%; align-horizontal: center; }
     """
 
     def __init__(
@@ -1523,35 +1751,70 @@ class StoryForgeApp(App[None]):
 
     @work(exclusive=True)
     async def configure_models(self, backend: str, story_model: str, image_model: str) -> None:
+        target = self.screen if isinstance(self.screen, ModelsScreen) else None
         await self._start_progress("Saving Model Selection")
         try:
             result = await self.client.configure_models(backend, story_model, image_model)
-            self.switch_screen(ResultScreen("Models Updated", f"Saved {result.get('path', '')}"))
+            if target is not None:
+                target.apply_saved(result)
+                if isinstance(self.screen, ProgressScreen):
+                    self.pop_screen()
+            else:
+                self.switch_screen(ResultScreen("Models Updated", f"Saved {result.get('path', '')}"))
         except Exception as error:
             if isinstance(self.screen, ProgressScreen) and len(self.screen_stack) > 1:
                 self.pop_screen()
-            self.notify(f"Could not save model selection: {error}", severity="error")
+            message = f"Could not save model selection: {error}"
+            if target is not None:
+                target.set_status(message)
+            self.notify(message, severity="error")
 
     @work(exclusive=True)
     async def refresh_models(self) -> None:
+        target = self.screen if isinstance(self.screen, ModelsScreen) else None
         await self._start_progress("Refreshing Models")
         try:
             result = await self.client.refresh_models()
-            config = await self.client.get_config()
-            self.switch_screen(ModelsScreen(result.models, config, result.message))
+            if target is not None:
+                target.apply_model_data(result.models, result.message, result.statuses)
+                if isinstance(self.screen, ProgressScreen):
+                    self.pop_screen()
+            else:
+                config = await self.client.get_config()
+                self.switch_screen(ModelsScreen(result.models, config, result.message, result.statuses))
         except Exception as error:
-            self.switch_screen(ResultScreen("Could Not Refresh Models", str(error), error=True))
+            if isinstance(self.screen, ProgressScreen) and len(self.screen_stack) > 1:
+                self.pop_screen()
+            message = f"Could not refresh models: {error}"
+            if target is not None:
+                target.set_status(message)
+                self.notify(message, severity="error")
+            else:
+                self.switch_screen(ResultScreen("Could Not Refresh Models", str(error), error=True))
 
     @work(exclusive=True)
     async def clear_models(self) -> None:
+        target = self.screen if isinstance(self.screen, ModelsScreen) else None
         await self._start_progress("Clearing Model Cache")
         try:
             result = await self.client.clear_models(confirmed=True)
             models = await self.client.list_models()
-            config = await self.client.get_config()
-            self.switch_screen(ModelsScreen(models, config, result.message))
+            if target is not None:
+                target.apply_model_data(models, result.message)
+                if isinstance(self.screen, ProgressScreen):
+                    self.pop_screen()
+            else:
+                config = await self.client.get_config()
+                self.switch_screen(ModelsScreen(models, config, result.message))
         except Exception as error:
-            self.switch_screen(ResultScreen("Could Not Clear Cache", str(error), error=True))
+            if isinstance(self.screen, ProgressScreen) and len(self.screen_stack) > 1:
+                self.pop_screen()
+            message = f"Could not clear model cache: {error}"
+            if target is not None:
+                target.set_status(message)
+                self.notify(message, severity="error")
+            else:
+                self.switch_screen(ResultScreen("Could Not Clear Cache", str(error), error=True))
 
 
 def run_tui(route: str = "home", initial_request: GenerationRequest | None = None) -> None:

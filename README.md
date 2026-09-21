@@ -41,13 +41,17 @@ uv tool install StoryForge
 pipx install StoryForge
 ```
 
-Set up an API key (add to your shell profile to persist):
+Set up at least one provider API key (add it to your shell profile to persist):
 
 ```bash
-export GEMINI_API_KEY=your_key    # or OPENAI_API_KEY or ANTHROPIC_API_KEY
+export GEMINI_API_KEY=your_gemini_key
+# Or: export OPENAI_API_KEY=your_openai_key
+# Or: export ANTHROPIC_API_KEY=your_anthropic_key
 ```
 
-StoryForge auto-detects the backend from available keys. Override with `LLM_BACKEND=gemini|openai|anthropic`.
+Only one key is required. StoryForge auto-detects the backend from available keys; override it with
+`LLM_BACKEND=gemini|openai|anthropic`. Restart StoryForge after changing environment variables so its local server
+inherits the new values.
 
 ## Quick Start
 
@@ -193,9 +197,12 @@ Always wears purple rain boots, even on sunny days.
 
 ## Models and cache
 
-Run `sf models` to choose a provider and separate story/image models. Anthropic is text-only, so its image selector is
-disabled. **Automatic / configured default** leaves the field empty and lets StoryForge discover and rank a suitable
-model. Saving a choice updates the active configuration and applies to the next generation without restarting.
+Run `sf models` to choose a provider and separate story/image models. The provider strip reports whether each API key
+is present and offers setup help, but StoryForge never stores or displays the key itself. A **Key ready** badge means
+the environment variable is present; refresh the model list to verify that the provider accepts it. Anthropic is
+text-only, so its illustration role is unavailable. **Automatic** leaves the field empty and lets StoryForge discover
+and rank a suitable model. Saving a choice updates the active configuration and applies to the next generation without
+restarting.
 
 Discovered provider lists are cached for seven days in the platform user-data directory (normally
 `~/.local/share/storyforge/model_cache/` on Linux). **Refresh Models** queries every provider whose API key is available

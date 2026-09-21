@@ -24,6 +24,7 @@ from storyforge.mcp_models import (
 from storyforge.tui import (
     _HOME_EMBLEM,
     _VOICE_OPTIONS,
+    ApiKeyHelpScreen,
     ClearModelCacheScreen,
     ConfigEditorScreen,
     ConfigScreen,
@@ -821,11 +822,12 @@ async def test_models_screen_selects_and_saves_provider_models():
         await pilot.pause()
         await app.push_screen(ModelsScreen(fake.model_data, fake.config_data))
 
-        assert app.screen.query_one("#model-backend", Select).value == "openai"
+        assert app.screen.selected_backend == "openai"
+        assert app.screen.query_one("#provider-openai", Button).variant == "primary"
         assert app.screen.query_one("#story-model", Select).value == "gpt-5.5"
         assert app.screen.query_one("#image-model", Select).value == "gpt-image-1.5"
 
-        app.screen.query_one("#model-backend", Select).value = "gemini"
+        assert await pilot.click("#provider-gemini") is True
         await pilot.pause()
         app.screen.query_one("#story-model", Select).value = "gemini-3.0-pro"
         app.screen.query_one("#image-model", Select).value = "gemini-3.0-flash-image"
@@ -833,8 +835,8 @@ async def test_models_screen_selects_and_saves_provider_models():
         await pilot.pause()
 
         assert fake.model_selection == ("gemini", "gemini-3.0-pro", "gemini-3.0-flash-image")
-        assert isinstance(app.screen, ResultScreen)
-        assert app.screen.result_title == "Models Updated"
+        assert isinstance(app.screen, ModelsScreen)
+        assert "Saved model selection" in str(app.screen.query_one("#model-refresh-status", Static).render())
 
 
 @pytest.mark.asyncio
@@ -844,12 +846,13 @@ async def test_models_screen_refreshes_and_reloads_selectors():
 
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.pause()
-        await app.push_screen(ModelsScreen(fake.model_data, fake.config_data))
+        screen = ModelsScreen(fake.model_data, fake.config_data)
+        await app.push_screen(screen)
         app.screen.query_one("#refresh", Button).press()
         await pilot.pause()
 
         assert fake.model_refreshes == 1
-        assert isinstance(app.screen, ModelsScreen)
+        assert app.screen is screen
         assert ("gpt-6.0", "gpt-6.0") in app.screen._model_options("openai", "story")
         assert "Model refresh complete." in str(app.screen.query_one("#model-refresh-status", Static).render())
 
@@ -880,6 +883,133 @@ async def test_models_screen_clear_requires_confirmation_and_cancel_preserves_ca
         assert fake.model_clears == 1
         assert isinstance(app.screen, ModelsScreen)
         assert all(not entries for entries in fake.model_data.values())
+
+
+@pytest.mark.asyncio
+async def test_models_screen_preserves_unsaved_values_across_provider_switches():
+    fake = FakeClient()
+    app = StoryForgeApp(client=fake)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        await app.push_screen(ModelsScreen(fake.model_data, fake.config_data))
+
+        app.screen.query_one("#story-model", Select).value = "gemini-3.0-pro"
+        app.screen.query_one("#provider-openai", Button).press()
+        await pilot.pause()
+        app.screen.query_one("#story-model", Select).value = "gpt-5.5"
+        app.screen.query_one("#provider-gemini", Button).press()
+        await pilot.pause()
+
+        assert app.screen.query_one("#story-model", Select).value == "gemini-3.0-pro"
+        assert "gemini-3.0-pro" in str(app.screen.query_one("#model-usage-summary", Static).render())
+
+
+@pytest.mark.asyncio
+async def test_models_screen_shows_key_presence_without_exposing_secret():
+    fake = FakeClient()
+    secret = "do-not-render-this-secret"
+    app = StoryForgeApp(client=fake)
+
+    with patch.dict("os.environ", {"OPENAI_API_KEY": secret}, clear=True):
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await app.push_screen(ModelsScreen(fake.model_data, fake.config_data))
+
+            openai_label = str(app.screen.query_one("#provider-openai", Button).label)
+            gemini_label = str(app.screen.query_one("#provider-gemini", Button).label)
+            assert "Key ready" in openai_label
+            assert "No key" in gemini_label
+            assert secret not in openai_label
+
+            app.screen.query_one("#provider-openai", Button).press()
+            app.screen.query_one("#api-key-help", Button).press()
+            await pilot.pause()
+
+            assert isinstance(app.screen, ApiKeyHelpScreen)
+            rendered = " ".join(str(widget.render()) for widget in app.screen.query(Static))
+            assert "OPENAI_API_KEY" in rendered
+            assert "Configured in this StoryForge process" in rendered
+            assert "restart StoryForge" in rendered
+            assert "Refresh Models verifies provider access" in rendered
+            assert secret not in rendered
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size, compact", [((80, 24), True), ((120, 40), False)])
+async def test_models_screen_adapts_role_cards_to_terminal_width(size, compact):
+    fake = FakeClient()
+    app = StoryForgeApp(client=fake)
+
+    async with app.run_test(size=size) as pilot:
+        await pilot.pause()
+        await app.push_screen(ModelsScreen(fake.model_data, fake.config_data))
+        await pilot.pause()
+
+        cards = app.screen.query_one("#model-role-cards")
+        assert cards.has_class("compact") is compact
+        actions = app.screen.query_one("#model-actions")
+        assert actions.has_class("compact") is compact
+        for card in app.screen.query(".model-role-card"):
+            select = card.query_one(Select)
+            assert select.region.bottom <= card.region.bottom
+        assert app.screen.query_one("#model-refresh-status", Static).display is False
+
+
+def test_models_screen_keeps_configured_model_missing_from_cache():
+    fake = FakeClient()
+    fake.config_data["values"]["system"] = {
+        "backend": "openai",
+        "openai_story_model": "gpt-private-deployment",
+    }
+
+    screen = ModelsScreen(fake.model_data, fake.config_data)
+
+    assert ("gpt-private-deployment", "gpt-private-deployment") in screen._model_options("openai", "story")
+
+
+@pytest.mark.asyncio
+async def test_models_screen_explains_text_only_provider_and_environment_overrides():
+    fake = FakeClient()
+    app = StoryForgeApp(client=fake)
+
+    with patch.dict(
+        "os.environ",
+        {"LLM_BACKEND": "openai", "GEMINI_IMAGE_MODEL": "gemini-image-override"},
+        clear=True,
+    ):
+        async with app.run_test(size=(120, 40)) as pilot:
+            await pilot.pause()
+            await app.push_screen(ModelsScreen(fake.model_data, fake.config_data))
+
+            warning = str(app.screen.query_one("#model-override-warning", Static).render())
+            assert "LLM_BACKEND selects OpenAI" in warning
+            assert "GEMINI_IMAGE_MODEL overrides" in warning
+
+            app.screen.query_one("#provider-anthropic", Button).press()
+            await pilot.pause()
+
+            assert app.screen.query_one("#image-model", Select).display is False
+            assert app.screen.query_one("#image-unavailable", Static).display is True
+            assert "Not available" in str(app.screen.query_one("#model-usage-summary", Static).render())
+
+
+@pytest.mark.asyncio
+async def test_models_screen_reports_refresh_failure_in_place():
+    fake = FakeClient()
+    fake.refresh_models = AsyncMock(side_effect=RuntimeError("provider unavailable"))
+    app = StoryForgeApp(client=fake)
+
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.pause()
+        screen = ModelsScreen(fake.model_data, fake.config_data)
+        await app.push_screen(screen)
+        app.screen.query_one("#refresh", Button).press()
+        await pilot.pause()
+
+        assert app.screen is screen
+        status = str(app.screen.query_one("#model-refresh-status", Static).render())
+        assert "Could not refresh models: provider unavailable" in status
 
 
 @pytest.mark.asyncio
