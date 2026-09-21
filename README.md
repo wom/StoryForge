@@ -1,5 +1,13 @@
 # StoryForge
 
+```text
+    · ✦ ·
+   ╲  │  ╱
+╭─────┴─────╮
+╰───╲___╱───╯
+   ╱_____╲
+```
+
 A full-screen TUI and MCP server that generate illustrated children's stories using AI. Provide a prompt, get a story and AI-generated images.
 
 ## Features

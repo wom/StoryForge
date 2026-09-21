@@ -14,7 +14,7 @@ from rich.text import Text
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Container, Horizontal, Vertical, VerticalScroll
+from textual.containers import Center, Container, Horizontal, Vertical, VerticalScroll
 from textual.screen import Screen
 from textual.widgets import (
     Button,
@@ -49,6 +49,16 @@ from .mcp_models import (
 )
 from .model_ranking import model_supports_purpose
 from .portable_text import to_portable_ascii
+
+_HOME_EMBLEM = "\n".join(
+    (
+        "    · ✦ ·",
+        "   ╲  │  ╱",
+        "╭─────┴─────╮",
+        "╰───╲___╱───╯",
+        "   ╱_____╲",
+    )
+)
 
 
 def _request_from_config(
@@ -185,6 +195,8 @@ class HomeScreen(StoryForgeScreen):
     def compose(self) -> ComposeResult:
         yield Header()
         with Vertical(id="home-panel"):
+            with Center():
+                yield Static(_HOME_EMBLEM, id="home-emblem")
             yield Static("[bold cyan]StoryForge[/bold cyan]", id="brand")
             yield Static("Create and continue illustrated stories", classes="subtitle")
             with Horizontal(classes="home-row"):
@@ -1153,6 +1165,12 @@ class StoryForgeApp(App[None]):
         margin: 1 2; padding: 1 2; border: solid $primary;
     }
     #home-panel { align: center middle; height: 1fr; }
+    #home-emblem {
+        color: $primary;
+        width: 13;
+        height: 5;
+        margin-bottom: 1;
+    }
     #brand { text-align: center; text-style: bold; width: 100%; }
     .subtitle { color: $text-muted; margin-bottom: 1; text-align: center; width: 100%; }
     .screen-title { margin-bottom: 1; }
