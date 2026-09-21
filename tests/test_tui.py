@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,6 +22,7 @@ from storyforge.mcp_models import (
     WorkflowResult,
 )
 from storyforge.tui import (
+    _HOME_EMBLEM,
     ClearModelCacheScreen,
     ConfigEditorScreen,
     ConfigScreen,
@@ -171,8 +173,48 @@ async def test_home_screen_exposes_all_primary_workflows():
     async with app.run_test() as pilot:
         await pilot.pause()
         assert isinstance(app.screen, HomeScreen)
+        emblem = app.screen.query_one("#home-emblem", Static)
+        assert emblem.content == _HOME_EMBLEM
+        assert len(_HOME_EMBLEM.splitlines()) == 5
         ids = {button.id for button in app.screen.query(Button)}
         assert ids == {"new", "stories", "continue", "export", "world", "config", "models"}
+
+
+def test_readme_uses_the_canonical_home_emblem():
+    readme = Path(__file__).resolve().parents[1].joinpath("README.md").read_text(encoding="utf-8")
+
+    assert f"```text\n{_HOME_EMBLEM}\n```" in readme
+
+
+@pytest.mark.asyncio
+async def test_home_menu_remains_mouse_clickable_with_emblem():
+    app = StoryForgeApp(client=FakeClient())
+    async with app.run_test() as pilot:
+        await pilot.pause()
+
+        assert await pilot.click("#new") is True
+        await pilot.pause()
+
+        assert isinstance(app.screen, NewStoryScreen)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("size", [(80, 24), (200, 50)])
+async def test_home_emblem_and_workflows_fit_supported_terminal_sizes(size):
+    app = StoryForgeApp(client=FakeClient())
+    async with app.run_test(size=size) as pilot:
+        await pilot.pause()
+        emblem = app.screen.query_one("#home-emblem", Static)
+        home = app.screen.query_one("#home-panel")
+        buttons = list(app.screen.query(Button))
+
+        assert emblem.region.height == 5
+        assert emblem.region.y >= app.screen.region.y
+        emblem_center = emblem.region.x + emblem.region.width / 2
+        home_center = home.region.x + home.region.width / 2
+        assert abs(emblem_center - home_center) <= 1
+        assert all(button.region.area for button in buttons)
+        assert all(button.region.bottom <= app.screen.region.bottom for button in buttons)
 
 
 @pytest.mark.asyncio
