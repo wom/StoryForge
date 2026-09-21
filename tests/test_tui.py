@@ -23,6 +23,7 @@ from storyforge.mcp_models import (
 )
 from storyforge.tui import (
     _HOME_EMBLEM,
+    _VOICE_OPTIONS,
     ClearModelCacheScreen,
     ConfigEditorScreen,
     ConfigScreen,
@@ -662,6 +663,32 @@ async def test_new_story_form_loads_configured_defaults():
         assert app.screen.query_one("#image_style", Select).value == "watercolor"
         assert app.screen.query_one("#output_dir", Input).value == "configured-output"
         assert app.screen.query_one("#use_context", Checkbox).value is False
+
+
+@pytest.mark.asyncio
+async def test_new_story_voice_options_explain_their_canonical_values():
+    app = StoryForgeApp(
+        route="generate",
+        initial_request=GenerationRequest(prompt="A rhythmic mouse", voice="anapestic"),
+        client=FakeClient(),
+    )
+
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        voice = app.screen.query_one("#voice", Select)
+
+        assert voice.value == "anapestic"
+        assert max(len(label) for label, _ in _VOICE_OPTIONS) <= 40
+        assert dict(_VOICE_OPTIONS)["Anapestic — Bouncy rhymes (Dr. Seuss)"] == "anapestic"
+        assert dict(_VOICE_OPTIONS)["Picaresque — Quest (Twain → Colfer)"] == "picaresque"
+        assert dict(_VOICE_OPTIONS)["Iambic — Verse (Shakespeare → Donaldson)"] == "iambic"
+        assert dict(_VOICE_OPTIONS)["Fable — Moral tale (Aesop → Lobel)"] == "fable"
+        assert dict(_VOICE_OPTIONS)["Epistolary — Kid diary (Cleary → Kinney)"] == "epistolary"
+
+        app.screen.query_one("#generate", Button).press()
+        await pilot.pause()
+
+        assert app.client.generation_request.voice == "anapestic"
 
 
 @pytest.mark.asyncio
