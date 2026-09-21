@@ -58,7 +58,9 @@ tui.PickerScreen.on_option_list_option_selected
 tui.StoryBrowserScreen.on_mount
 tui.StoryBrowserScreen.on_option_list_option_highlighted
 tui.StoryBrowserScreen.on_option_list_option_selected
+tui.ModelsScreen.on_resize
 tui.ModelsScreen.on_select_changed
+tui.Button.variant
 tui.ImageViewerScreen.BINDINGS
 tui.StoryForgeApp.get_default_screen
 tui.StoryForgeApp.on_unmount
