@@ -220,9 +220,11 @@ async def storyforge_read_world() -> WorldResult:
 
 
 @mcp.tool()
-async def storyforge_write_world(content: str, overwrite: bool = False) -> WorldResult:
+async def storyforge_write_world(
+    content: str, overwrite: bool = False, expected_path: str | None = None
+) -> WorldResult:
     """Write a world definition; replacing an existing file must be explicit."""
-    return StoryForgeWorkflow().write_world(content, overwrite)
+    return StoryForgeWorkflow().write_world(content, overwrite, expected_path)
 
 
 @mcp.tool()

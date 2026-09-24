@@ -831,6 +831,7 @@ class ContextManager:
         """
         context_files = self._discover_context_files()
         if not context_files:
+            self._save_registry({"characters": {}, "last_updated": None})
             return ""
 
         registry: dict[str, Any] = {"characters": {}, "last_updated": None}

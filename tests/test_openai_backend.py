@@ -8,8 +8,15 @@ from unittest.mock import Mock, patch
 import pytest
 
 from storyforge.llm_backend import ERROR_STORY_SENTINEL
+from storyforge.model_cache import ModelCache
 from storyforge.openai_backend import OpenAIBackend
 from storyforge.prompt import Prompt
+
+
+@pytest.fixture(autouse=True)
+def isolated_model_cache(tmp_path, monkeypatch):
+    """Backend expectations must not depend on the developer's cached models."""
+    monkeypatch.setattr("storyforge.openai_backend.ModelCache", lambda: ModelCache(cache_dir=tmp_path))
 
 
 class TestOpenAIBackend:

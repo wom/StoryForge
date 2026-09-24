@@ -38,7 +38,9 @@ class ClassicCLI:
             suffix = f" ({round(progress / total * 100)}%)" if total else ""
             console.print(f"[dim]{message.replace('_', ' ').title()}{suffix}[/dim]")
 
-    async def run(self, args: list[str], generation_request: GenerationRequest | None = None) -> int:
+    async def run(
+        self, args: list[str], generation_request: GenerationRequest | dict[str, object] | None = None
+    ) -> int:
         command = (
             args[0]
             if args
@@ -56,13 +58,13 @@ class ClassicCLI:
         )
         async with StoryForgeMCPClient(progress_callback=self._progress) as client:
             if command == "generate":
-                if generation_request is None:
+                if not isinstance(generation_request, GenerationRequest):
                     raise ValueError("A story prompt is required")
                 return await self._generate(client, generation_request)
             if command == "continue":
                 return await self._continue(client)
             if command == "extend":
-                return await self._extend(client)
+                return await self._extend(client, generation_request if isinstance(generation_request, dict) else None)
             if command == "export-chain":
                 return await self._export(client, args[1:])
             if command == "config":
@@ -83,6 +85,8 @@ class ClassicCLI:
         client: StoryForgeMCPClient,
         draft: DraftResult,
         title: str,
+        *,
+        save_context_default: bool = False,
     ) -> int:
         """Collect the review and media decisions shared by draft workflows."""
         while True:
@@ -101,8 +105,12 @@ class ClassicCLI:
             video_count = IntPrompt.ask("Number of scenes", default=2)
         image_count = 0
         if Confirm.ask("Generate illustrations?", default=False):
-            image_count = IntPrompt.ask("Number of images", default=3)
-        save_context = Confirm.ask("Save this story as future context?", default=False)
+            configured_count = draft.metadata.get("image_count", 3)
+            default_count = configured_count if isinstance(configured_count, int) and 1 <= configured_count <= 5 else 3
+            image_count = IntPrompt.ask(
+                "Number of images", default=default_count, choices=[str(i) for i in range(1, 6)]
+            )
+        save_context = Confirm.ask("Save this story as future context?", default=save_context_default)
         result = await client.finalize_story(
             FinalizeRequest(
                 session_id=draft.session_id,
@@ -128,7 +136,7 @@ class ClassicCLI:
         draft = await client.resume_session(sessions[choice - 1].session_id)
         return await self._review_and_finalize(client, draft, "Resumed Story")
 
-    async def _extend(self, client: StoryForgeMCPClient) -> int:
+    async def _extend(self, client: StoryForgeMCPClient, options: dict[str, object] | None = None) -> int:
         stories = await client.list_stories()
         if not stories:
             console.print("[yellow]No saved stories found to extend.[/yellow]")
@@ -142,17 +150,16 @@ class ClassicCLI:
         )
         direction = Prompt.ask("Continuation direction (optional)", default="").strip() or None
         draft = await client.create_extension_draft(
-            ExtensionRequest(story_id=stories[choice - 1].id, ending_type=ending, direction=direction)
-        )
-        console.print(Panel(draft.story, title="[bold cyan]Continuation Draft[/bold cyan]", border_style="cyan"))
-        result = await client.finalize_story(
-            FinalizeRequest(
-                session_id=draft.session_id,
-                save_context=Confirm.ask("Save continuation as context?", default=True),
+            ExtensionRequest.model_validate(
+                {
+                    "story_id": stories[choice - 1].id,
+                    "ending_type": ending,
+                    "direction": direction,
+                    **(options or {}),
+                }
             )
         )
-        self._print_result(result.message, result.artifacts)
-        return 0
+        return await self._review_and_finalize(client, draft, "Continuation Draft", save_context_default=True)
 
     async def _export(self, client: StoryForgeMCPClient, args: list[str]) -> int:
         parser = argparse.ArgumentParser(add_help=False)
@@ -209,7 +216,11 @@ class ClassicCLI:
             try:
                 editor = os.environ.get("EDITOR", os.environ.get("VISUAL", "nano"))
                 subprocess.run([*shlex.split(editor), str(temporary_path)], check=True)  # noqa: S603
-                await client.write_world(temporary_path.read_text(encoding="utf-8"), overwrite=True)
+                await client.write_world(
+                    temporary_path.read_text(encoding="utf-8"),
+                    overwrite=True,
+                    expected_path=str(world.get("path", "")),
+                )
             finally:
                 temporary_path.unlink(missing_ok=True)
         return 0
@@ -237,6 +248,6 @@ class ClassicCLI:
             console.print(f"  • {artifact}")
 
 
-def run_classic(args: list[str], generation_request: GenerationRequest | None = None) -> int:
+def run_classic(args: list[str], generation_request: GenerationRequest | dict[str, object] | None = None) -> int:
     """Run the MCP-backed classic interface and return an exit code."""
     return asyncio.run(ClassicCLI().run(args, generation_request))

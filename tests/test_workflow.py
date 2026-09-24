@@ -7,7 +7,7 @@ import pytest
 
 from storyforge.checkpoint import CheckpointData, ExecutionPhase
 from storyforge.config import Config, ConfigError
-from storyforge.mcp_models import ExtensionRequest, GenerationRequest
+from storyforge.mcp_models import ExtensionRequest, FinalizeRequest, GenerationRequest
 from storyforge.workflow import POST_STORY_PHASES, StoryForgeWorkflow
 
 
@@ -39,6 +39,54 @@ def test_resume_completed_session_reopens_post_story_phases():
     assert checkpoint.current_phase == ExecutionPhase.STORY_SAVE.value
     assert POST_STORY_PHASES.isdisjoint(checkpoint.completed_phases)
     manager.save_checkpoint.assert_called_once_with(checkpoint)
+
+
+@pytest.mark.parametrize("linked_context", [False, True])
+def test_finalized_revision_discards_old_artifacts_without_breaking_chains(tmp_path, monkeypatch, linked_context):
+    output = tmp_path / "output"
+    output.mkdir()
+    story = output / "story.txt"
+    image = output / "illustration_01.png"
+    unrelated = output / "personal.png"
+    video = output / "video_prompt.txt"
+    for path in (story, image, unrelated, video):
+        path.write_text("old", encoding="utf-8")
+    context_dir = tmp_path / "context"
+    context_dir.mkdir()
+    monkeypatch.setenv("STORYFORGE_TEST_CONTEXT_DIR", str(context_dir))
+    context = context_dir / "original.md"
+    context.write_text("# Original", encoding="utf-8")
+    if linked_context:
+        (context_dir / "continuation.md").write_text(
+            "# Continuation\n\n**Extended From:** original\n", encoding="utf-8"
+        )
+
+    checkpoint = _checkpoint_with_story()
+    checkpoint.status = "completed"
+    checkpoint.current_phase = ExecutionPhase.COMPLETED.value
+    checkpoint.completed_phases = [phase.value for phase in ExecutionPhase]
+    checkpoint.resolved_config["output_directory"] = str(output)
+    checkpoint.generated_content["generated_images"] = [{"filename": str(image)}]
+    checkpoint.generated_content["context_file"] = str(context)
+    manager = MagicMock()
+    executor = MagicMock()
+    executor.execute_existing_session.return_value = checkpoint
+    workflow = StoryForgeWorkflow()
+    with (
+        patch("storyforge.workflow.CheckpointManager", return_value=manager),
+        patch.object(workflow, "_find_checkpoint", return_value=checkpoint),
+        patch.object(workflow, "_executor", return_value=executor),
+    ):
+        workflow.resume_session(checkpoint.session_id)
+        assert image.exists() and video.exists() and context.exists()
+        result = workflow.finalize_story(FinalizeRequest(session_id=checkpoint.session_id))
+
+    assert result.artifacts == [str(story)]
+    assert not image.exists() and not video.exists()
+    assert unrelated.exists()
+    assert context.exists() is linked_context
+    assert "context_file" not in checkpoint.generated_content
+    assert "superseded_artifacts" not in checkpoint.resolved_config
 
 
 def test_resume_failed_story_save_retries_the_failed_phase():
@@ -87,6 +135,8 @@ def test_create_draft_uses_configured_output_directory():
         ("output", "use_context"): True,
         ("output", "world_file"): "",
         ("system", "backend"): "",
+        ("system", "verbose"): False,
+        ("system", "debug"): False,
     }
     config.get_field_value.side_effect = lambda section, field: configured_values[(section, field)]
     executor = MagicMock()
@@ -107,6 +157,36 @@ def test_create_draft_uses_configured_output_directory():
         result = workflow.create_draft(GenerationRequest(prompt="A configured story"))
 
     assert result.output_directory == "configured-output"
+
+
+@pytest.mark.parametrize(
+    ("requested", "configured", "expected"),
+    [(None, True, True), (False, True, False), (True, False, True)],
+)
+def test_create_draft_resolves_debug_and_verbose_from_request_or_config(requested, configured, expected):
+    config = MagicMock()
+    config.get_field_value.side_effect = lambda section, field: (
+        configured if (section, field) in {("system", "debug"), ("system", "verbose")} else None
+    )
+    executor = MagicMock()
+
+    def execute_new(prompt, cli_arguments, resolved_config, **_kwargs):
+        checkpoint = CheckpointData.create_new(prompt, cli_arguments, resolved_config)
+        checkpoint.generated_content["story"] = "Draft"
+        return checkpoint
+
+    executor.execute_new_session.side_effect = execute_new
+    workflow = StoryForgeWorkflow()
+    with (
+        patch("storyforge.workflow.load_config", return_value=config),
+        patch("storyforge.workflow.CheckpointManager"),
+        patch.object(workflow, "_executor", return_value=executor),
+    ):
+        workflow.create_draft(GenerationRequest(prompt="A story", debug=requested, verbose=requested))
+
+    resolved = executor.execute_new_session.call_args.args[2]
+    assert resolved["debug"] is expected
+    assert resolved["verbose"] is expected
 
 
 def test_create_debug_draft_does_not_initialize_provider(tmp_path, monkeypatch):
@@ -154,10 +234,14 @@ def test_create_extension_draft_preserves_saved_story_parameters():
     context_manager.list_available_contexts.return_value = [metadata]
     context_manager.load_chain_for_extension.return_value = ("Full story chain", metadata)
     config = MagicMock()
-    config.get_field_value.return_value = None
+    config.get_field_value.side_effect = lambda section, field: (
+        True if (section, field) in {("system", "debug"), ("system", "verbose")} else None
+    )
     executor = MagicMock()
 
     def execute_new(prompt, cli_arguments, resolved_config, *, prompt_obj, stop_after):
+        assert cli_arguments["debug"] is True
+        assert cli_arguments["verbose"] is True
         assert prompt_obj.characters == ["Wizard", "Dragon"]
         assert prompt_obj.setting == "enchanted forest"
         assert prompt_obj.learning_focus == "counting"

@@ -198,6 +198,14 @@ class StoryForgeWorkflow:
         manager = CheckpointManager(auto_cleanup=False)
         checkpoint = self._find_checkpoint(manager, session_id)
         if checkpoint.generated_content.get("story"):
+            if "superseded_artifacts" not in checkpoint.resolved_config:
+                output_dir = Path(str(checkpoint.resolved_config.get("output_directory") or ""))
+                checkpoint.resolved_config["superseded_artifacts"] = {
+                    "images": checkpoint.generated_content.pop("generated_images", []),
+                    "context_file": checkpoint.generated_content.pop("context_file", None),
+                    "video_prompt": str(output_dir / "video_prompt.txt") if output_dir != Path(".") else None,
+                }
+                checkpoint.generated_content.pop("video_prompts", None)
             checkpoint.status = "active"
             checkpoint.last_error = None
             checkpoint.completed_phases = [
@@ -234,7 +242,9 @@ class StoryForgeWorkflow:
         return self._draft_result(checkpoint)
 
     def create_draft(self, request: GenerationRequest) -> DraftResult:
-        config = load_config(verbose=request.verbose)
+        config = load_config(verbose=bool(request.verbose))
+        verbose = self._config_value(config, "system", "verbose", request.verbose)
+        debug = self._config_value(config, "system", "debug", request.debug)
         values = {
             "length": self._config_value(config, "story", "length", request.length),
             "age_range": self._config_value(config, "story", "age_range", request.age_range),
@@ -259,8 +269,8 @@ class StoryForgeWorkflow:
             "use_context": use_context,
             "world_file": world_file,
             "backend": request.backend,
-            "verbose": request.verbose,
-            "debug": request.debug,
+            "verbose": verbose,
+            "debug": debug,
         }
         resolved_config = {
             **values,
@@ -269,8 +279,8 @@ class StoryForgeWorkflow:
             "world_file": world_file,
             "backend": request.backend,
             "config_backend": config_backend,
-            "verbose": request.verbose,
-            "debug": request.debug,
+            "verbose": verbose,
+            "debug": debug,
             "auto_confirm": True,
             "defer_story_review": True,
         }
@@ -287,7 +297,9 @@ class StoryForgeWorkflow:
         context_manager = ContextManager()
         selected = self._find_story(context_manager, request.story_id)
         story_content, metadata = context_manager.load_chain_for_extension(selected["filepath"])
-        config = load_config(verbose=request.verbose)
+        config = load_config(verbose=bool(request.verbose))
+        verbose = self._config_value(config, "system", "verbose", request.verbose)
+        debug = self._config_value(config, "system", "debug", request.debug)
         characters_value = metadata.get("characters", [])
         if isinstance(characters_value, str):
             characters = [value.strip() for value in characters_value.split(",") if value.strip()]
@@ -313,8 +325,8 @@ class StoryForgeWorkflow:
         output_dir = self._output_directory(None, extended=True)
         cli_arguments = {
             "backend": request.backend,
-            "verbose": request.verbose,
-            "debug": request.debug,
+            "verbose": verbose,
+            "debug": debug,
             "continuation_mode": True,
             "ending_type": request.ending_type,
             "continuation_direction": request.direction,
@@ -358,6 +370,7 @@ class StoryForgeWorkflow:
     def finalize_story(self, request: FinalizeRequest) -> WorkflowResult:
         manager = CheckpointManager(auto_cleanup=False)
         checkpoint = self._find_checkpoint(manager, request.session_id)
+        self._discard_superseded_artifacts(checkpoint)
         checkpoint.resolved_config.update(
             {
                 "video_scene_count": request.video_scene_count,
@@ -387,6 +400,40 @@ class StoryForgeWorkflow:
             artifacts=artifacts,
             message="Story generation completed.",
         )
+
+    @staticmethod
+    def _discard_superseded_artifacts(checkpoint: CheckpointData) -> None:
+        """Remove only files owned by a resumed session's previous finalization."""
+        previous = checkpoint.resolved_config.get("superseded_artifacts")
+        if not isinstance(previous, dict):
+            return
+        output = Path(str(checkpoint.resolved_config.get("output_directory") or "")).expanduser().resolve()
+        if str(checkpoint.resolved_config.get("output_directory") or ""):
+            for item in previous.get("images", []):
+                if not isinstance(item, dict) or not item.get("filename"):
+                    continue
+                image = Path(str(item["filename"])).expanduser().resolve()
+                if image.parent == output and image.suffix.lower() in IMAGE_SUFFIXES:
+                    image.unlink(missing_ok=True)
+            video = previous.get("video_prompt")
+            if video and Path(str(video)).expanduser().resolve() == output / "video_prompt.txt":
+                (output / "video_prompt.txt").unlink(missing_ok=True)
+
+        context_file = previous.get("context_file")
+        if context_file:
+            manager = ContextManager()
+            context = Path(str(context_file)).expanduser().resolve()
+            context_dir = manager.get_context_directory().resolve()
+            if context.parent == context_dir and context.suffix.lower() == ".md":
+                linked = any(
+                    candidate != context
+                    and manager.parse_context_metadata(candidate).get("extended_from") == context.stem
+                    for candidate in manager._discover_context_files()
+                )
+                if not linked and context.is_file():
+                    context.unlink()
+                    manager.build_character_registry()
+        checkpoint.resolved_config.pop("superseded_artifacts", None)
 
     def export_chain(self, request: ExportRequest) -> WorkflowResult:
         manager = ContextManager()
@@ -459,8 +506,10 @@ class StoryForgeWorkflow:
             return WorldResult(path=str(path), exists=False)
         return WorldResult(path=str(path), exists=True, content=path.read_text(encoding="utf-8"))
 
-    def write_world(self, content: str, overwrite: bool = False) -> WorldResult:
-        path = resolve_world_file_path()
+    def write_world(self, content: str, overwrite: bool = False, expected_path: str | None = None) -> WorldResult:
+        path = ContextManager()._discover_world_file() or resolve_world_file_path()
+        if expected_path is not None and Path(expected_path).expanduser().resolve() != path.resolve():
+            raise ValueError("The active world file changed; reload it before saving.")
         if path.exists() and not overwrite:
             raise FileExistsError(f"World file already exists: {path}")
         atomic_write_text(path, content)

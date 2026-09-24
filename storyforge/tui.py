@@ -137,11 +137,7 @@ def _request_from_config(
     if initial is None:
         return configured
 
-    overrides = {
-        field: value
-        for field, value in initial.model_dump().items()
-        if value is not None and (field not in {"verbose", "debug"} or value is True)
-    }
+    overrides = {field: value for field, value in initial.model_dump().items() if value is not None}
     return configured.model_copy(update=overrides)
 
 
@@ -549,7 +545,7 @@ class PickerScreen(StoryForgeScreen):
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         item = self.items[event.option_index]
         if self.kind == "extend" and isinstance(item, StorySummary):
-            self.storyforge_app.push_screen(ExtensionOptionsScreen(item))
+            self.storyforge_app.push_screen(ExtensionOptionsScreen(item, self.storyforge_app.extension_options))
         elif self.kind == "export" and isinstance(item, StorySummary):
             self.storyforge_app.push_screen(ExportOptionsScreen(item))
         elif self.kind == "continue" and isinstance(item, SessionSummary):
@@ -786,9 +782,10 @@ class ImageViewerScreen(StoryForgeScreen):
 class ExtensionOptionsScreen(StoryForgeScreen):
     """Continuation direction form."""
 
-    def __init__(self, story: StorySummary) -> None:
+    def __init__(self, story: StorySummary, options: dict[str, object] | None = None) -> None:
         super().__init__()
         self.story = story
+        self.options = options or {}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -811,10 +808,13 @@ class ExtensionOptionsScreen(StoryForgeScreen):
         elif event.button.id == "generate":
             ending = cast(Literal["wrap_up", "cliffhanger"], str(self.query_one("#ending", Select).value))
             self.storyforge_app.create_extension_draft(
-                ExtensionRequest(
-                    story_id=self.story.id,
-                    ending_type=ending,
-                    direction=self.query_one("#direction", Input).value.strip() or None,
+                ExtensionRequest.model_validate(
+                    {
+                        "story_id": self.story.id,
+                        "ending_type": ending,
+                        "direction": self.query_one("#direction", Input).value.strip() or None,
+                        **self.options,
+                    }
                 )
             )
 
@@ -901,7 +901,9 @@ class WorldScreen(StoryForgeScreen):
         if event.button.id == "back":
             self.action_back()
         elif event.button.id == "save":
-            self.storyforge_app.save_world(self.query_one("#world-content", TextArea).text)
+            self.storyforge_app.save_world(
+                self.query_one("#world-content", TextArea).text, str(self.data.get("path", ""))
+            )
 
 
 class ModelsScreen(StoryForgeScreen):
@@ -1464,12 +1466,13 @@ class StoryForgeApp(App[None]):
     def __init__(
         self,
         route: str = "home",
-        initial_request: GenerationRequest | None = None,
+        initial_request: GenerationRequest | dict[str, object] | None = None,
         client: StoryForgeMCPClient | Any | None = None,
     ) -> None:
         super().__init__()
         self.route = route
-        self.initial_request = initial_request
+        self.initial_request = initial_request if isinstance(initial_request, GenerationRequest) else None
+        self.extension_options = initial_request if isinstance(initial_request, dict) else None
         self.client: Any = client
         self._owns_client = client is None
         self._active_worker: Any = None
@@ -1713,10 +1716,10 @@ class StoryForgeApp(App[None]):
             self.switch_screen(ResultScreen("Could Not Load World", str(error), error=True))
 
     @work(exclusive=True)
-    async def save_world(self, content: str) -> None:
+    async def save_world(self, content: str, expected_path: str) -> None:
         await self._start_progress("Saving Story World")
         try:
-            result = await self.client.write_world(content, overwrite=True)
+            result = await self.client.write_world(content, overwrite=True, expected_path=expected_path)
             self.switch_screen(ResultScreen("World Saved", f"Saved {result.get('path', '')}"))
         except Exception as error:
             self.switch_screen(ResultScreen("Could Not Save World", str(error), error=True))
@@ -1827,6 +1830,6 @@ class StoryForgeApp(App[None]):
                 self.switch_screen(ResultScreen("Could Not Clear Cache", str(error), error=True))
 
 
-def run_tui(route: str = "home", initial_request: GenerationRequest | None = None) -> None:
+def run_tui(route: str = "home", initial_request: GenerationRequest | dict[str, object] | None = None) -> None:
     """Launch StoryForge's full-screen MCP client."""
     StoryForgeApp(route=route, initial_request=initial_request).run()

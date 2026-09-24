@@ -32,8 +32,8 @@ class GenerationRequest(StrictModel):
     use_context: bool | None = None
     world_file: str | None = None
     backend: str | None = None
-    verbose: bool = False
-    debug: bool = False
+    verbose: bool | None = None
+    debug: bool | None = None
 
 
 class ExtensionRequest(StrictModel):
@@ -43,8 +43,8 @@ class ExtensionRequest(StrictModel):
     ending_type: Literal["wrap_up", "cliffhanger"] = "cliffhanger"
     direction: str | None = None
     backend: str | None = None
-    verbose: bool = False
-    debug: bool = False
+    verbose: bool | None = None
+    debug: bool | None = None
 
 
 class RefinementRequest(StrictModel):

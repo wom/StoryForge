@@ -508,7 +508,10 @@ class TestWorldWorkflow:
         path = tmp_path / "world.md"
         workflow = StoryForgeWorkflow()
 
-        with patch("storyforge.workflow.resolve_world_file_path", return_value=path):
+        with (
+            patch("storyforge.workflow.ContextManager._discover_world_file", return_value=None),
+            patch("storyforge.workflow.resolve_world_file_path", return_value=path),
+        ):
             created = workflow.write_world("# First world")
             with pytest.raises(FileExistsError):
                 workflow.write_world("# Second world")
@@ -517,6 +520,24 @@ class TestWorldWorkflow:
         assert created.path == str(path)
         assert replaced.content == "# Second world"
         assert path.read_text(encoding="utf-8") == "# Second world"
+
+    def test_write_world_uses_discovered_path_and_rejects_stale_editor(self, tmp_path):
+        active = tmp_path / "xdg" / "world.md"
+        active.parent.mkdir()
+        active.write_text("# Original", encoding="utf-8")
+        local = tmp_path / "local" / "world.md"
+        workflow = StoryForgeWorkflow()
+        with (
+            patch("storyforge.workflow.ContextManager._discover_world_file", return_value=active),
+            patch("storyforge.workflow.resolve_world_file_path", return_value=local),
+        ):
+            result = workflow.write_world("# Revised", overwrite=True, expected_path=str(active))
+            with pytest.raises(ValueError, match="active world file changed"):
+                workflow.write_world("# Stale", overwrite=True, expected_path=str(local))
+
+        assert result.path == str(active)
+        assert active.read_text(encoding="utf-8") == "# Revised"
+        assert not local.exists()
 
     def test_read_world_returns_existing_content(self, tmp_path):
         path = tmp_path / "world.md"

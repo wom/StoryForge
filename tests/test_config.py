@@ -24,6 +24,14 @@ def test_update_config_values_preserves_comments_and_unrelated_settings():
     assert "verbose = true" in updated
 
 
+def test_update_config_values_replaces_colon_delimited_key_without_duplicate():
+    content = "[system]\nbackend: gemini\nverbose = true\n"
+    updated = update_config_values(content, "system", {"backend": "openai"})
+    assert "backend: openai" in updated
+    assert updated.count("backend") == 1
+    assert "verbose = true" in updated
+
+
 class TestConfigPathResolution:
     """Test configuration file path resolution priority."""
 
