@@ -24,6 +24,7 @@ from textual.widgets import (
     Header,
     Input,
     Label,
+    Link,
     LoadingIndicator,
     OptionList,
     Select,
@@ -79,6 +80,12 @@ _MODEL_PROVIDERS: dict[str, tuple[str, str]] = {
     "gemini": ("Gemini", "GEMINI_API_KEY"),
     "openai": ("OpenAI", "OPENAI_API_KEY"),
     "anthropic": ("Anthropic", "ANTHROPIC_API_KEY"),
+}
+
+_API_KEY_PAGES = {
+    "gemini": "https://aistudio.google.com/apikey",
+    "openai": "https://platform.openai.com/api-keys",
+    "anthropic": "https://platform.claude.com/settings/keys",
 }
 
 
@@ -1189,6 +1196,8 @@ class ApiKeyHelpScreen(StoryForgeScreen):
         with VerticalScroll(id="api-key-help-screen"):
             yield Static(f"[bold cyan]{provider_name} API Key[/bold cyan]", classes="screen-title")
             yield Static(status, id="api-key-status")
+            yield Label("Get or manage a key")
+            yield Link(_API_KEY_PAGES[self.provider], id="provider-key-link")
             yield Static(
                 f"StoryForge reads {variable} from the environment. It never stores or displays the key.",
                 classes="api-key-copy",
@@ -1429,6 +1438,7 @@ class StoryForgeApp(App[None]):
     #model-actions Button { width: auto; min-width: 10; margin-right: 1; }
     #api-key-help-screen { height: auto; max-height: 1fr; }
     #api-key-status { color: $accent; margin-bottom: 1; }
+    #provider-key-link { margin-bottom: 1; }
     .api-key-copy { margin: 1 0; }
     .command-example { background: $primary-background; padding: 1 2; margin-bottom: 1; }
     #progress-panel {
