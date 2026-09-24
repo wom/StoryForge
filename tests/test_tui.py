@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from PIL import Image
 from textual.containers import Container
-from textual.widgets import Button, Checkbox, Input, OptionList, Select, Static, TextArea
+from textual.widgets import Button, Checkbox, Input, Link, OptionList, Select, Static, TextArea
 
 from storyforge.mcp_models import (
     DraftResult,
@@ -933,6 +933,31 @@ async def test_models_screen_shows_key_presence_without_exposing_secret():
             assert "restart StoryForge" in rendered
             assert "Refresh Models verifies provider access" in rendered
             assert secret not in rendered
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "provider, key_page",
+    [
+        ("gemini", "https://aistudio.google.com/apikey"),
+        ("openai", "https://platform.openai.com/api-keys"),
+        ("anthropic", "https://platform.claude.com/settings/keys"),
+    ],
+)
+async def test_api_key_help_links_to_provider_key_page(provider, key_page):
+    app = StoryForgeApp(client=FakeClient())
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        await app.push_screen(ApiKeyHelpScreen(provider))
+        await pilot.pause()
+
+        link = app.screen.query_one("#provider-key-link", Link)
+        assert link.url == key_page
+        assert link.text == key_page
+        with patch.object(app, "open_url") as open_url:
+            assert await pilot.click("#provider-key-link") is True
+            await pilot.pause()
+        open_url.assert_called_once_with(key_page)
 
 
 @pytest.mark.asyncio
