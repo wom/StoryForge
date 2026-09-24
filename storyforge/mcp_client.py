@@ -202,11 +202,13 @@ class StoryForgeMCPClient:
     async def read_world(self) -> dict[str, Any]:
         return dict(await self._call("storyforge_read_world") or {})
 
-    async def write_world(self, content: str, overwrite: bool = False) -> dict[str, Any]:
+    async def write_world(
+        self, content: str, overwrite: bool = False, expected_path: str | None = None
+    ) -> dict[str, Any]:
         return dict(
             await self._call(
                 "storyforge_write_world",
-                {"content": content, "overwrite": overwrite},
+                {"content": content, "overwrite": overwrite, "expected_path": expected_path},
             )
             or {}
         )

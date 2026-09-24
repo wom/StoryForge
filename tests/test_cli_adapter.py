@@ -70,6 +70,21 @@ def test_main_builds_generation_request_from_schema_options():
     assert request.characters == ["Max"]
 
 
+def test_extend_options_reach_classic_and_tui_routes():
+    arguments = ["extend", "--backend", "openai", "--verbose", "--debug"]
+    with (
+        patch("storyforge.cli.terminal_supports_tui", return_value=False),
+        patch("storyforge.classic_cli.run_classic", return_value=0) as run_classic,
+        pytest.raises(SystemExit),
+    ):
+        main(arguments)
+    assert run_classic.call_args.args[1] == {"backend": "openai", "verbose": True, "debug": True}
+
+    with patch("storyforge.tui.run_tui") as run_tui:
+        main(["--tui", *arguments])
+    run_tui.assert_called_once_with("extend", {"backend": "openai", "verbose": True, "debug": True})
+
+
 def test_force_tui_opens_home_route():
     with patch("storyforge.tui.run_tui") as run_tui:
         main(["--tui"])

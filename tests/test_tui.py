@@ -632,6 +632,49 @@ async def test_extend_route_uses_split_pane_picker():
 
 
 @pytest.mark.asyncio
+async def test_extend_route_passes_cli_options_to_draft_request():
+    fake = FakeClient()
+    fake.create_extension_draft = AsyncMock(
+        return_value=DraftResult(
+            session_id="extension",
+            status="active",
+            story="Continuation",
+            output_directory="output",
+            checkpoint_phase="story_save",
+        )
+    )
+    app = StoryForgeApp(
+        route="extend", initial_request={"backend": "openai", "verbose": True, "debug": False}, client=fake
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.screen.set_focus(app.screen.query_one("#item-list", OptionList))
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, ExtensionOptionsScreen)
+        app.screen.query_one("#generate", Button).press()
+        await pilot.pause()
+
+    request = fake.create_extension_draft.await_args.args[0]
+    assert request.backend == "openai"
+    assert request.verbose is True and request.debug is False
+
+
+@pytest.mark.asyncio
+async def test_explicit_false_debug_overrides_tui_config_default():
+    fake = FakeClient()
+    fake.config_data["values"]["system"] = {"debug": "true", "verbose": "true"}
+    app = StoryForgeApp(
+        route="generate", initial_request=GenerationRequest(prompt="A story", debug=False, verbose=False), client=fake
+    )
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        assert isinstance(app.screen, NewStoryScreen)
+        assert app.screen.initial.debug is False
+        assert app.screen.initial.verbose is False
+
+
+@pytest.mark.asyncio
 async def test_new_story_form_loads_configured_defaults():
     fake = FakeClient()
     fake.config_data = {

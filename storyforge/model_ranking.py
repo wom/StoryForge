@@ -231,7 +231,15 @@ def model_supports_purpose(model: dict[str, Any], provider: str, purpose: str) -
     if provider == "anthropic":
         return purpose == "text" and name_lower.startswith("claude-")
     if provider == "openai":
-        return image_named if purpose == "image" else not image_named
+        if purpose == "image":
+            return image_named
+        # The models endpoint does not report Chat Completions capabilities.
+        # Keep this picker conservative: only known chat/reasoning families.
+        if image_named or not re.match(r"^(?:gpt-[0-9]|chatgpt-|o[1-9](?:\b|-))", name_lower):
+            return False
+        return not re.search(
+            r"(?:audio|realtime|transcrib|tts|speech|embedding|moderation|search|instruct)", name_lower
+        )
     if provider == "gemini":
         methods = {str(method).lower() for method in model.get("supported_generation_methods", [])}
         if methods and "generatecontent" not in methods:
@@ -297,6 +305,9 @@ def rank_models(
         clean_name = name[7:] if name.startswith("models/") else name
 
         if clean_name in blocked:
+            continue
+
+        if provider == "openai" and not model_supports_purpose(model, provider, purpose):
             continue
 
         if _should_skip(clean_name, purpose, provider):

@@ -4,9 +4,18 @@ from storyforge.model_ranking import (
     extract_anthropic_info,
     extract_gemini_info,
     extract_openai_info,
+    model_supports_purpose,
     rank_models,
     score_model,
 )
+
+
+def test_openai_text_picker_excludes_non_chat_models():
+    for name in ("text-embedding-3-large", "omni-moderation-latest", "gpt-4o-realtime-preview", "gpt-image-2"):
+        assert not model_supports_purpose({"name": name}, "openai", "text")
+    for name in ("gpt-5.5", "gpt-4.1-mini", "o4-mini"):
+        assert model_supports_purpose({"name": name}, "openai", "text")
+    assert rank_models([{"name": "gpt-7-audio"}, {"name": "gpt-5.5"}], "openai", "text") == "gpt-5.5"
 
 
 class TestGeminiExtraction:

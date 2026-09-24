@@ -78,8 +78,8 @@ def _add_generation_arguments(parser: argparse.ArgumentParser) -> None:
     _add_schema_argument(parser, output["output_dir"])
     _add_schema_argument(parser, output["world_file"])
     _add_schema_argument(parser, system["backend"])
-    _add_schema_argument(parser, system["verbose"], action="store_true")
-    _add_schema_argument(parser, system["debug"], action="store_true")
+    _add_schema_argument(parser, system["verbose"], action="store_true", default=None)
+    _add_schema_argument(parser, system["debug"], action="store_true", default=None)
     context = parser.add_mutually_exclusive_group()
     context.add_argument("--use-context", action="store_true", default=None, help=output["use_context"].cli_help)
     context.add_argument("--no-use-context", action="store_false", dest="use_context")
@@ -99,7 +99,11 @@ def build_parser() -> argparse.ArgumentParser:
     generate = subparsers.add_parser("generate", help="Generate a story", description="Generate a new story draft.")
     _add_generation_arguments(generate)
     subparsers.add_parser("continue", help="Resume a checkpoint")
-    subparsers.add_parser("extend", help="Continue a saved story")
+    extend = subparsers.add_parser("extend", help="Continue a saved story")
+    system = STORYFORGE_SCHEMA.system.fields
+    for name in ("backend", "verbose", "debug"):
+        kwargs = {"action": "store_true", "default": None} if name != "backend" else {}
+        _add_schema_argument(extend, system[name], **kwargs)
 
     export = subparsers.add_parser("export-chain", help="Export a complete story chain")
     export.add_argument("--context", "-c")
@@ -202,12 +206,17 @@ def main(argv: Sequence[str] | None = None) -> None:
         "continue" if namespace.command == "generate" and namespace.continue_session else TUI_ROUTES[namespace.command]
     )
     generation_request = _request_from_namespace(namespace) if namespace.command == "generate" else None
+    extension_options = (
+        {key: getattr(namespace, key) for key in ("backend", "verbose", "debug")}
+        if namespace.command == "extend"
+        else None
+    )
     direct_execution = _requires_direct_execution(namespace)
 
     if not direct_execution and not no_tui and (force_tui or terminal_supports_tui()):
         from .tui import run_tui
 
-        run_tui(route, generation_request if route == "generate" else None)
+        run_tui(route, generation_request if route == "generate" else extension_options)
         return
 
     from .classic_cli import run_classic
@@ -215,7 +224,7 @@ def main(argv: Sequence[str] | None = None) -> None:
 
     classic_args = ["continue"] if route == "continue" and namespace.command == "generate" else normalized
     try:
-        raise SystemExit(run_classic(classic_args, generation_request if route == "generate" else None))
+        raise SystemExit(run_classic(classic_args, generation_request if route == "generate" else extension_options))
     except KeyboardInterrupt:
         console.print("[yellow]StoryForge operation cancelled.[/yellow]")
         raise SystemExit(130) from None

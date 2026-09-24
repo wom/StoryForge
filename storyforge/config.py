@@ -86,7 +86,7 @@ def update_config_values(content: str, section_name: str, values: dict[str, str]
             (index for index in range(section_start + 1, len(lines)) if lines[index].lstrip().startswith("[")),
             len(lines),
         )
-        value_pattern = re.compile(rf"^(\s*{re.escape(key)}\s*=\s*).*$", re.IGNORECASE)
+        value_pattern = re.compile(rf"^(\s*{re.escape(key)}\s*[:=]\s*).*$", re.IGNORECASE)
         existing = next(
             (index for index in range(section_start + 1, section_end) if value_pattern.match(lines[index])),
             None,
