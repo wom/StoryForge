@@ -207,6 +207,9 @@ Discovered provider lists are cached for seven days in the platform user-data di
 and preserves a valid previous cache if a provider fails. **Clear Cache** requires confirmation and removes only the
 discovered lists; it does not erase configured model choices.
 
+<img width="1078" height="684" alt="image" src="https://github.com/user-attachments/assets/43b3dbb2-0a88-46a4-bd6b-2f3492734ae5" />
+
+
 ## Story Chains
 
 To make a story extendable, check **Save as future story context** in the TUI (or answer yes to the classic interface's context-save prompt) when finishing it. Do the same for each continuation you may want to extend again. The TUI shows a chain length and preview, while the classic picker shows saved-story previews; neither displays every part's full text during selection. Use `sf export-chain` to combine all saved parts into one file.
