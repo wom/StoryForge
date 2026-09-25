@@ -181,6 +181,28 @@ class TestPhaseExecutorPhases:
         assert self.phase_executor.context is None
 
     @patch("storyforge.phase_executor.ContextManager")
+    def test_world_loads_without_saved_story_context(self, mock_context_mgr_class):
+        mock_context_mgr_class.return_value.load_world.return_value = "A secret woodland"
+        self.checkpoint_data.resolved_config.update({"use_context": False, "world_file": "world.md"})
+
+        self.phase_executor._phase_context_load()
+        self.phase_executor._phase_build_prompt()
+
+        assert self.phase_executor.story_prompt.world == "A secret woodland"
+        mock_context_mgr_class.return_value.extract_relevant_context.assert_not_called()
+
+    @patch("storyforge.phase_executor.ContextManager")
+    def test_world_loads_into_prebuilt_extension_prompt(self, mock_context_mgr_class):
+        mock_context_mgr_class.return_value.load_world.return_value = "A secret woodland"
+        self.checkpoint_data.resolved_config["world_file"] = "world.md"
+        self.phase_executor.story_prompt = MagicMock(context="Prior story chain", world=None)
+
+        self.phase_executor._phase_context_load()
+
+        assert self.phase_executor.story_prompt.world == "A secret woodland"
+        assert self.phase_executor.context is None
+
+    @patch("storyforge.phase_executor.ContextManager")
     def test_phase_context_load_no_prompt_falls_back_to_raw(self, mock_context_mgr_class):
         """Test _phase_context_load falls back to raw concat when no prompt available."""
         mock_context_mgr = MagicMock()

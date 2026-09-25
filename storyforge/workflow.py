@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import logging
 import os
+import shutil
+import sqlite3
+import tempfile
 from collections.abc import Callable
 from configparser import Error as ConfigParserError
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from yaml import YAMLError, safe_load
 
@@ -197,6 +204,7 @@ class StoryForgeWorkflow:
         """Resume a checkpoint to the draft-review boundary."""
         manager = CheckpointManager(auto_cleanup=False)
         checkpoint = self._find_checkpoint(manager, session_id)
+        self._recover_pending_replacement(checkpoint, manager)
         if checkpoint.generated_content.get("story"):
             if "superseded_artifacts" not in checkpoint.resolved_config:
                 output_dir = Path(str(checkpoint.resolved_config.get("output_directory") or ""))
@@ -284,6 +292,9 @@ class StoryForgeWorkflow:
             "auto_confirm": True,
             "defer_story_review": True,
         }
+        # Migrate older checkpoint-only library records before startup cleanup
+        # can prune the checkpoint that names a custom output directory.
+        self._generated_story_paths()
         manager = CheckpointManager()
         checkpoint = self._executor(manager).execute_new_session(
             request.prompt,
@@ -291,6 +302,7 @@ class StoryForgeWorkflow:
             resolved_config,
             stop_after=ExecutionPhase.STORY_SAVE,
         )
+        self._remember_generated_story(checkpoint)
         return self._draft_result(checkpoint)
 
     def create_extension_draft(self, request: ExtensionRequest) -> DraftResult:
@@ -337,6 +349,7 @@ class StoryForgeWorkflow:
             "tone": prompt.tone,
             "voice": prompt.voice,
             "image_style": prompt.image_style,
+            "image_count": config.get_field_value("images", "image_count"),
             "theme": prompt.theme,
             "characters": prompt.characters,
             "setting": prompt.setting,
@@ -344,6 +357,7 @@ class StoryForgeWorkflow:
         }
         resolved_config = {
             **cli_arguments,
+            "world_file": config.get_field_value("output", "world_file"),
             "config_backend": config.get_field_value("system", "backend"),
             "output_directory": output_dir,
             "source_context_file": str(selected["filepath"]),
@@ -351,6 +365,7 @@ class StoryForgeWorkflow:
             "auto_confirm": True,
             "defer_story_review": True,
         }
+        self._generated_story_paths()
         manager = CheckpointManager()
         checkpoint = self._executor(manager).execute_new_session(
             f"[EXTENSION] {selected['filename']}",
@@ -359,18 +374,32 @@ class StoryForgeWorkflow:
             prompt_obj=prompt,
             stop_after=ExecutionPhase.STORY_SAVE,
         )
+        self._remember_generated_story(checkpoint)
         return self._draft_result(checkpoint)
 
     def refine_draft(self, session_id: str, instructions: str) -> DraftResult:
         manager = CheckpointManager(auto_cleanup=False)
         checkpoint = self._find_checkpoint(manager, session_id)
+        if checkpoint.status != "active" or checkpoint.current_phase != ExecutionPhase.STORY_SAVE.value:
+            raise ValueError("Refinement requires an active draft; resume the session before refining it")
         checkpoint = self._executor(manager).refine_existing_story(checkpoint, instructions)
         return self._draft_result(checkpoint)
 
     def finalize_story(self, request: FinalizeRequest) -> WorkflowResult:
         manager = CheckpointManager(auto_cleanup=False)
         checkpoint = self._find_checkpoint(manager, request.session_id)
-        self._discard_superseded_artifacts(checkpoint)
+        self._recover_pending_replacement(checkpoint, manager)
+        previous = checkpoint.resolved_config.get("superseded_artifacts")
+        if not str(checkpoint.resolved_config.get("output_directory") or ""):
+            raise ValueError("Cannot finalize a story without an output directory")
+        output_dir = Path(str(checkpoint.resolved_config["output_directory"])).expanduser().resolve()
+        stage_dir: Path | None = None
+        if isinstance(previous, dict):
+            output_dir.mkdir(parents=True, exist_ok=True)
+            checkpoint.resolved_config["output_directory"] = str(output_dir)
+            stage_dir = Path(tempfile.mkdtemp(prefix=".storyforge-finalize-", dir=output_dir))
+            checkpoint.resolved_config["pending_media_stage"] = str(stage_dir)
+            checkpoint.resolved_config["pending_media_promoted"] = False
         checkpoint.resolved_config.update(
             {
                 "video_scene_count": request.video_scene_count,
@@ -390,7 +419,39 @@ class StoryForgeWorkflow:
                 "save_as_context": None,
             }
         )
-        checkpoint = self._executor(manager).execute_existing_session(checkpoint, ExecutionPhase.VIDEO_DECISION)
+        try:
+            if stage_dir is not None:
+                manager.save_checkpoint(checkpoint)
+            executor = self._executor(manager)
+            if stage_dir is not None:
+                executor.media_output_directory = stage_dir
+            checkpoint = executor.execute_existing_session(checkpoint, ExecutionPhase.VIDEO_DECISION)
+            if stage_dir is not None:
+                images = checkpoint.generated_content.get("generated_images") or []
+                if len(images) != request.image_count:
+                    raise RuntimeError("Replacement image generation did not complete; previous media was preserved")
+                if request.video_scene_count and not (stage_dir / "video_prompt.txt").is_file():
+                    raise RuntimeError("Replacement video prompt did not complete; previous media was preserved")
+                context_path = Path(str(checkpoint.generated_content.get("context_file") or ""))
+                if request.save_context and not context_path.is_file():
+                    raise RuntimeError("Replacement story context did not save; previous context was preserved")
+                self._commit_replacement_media(checkpoint, stage_dir, output_dir, manager)
+                self._discard_superseded_artifacts(checkpoint, keep_new_video=bool(request.video_scene_count))
+                checkpoint.resolved_config.pop("pending_media_stage", None)
+                checkpoint.resolved_config.pop("pending_media_promoted", None)
+                manager.save_checkpoint(checkpoint)
+        except BaseException:
+            if stage_dir is not None:
+                self._recover_pending_replacement(checkpoint, manager)
+            raise
+        finally:
+            if (
+                stage_dir is not None
+                and stage_dir.is_dir()
+                and "pending_media_stage" not in checkpoint.resolved_config
+            ):
+                shutil.rmtree(stage_dir)
+        self._remember_generated_story(checkpoint)
         artifacts = self._artifacts(checkpoint)
         return WorkflowResult(
             session_id=checkpoint.session_id,
@@ -402,7 +463,108 @@ class StoryForgeWorkflow:
         )
 
     @staticmethod
-    def _discard_superseded_artifacts(checkpoint: CheckpointData) -> None:
+    def _file_digest(path: Path) -> str:
+        with path.open("rb") as stream:
+            return hashlib.file_digest(stream, "sha256").hexdigest()
+
+    @staticmethod
+    def _remove_failed_context(checkpoint: CheckpointData) -> None:
+        new_context = checkpoint.generated_content.get("context_file")
+        if not new_context:
+            return
+        try:
+            candidate = Path(str(new_context)).expanduser().resolve()
+            context_manager = ContextManager()
+            if candidate.parent == context_manager.get_context_directory().resolve() and candidate.name.endswith(
+                f"_{checkpoint.session_id}.md"
+            ):
+                candidate.unlink(missing_ok=True)
+                context_manager.build_character_registry()
+        except OSError:
+            logging.getLogger(__name__).warning("Could not clean up failed replacement context", exc_info=True)
+
+    @staticmethod
+    def _rollback_staged_media(stage_dir: Path, output_dir: Path) -> None:
+        manifest_path = stage_dir / "promotion_manifest.json"
+        if not manifest_path.is_file():
+            return
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, dict):
+            raise ValueError("Invalid replacement media manifest")
+        for item in manifest.get("images", []):
+            if not isinstance(item, dict):
+                continue
+            name, digest = item.get("name"), item.get("sha256")
+            if (
+                not isinstance(name, str)
+                or not isinstance(digest, str)
+                or Path(name).name != name
+                or Path(name).suffix.lower() not in IMAGE_SUFFIXES
+            ):
+                continue
+            target = output_dir / name
+            if target.is_file() and StoryForgeWorkflow._file_digest(target) == digest:
+                target.unlink()
+
+        video_digest = manifest.get("video_sha256")
+        video_path = output_dir / "video_prompt.txt"
+        if isinstance(video_digest, str) and video_path.is_file():
+            if StoryForgeWorkflow._file_digest(video_path) == video_digest:
+                backup = stage_dir / "previous_video_prompt.txt"
+                if backup.is_file():
+                    os.replace(backup, video_path)
+                else:
+                    video_path.unlink()
+
+    def _recover_pending_replacement(self, checkpoint: CheckpointData, manager: CheckpointManager) -> None:
+        """Finish or roll back an interrupted media transaction before resuming."""
+        raw_stage = checkpoint.resolved_config.get("pending_media_stage")
+        if not raw_stage:
+            return
+        output_dir = Path(str(checkpoint.resolved_config.get("output_directory") or "")).expanduser().resolve()
+        stage_dir = Path(str(raw_stage)).expanduser().resolve()
+        if stage_dir.parent != output_dir or not stage_dir.name.startswith(".storyforge-finalize-"):
+            raise ValueError("Invalid pending replacement staging path")
+
+        if checkpoint.resolved_config.get("pending_media_promoted"):
+            for item in checkpoint.generated_content.get("generated_images") or []:
+                if not isinstance(item, dict):
+                    raise RuntimeError("Promoted replacement image metadata is invalid")
+                image = Path(str(item.get("filename") or "")).expanduser().resolve()
+                if image.parent != output_dir or not image.is_file():
+                    raise RuntimeError("Promoted replacement image is missing; previous assets were retained")
+            if checkpoint.resolved_config.get("video_scene_count") and not (output_dir / "video_prompt.txt").is_file():
+                raise RuntimeError("Promoted replacement video prompt is missing; previous assets were retained")
+            context_file = checkpoint.generated_content.get("context_file")
+            if checkpoint.resolved_config.get("final_save_context") and not (
+                context_file and Path(str(context_file)).expanduser().is_file()
+            ):
+                raise RuntimeError("Promoted replacement context is missing; previous assets were retained")
+            self._discard_superseded_artifacts(
+                checkpoint,
+                keep_new_video=bool(checkpoint.resolved_config.get("video_scene_count")),
+            )
+        else:
+            if stage_dir.is_dir():
+                self._rollback_staged_media(stage_dir, output_dir)
+            self._remove_failed_context(checkpoint)
+            checkpoint.generated_content.pop("generated_images", None)
+            checkpoint.generated_content.pop("video_prompts", None)
+            checkpoint.generated_content.pop("context_file", None)
+            checkpoint.status = "active"
+            checkpoint.current_phase = ExecutionPhase.STORY_SAVE.value
+            checkpoint.completed_phases = [
+                phase for phase in checkpoint.completed_phases if phase not in POST_STORY_PHASES
+            ]
+
+        checkpoint.resolved_config.pop("pending_media_stage", None)
+        checkpoint.resolved_config.pop("pending_media_promoted", None)
+        manager.save_checkpoint(checkpoint)
+        if stage_dir.is_dir():
+            shutil.rmtree(stage_dir)
+
+    @staticmethod
+    def _discard_superseded_artifacts(checkpoint: CheckpointData, *, keep_new_video: bool = False) -> None:
         """Remove only files owned by a resumed session's previous finalization."""
         previous = checkpoint.resolved_config.get("superseded_artifacts")
         if not isinstance(previous, dict):
@@ -416,7 +578,7 @@ class StoryForgeWorkflow:
                 if image.parent == output and image.suffix.lower() in IMAGE_SUFFIXES:
                     image.unlink(missing_ok=True)
             video = previous.get("video_prompt")
-            if video and Path(str(video)).expanduser().resolve() == output / "video_prompt.txt":
+            if not keep_new_video and video and Path(str(video)).expanduser().resolve() == output / "video_prompt.txt":
                 (output / "video_prompt.txt").unlink(missing_ok=True)
 
         context_file = previous.get("context_file")
@@ -434,6 +596,49 @@ class StoryForgeWorkflow:
                     context.unlink()
                     manager.build_character_registry()
         checkpoint.resolved_config.pop("superseded_artifacts", None)
+
+    @staticmethod
+    def _commit_replacement_media(
+        checkpoint: CheckpointData, stage_dir: Path, output_dir: Path, manager: CheckpointManager
+    ) -> None:
+        """Promote staged media with a durable manifest for crash recovery."""
+        planned_images: list[tuple[dict[str, Any], Path, Path]] = []
+        image_manifest: list[dict[str, str]] = []
+        for item in checkpoint.generated_content.get("generated_images") or []:
+            source = Path(str(item["filename"]))
+            if source.parent.resolve() != stage_dir.resolve() or not source.is_file():
+                raise RuntimeError("Replacement image is missing from staging")
+            target = output_dir / f"{source.stem}_{uuid4().hex[:8]}{source.suffix}"
+            while target.exists():
+                target = output_dir / f"{source.stem}_{uuid4().hex[:8]}{source.suffix}"
+            planned_images.append((item, source, target))
+            image_manifest.append({"name": target.name, "sha256": StoryForgeWorkflow._file_digest(source)})
+
+        old_video = output_dir / "video_prompt.txt"
+        staged_video = stage_dir / "video_prompt.txt"
+        video_backup = stage_dir / "previous_video_prompt.txt"
+        video_digest = StoryForgeWorkflow._file_digest(staged_video) if staged_video.is_file() else None
+        atomic_write_text(
+            stage_dir / "promotion_manifest.json",
+            json.dumps({"images": image_manifest, "video_sha256": video_digest}) + "\n",
+        )
+        if video_digest is not None and old_video.is_file():
+            shutil.copy2(old_video, video_backup)
+            with video_backup.open("rb") as stream:
+                os.fsync(stream.fileno())
+        for item, source, target in planned_images:
+            os.replace(source, target)
+            item["filename"] = str(target)
+        if video_digest is not None:
+            os.replace(staged_video, old_video)
+        checkpoint.resolved_config["pending_media_promoted"] = True
+        try:
+            manager.save_checkpoint(checkpoint)
+        except BaseException:
+            # The in-memory state was not committed successfully. The caller
+            # can still roll back from the durable staging manifest.
+            checkpoint.resolved_config["pending_media_promoted"] = False
+            raise
 
     def export_chain(self, request: ExportRequest) -> WorkflowResult:
         manager = ContextManager()
@@ -591,35 +796,130 @@ class StoryForgeWorkflow:
         if direct_story.is_file():
             paths.add(direct_story.resolve())
 
+        # Keep temporarily unavailable locations indexed (for example, a
+        # removable drive) but omit them from the visible library until back.
+        for stored_path in StoryForgeWorkflow._read_story_index():
+            story_path = Path(stored_path)
+            if story_path.is_file():
+                paths.add(story_path.resolve())
+
         manager = CheckpointManager(auto_cleanup=False)
         for checkpoint_path in manager.checkpoint_dir.glob("checkpoint_*.yaml"):
             try:
                 checkpoint = safe_load(checkpoint_path.read_text(encoding="utf-8")) or {}
-                output_directory = checkpoint.get("resolved_config", {}).get("output_directory")
+                if not isinstance(checkpoint, dict):
+                    continue
+                resolved = checkpoint.get("resolved_config")
+                generated = checkpoint.get("generated_content")
+                if not isinstance(resolved, dict):
+                    continue
+                output_directory = resolved.get("output_directory")
                 if output_directory:
                     story_path = Path(str(output_directory)).expanduser() / "story.txt"
                     if story_path.is_file():
                         paths.add(story_path.resolve())
-            except (OSError, TypeError, ValueError, YAMLError):
+                        context_file = generated.get("context_file") if isinstance(generated, dict) else None
+                        if str(story_path.resolve()) not in StoryForgeWorkflow._read_story_index():
+                            StoryForgeWorkflow._remember_story_path(story_path, context_file)
+            except (AttributeError, OSError, TypeError, ValueError, YAMLError):
                 continue
         return list(paths)
 
     @staticmethod
     def _generated_story_context_ids() -> dict[Path, str]:
         """Map generated story artifacts to their saved extension contexts."""
-        context_ids: dict[Path, str] = {}
+        context_ids: dict[Path, str] = {
+            Path(story_path).resolve(): Path(context_path).stem
+            for story_path, context_path in StoryForgeWorkflow._read_story_index().items()
+            if context_path and Path(context_path).is_file()
+        }
         manager = CheckpointManager(auto_cleanup=False)
         for checkpoint_path in manager.checkpoint_dir.glob("checkpoint_*.yaml"):
             try:
                 checkpoint = safe_load(checkpoint_path.read_text(encoding="utf-8")) or {}
-                output_directory = checkpoint.get("resolved_config", {}).get("output_directory")
-                context_file = checkpoint.get("generated_content", {}).get("context_file")
+                if not isinstance(checkpoint, dict):
+                    continue
+                resolved = checkpoint.get("resolved_config")
+                generated = checkpoint.get("generated_content")
+                if not isinstance(resolved, dict) or not isinstance(generated, dict):
+                    continue
+                output_directory = resolved.get("output_directory")
+                context_file = generated.get("context_file")
                 if output_directory and context_file and Path(str(context_file)).expanduser().is_file():
                     story_path = (Path(str(output_directory)).expanduser() / "story.txt").resolve()
                     context_ids[story_path] = Path(str(context_file)).stem
             except (AttributeError, OSError, TypeError, ValueError, YAMLError):
                 continue
         return context_ids
+
+    @staticmethod
+    def _story_index_path() -> Path | None:
+        manager = CheckpointManager(auto_cleanup=False)
+        checkpoint_dir = manager.checkpoint_dir
+        return checkpoint_dir.parent / "generated_stories.sqlite3" if isinstance(checkpoint_dir, Path) else None
+
+    @staticmethod
+    def _read_legacy_story_index(path: Path) -> dict[str, str | None]:
+        legacy_path = path.with_name("generated_stories.json")
+        if not legacy_path.is_file():
+            return {}
+        try:
+            data = json.loads(legacy_path.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return {str(key): value for key, value in data.items() if value is None or isinstance(value, str)}
+        except (OSError, ValueError):
+            logging.getLogger(__name__).warning("Could not read legacy story index", exc_info=True)
+        return {}
+
+    @staticmethod
+    def _read_story_index() -> dict[str, str | None]:
+        path = StoryForgeWorkflow._story_index_path()
+        if path is None:
+            return {}
+        records = StoryForgeWorkflow._read_legacy_story_index(path)
+        if not path.is_file():
+            return records
+        try:
+            with sqlite3.connect(path, timeout=30) as database:
+                records.update(database.execute("SELECT story_path, context_path FROM generated_stories"))
+        except sqlite3.DatabaseError:
+            logging.getLogger(__name__).warning("Could not read generated-story index", exc_info=True)
+        return records
+
+    @staticmethod
+    def _remember_story_path(story_path: Path, context_file: str | None = None) -> None:
+        path = StoryForgeWorkflow._story_index_path()
+        if path is None or not story_path.is_file():
+            return
+        key = str(story_path.resolve())
+        value = str(Path(context_file).expanduser().resolve()) if context_file else None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(path, timeout=30) as database:
+            # SQLite serializes the entire read/migrate/write transaction across
+            # StoryForge processes, avoiding lost JSON read-modify-write updates.
+            database.execute("BEGIN IMMEDIATE")
+            database.execute(
+                "CREATE TABLE IF NOT EXISTS generated_stories (story_path TEXT PRIMARY KEY, context_path TEXT)"
+            )
+            for old_path, old_context in StoryForgeWorkflow._read_legacy_story_index(path).items():
+                database.execute(
+                    "INSERT OR IGNORE INTO generated_stories (story_path, context_path) VALUES (?, ?)",
+                    (old_path, old_context),
+                )
+            database.execute(
+                "INSERT INTO generated_stories (story_path, context_path) VALUES (?, ?) "
+                "ON CONFLICT(story_path) DO UPDATE SET context_path = excluded.context_path",
+                (key, value),
+            )
+
+    @staticmethod
+    def _remember_generated_story(checkpoint: CheckpointData) -> None:
+        output_dir = checkpoint.resolved_config.get("output_directory")
+        if output_dir:
+            StoryForgeWorkflow._remember_story_path(
+                Path(str(output_dir)).expanduser() / "story.txt",
+                checkpoint.generated_content.get("context_file"),
+            )
 
     @staticmethod
     def _story_images(output_directory: Path) -> list[Path]:

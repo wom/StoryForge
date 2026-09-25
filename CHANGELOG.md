@@ -4,10 +4,13 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-09-24
+
 ### Added
 - Bundled typed MCP server and client used by both terminal presentations.
 - Unified Textual home, generation, review, story library, image viewer, world, configuration, and model-selection
   screens.
+- Forged Story emblem on the home screen, writing-voice descriptions in New Story, and provider API-key help links.
 - In-app configuration editing with validation, unsaved-text recovery after failures, and atomic file replacement.
 - Provider model picker with immediate discovery refresh, per-provider status, purpose-aware choices, and confirmed
   cache clearing.
@@ -24,11 +27,20 @@ All notable changes to this project will be documented in this file.
 - Gemini model selections are instance-scoped, so a newly saved choice applies without restarting the MCP server.
 - Debug story generation defers provider initialization; refinement and media features initialize a provider only when
   requested.
+- Classic extension review preserves configured media counts and offers continuation controls; configured debug and
+  verbose settings are honored.
+- Generated stories and their extension-context links remain discoverable after checkpoints are pruned, including
+  stories saved in custom output directories; the durable index handles concurrent writers.
 
 ### Fixed
 - Included `storyforge/test_story.txt` and `storyforge/py.typed` explicitly in wheels and source distributions.
 - The in-app image viewer now uses native Sixel or Kitty terminal graphics when supported, with a portable Unicode
-  fallback.
+  fallback, and centers images without stretching their aspect ratio.
+- Finalized-story revision preserves previous media and context when replacement generation fails or is interrupted;
+  pending media promotion can recover on resume. Completed sessions must be resumed before refinement.
+- Blank OpenAI model choices now invoke automatic discovery, and the model picker filters choices by role.
+- World definitions load independently of saved-story context and are available to extension prompts.
+- Colon-separated INI settings retain their syntax when updated.
 - Anthropic requests no longer send the removed top-level `temperature` parameter, restoring compatibility with the
   current SDK.
 - Failed configuration saves return to the editor with the candidate text intact.
@@ -46,6 +58,9 @@ All notable changes to this project will be documented in this file.
 
 ### Documentation
 - Updated the README, development guide, configuration reference, and repository guidance for the MCP/TUI architecture.
+- Corrected chain-saving requirements, world-file precedence, debug-mode completion, output formats, and release steps.
+
+**Full Changelog**: [v0.0.9...v0.1.0](https://github.com/wom/StoryForge/compare/v0.0.9...v0.1.0)
 
 ## [0.0.9] - 2026-05-24
 

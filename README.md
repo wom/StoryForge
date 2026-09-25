@@ -180,7 +180,7 @@ sf world show     # Display current contents
 sf world path     # Show file location
 ```
 
-The template includes sections for **Characters**, **Places**, **Rules & Lore**, **Relationships**, and **Tone & Style Notes**. You fill in what matters for your stories — keep it concise since it counts against the token budget.
+The template includes sections for **Characters**, **Places**, **Rules & Lore**, **Relationships**, and **Tone & Style Notes**. You fill in what matters for your stories — keep it concise because the world text is included verbatim and consumes model context.
 
 **HTML comments** (`<!-- ... -->`) are stripped before prompt injection, so you can leave yourself notes that won't reach the LLM:
 
@@ -193,7 +193,7 @@ Always wears purple rain boots, even on sunny days.
 <!-- TODO: decide if she has a pet yet -->
 ```
 
-**File location:** `./context/world.md` if a local `context/` directory exists, otherwise `~/.local/share/storyforge/context/world.md`.
+**File location:** StoryForge reads an existing `./context/world.md` first, then the platform user-data `context/world.md` (normally `~/.local/share/storyforge/context/world.md` on Linux). An empty local `context/` directory does not hide an existing user-data world file. `sf world init` creates a local file when `./context/` exists; otherwise it uses the user-data directory. An explicit `--world-file` takes precedence. World definitions are included even when saved-story context is disabled and when extending a story.
 
 ## Models and cache
 
@@ -211,18 +211,19 @@ discovered lists; it does not erase configured model choices.
 
 ## Story Chains
 
-When you extend stories multiple times, StoryForge tracks the full chain. During extension, the chain lineage is displayed. Use `sf export-chain` to combine all parts into a single file.
+To make a story extendable, check **Save as future story context** in the TUI (or answer yes to the classic interface's context-save prompt) when finishing it. Do the same for each continuation you may want to extend again. The TUI shows a chain length and preview, while the classic picker shows saved-story previews; neither displays every part's full text during selection. Use `sf export-chain` to combine all saved parts into one file.
 
 See [**docs/STORY_CHAIN_TRACKING.md**](docs/STORY_CHAIN_TRACKING.md) for details.
 
 ## Output
 
-Stories are saved to timestamped directories containing `story.txt` and `*.png` illustrations.
+Stories are saved to timestamped directories containing `story.txt` and, if requested, illustration files in the format returned by the provider (such as PNG, JPEG, or WebP).
 
 ## Tips
 
 - **Offline dev mode:** `sf "any prompt" --debug` loads the bundled test story without a provider key. Refinement,
-  video prompts, and images initialize a provider only if requested.
+  video prompts, and images initialize a provider only if requested. To finish without a key, choose zero illustrations
+  and no video prompt on the media screen.
 - **Verbose output:** `sf "prompt" --verbose` for detailed generation logs
 
 ## Development

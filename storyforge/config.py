@@ -236,6 +236,18 @@ class Config:
                     return field.default or []
                 return [item.strip() for item in raw_value.split(",") if item.strip()]
             else:
+                # Empty OpenAI model settings explicitly request provider discovery.
+                # An absent setting still uses the schema's configured default.
+                if (
+                    section_name == "system"
+                    and field_name
+                    in {
+                        "openai_story_model",
+                        "openai_image_model",
+                    }
+                    and not raw_value.strip()
+                ):
+                    return None
                 return raw_value if raw_value else field.default
 
         except (KeyError, ValueError, AttributeError):
