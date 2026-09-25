@@ -21,7 +21,7 @@ CLI Usage:
 """
 
 # Version info
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 __author__ = "Chris (wom)"
 
 __all__ = ["__version__"]
