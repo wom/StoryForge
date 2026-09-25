@@ -12,6 +12,7 @@ from datetime import datetime
 from importlib.resources import files
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from rich.progress import Progress, SpinnerColumn, TextColumn
 
@@ -52,6 +53,9 @@ class PhaseExecutor:
         self.refinements: str | None = None
         self._initialized_phases: set[ExecutionPhase] = set()  # Track which phases have been initialized
         self.reporter = reporter
+        # An in-memory override for replacement media. The canonical output
+        # directory in the checkpoint must never point at temporary staging.
+        self.media_output_directory: Path | None = None
 
     def _report(self, kind: str, message: str, progress: float | None = None) -> None:
         """Publish a transport-neutral workflow event when a reporter is configured."""
@@ -423,19 +427,6 @@ class PhaseExecutor:
         verbose = self.checkpoint_data.resolved_config.get("verbose", False)
         world_file = self.checkpoint_data.resolved_config.get("world_file") or None
 
-        # Skip context loading for extensions — the pre-built prompt already
-        # carries the full chain content as its context field.
-        if self.story_prompt is not None:
-            if verbose:
-                console.print("[dim]Context loading skipped (using pre-built prompt context)[/dim]")
-            return
-
-        if not use_context:
-            self.context = None
-            if verbose:
-                console.print("[dim]Context loading skipped due to --no-use-context[/dim]")
-            return
-
         # Determine token budget from backend (if available)
         max_tokens: int | None = None
         if self.llm_backend is not None:
@@ -462,6 +453,24 @@ class PhaseExecutor:
                     f"This is included verbatim in every prompt and may consume "
                     f"significant context window. Consider trimming it.[/yellow]"
                 )
+            self.checkpoint_data.context_data = {
+                **(self.checkpoint_data.context_data or {}),
+                "world_content": self.world,
+            }
+
+        # Story context is optional; the world definition is not. Extensions
+        # already carry their story chain in the pre-built prompt.
+        if self.story_prompt is not None:
+            self.story_prompt.world = self.world
+            self.context = None  # The chain is already in the pre-built story prompt.
+            if verbose:
+                console.print("[dim]Using pre-built prompt context[/dim]")
+            return
+        if not use_context:
+            self.context = None
+            if verbose:
+                console.print("[dim]Story context loading skipped due to --no-use-context[/dim]")
+            return
 
         # Use extractive summarization when we have a prompt for relevance scoring
         prompt_text = self.checkpoint_data.original_inputs.get("prompt", "")
@@ -912,7 +921,7 @@ class PhaseExecutor:
             console.print("[yellow]No video scenes requested.[/yellow]")
             return
 
-        output_dir = self.checkpoint_data.resolved_config.get("output_directory")
+        output_dir = self.media_output_directory or self.checkpoint_data.resolved_config.get("output_directory")
         if not output_dir:
             console.print("[red]No output directory configured.[/red]")
             return
@@ -1019,7 +1028,7 @@ class PhaseExecutor:
             console.print("[yellow]No images will be generated.[/yellow]")
             return
 
-        output_dir = self.checkpoint_data.resolved_config.get("output_directory")
+        output_dir = self.media_output_directory or self.checkpoint_data.resolved_config.get("output_directory")
         if not output_dir:
             console.print("[yellow]No output directory specified for image generation.[/yellow]")
             return
@@ -1185,7 +1194,9 @@ class PhaseExecutor:
                     safe_name = "story"
 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                context_filename = f"{safe_name}_{timestamp}.md"
+                # A resumed session may save a replacement within the same second.
+                # Never overwrite the context that its previous finalization owns.
+                context_filename = f"{safe_name}_{timestamp}_{uuid4().hex[:8]}_{self.checkpoint_data.session_id}.md"
                 context_path = context_dir / context_filename
 
                 # Create context content

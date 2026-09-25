@@ -180,6 +180,19 @@ class TestFieldValueConversion:
             assert value == 5
             assert isinstance(value, int)
 
+    def test_blank_openai_models_mean_automatic_discovery(self):
+        config = Config()
+        assert config.get_field_value("system", "openai_story_model") == "gpt-5.5"
+        assert config.get_field_value("system", "openai_image_model") == "gpt-image-1.5"
+
+        config.config.set("system", "openai_story_model", "")
+        config.config.set("system", "openai_image_model", "")
+        assert config.get_field_value("system", "openai_story_model") is None
+        assert config.get_field_value("system", "openai_image_model") is None
+
+        config.config.set("system", "openai_story_model", "gpt-test")
+        assert config.get_field_value("system", "openai_story_model") == "gpt-test"
+
     def test_get_field_value_list_comma_separated(self, tmp_path):
         """Test getting list field values from comma-separated string."""
         config_file = tmp_path / "test.ini"

@@ -1,13 +1,18 @@
 """Regression tests for MCP-backed workflow state transitions."""
 
+import hashlib
+import json
 import os
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from storyforge.checkpoint import CheckpointData, ExecutionPhase
+from storyforge.checkpoint import CheckpointData, CheckpointManager, ExecutionPhase
 from storyforge.config import Config, ConfigError
 from storyforge.mcp_models import ExtensionRequest, FinalizeRequest, GenerationRequest
+from storyforge.phase_executor import PhaseExecutor
 from storyforge.workflow import POST_STORY_PHASES, StoryForgeWorkflow
 
 
@@ -39,6 +44,21 @@ def test_resume_completed_session_reopens_post_story_phases():
     assert checkpoint.current_phase == ExecutionPhase.STORY_SAVE.value
     assert POST_STORY_PHASES.isdisjoint(checkpoint.completed_phases)
     manager.save_checkpoint.assert_called_once_with(checkpoint)
+
+
+def test_refine_completed_session_requires_resume():
+    checkpoint = _checkpoint_with_story()
+    checkpoint.status = "completed"
+    checkpoint.current_phase = ExecutionPhase.COMPLETED.value
+    workflow = StoryForgeWorkflow()
+    with (
+        patch("storyforge.workflow.CheckpointManager"),
+        patch.object(workflow, "_find_checkpoint", return_value=checkpoint),
+        patch.object(workflow, "_executor") as executor,
+        pytest.raises(ValueError, match="resume the session"),
+    ):
+        workflow.refine_draft(checkpoint.session_id, "Change the ending")
+    executor.assert_not_called()
 
 
 @pytest.mark.parametrize("linked_context", [False, True])
@@ -87,6 +107,276 @@ def test_finalized_revision_discards_old_artifacts_without_breaking_chains(tmp_p
     assert context.exists() is linked_context
     assert "context_file" not in checkpoint.generated_content
     assert "superseded_artifacts" not in checkpoint.resolved_config
+
+
+def test_failed_replacement_preserves_previous_media(tmp_path):
+    output = tmp_path / "output"
+    output.mkdir()
+    old_image = output / "old_01.png"
+    old_video = output / "video_prompt.txt"
+    old_image.write_bytes(b"original image")
+    old_video.write_text("original video", encoding="utf-8")
+    checkpoint = _checkpoint_with_story()
+    checkpoint.resolved_config.update(
+        {
+            "output_directory": str(output),
+            "superseded_artifacts": {
+                "images": [{"filename": str(old_image)}],
+                "video_prompt": str(old_video),
+                "context_file": None,
+            },
+        }
+    )
+    manager = MagicMock()
+    executor = MagicMock()
+    executor.execute_existing_session.return_value = checkpoint
+    workflow = StoryForgeWorkflow()
+    with (
+        patch("storyforge.workflow.CheckpointManager", return_value=manager),
+        patch.object(workflow, "_find_checkpoint", return_value=checkpoint),
+        patch.object(workflow, "_executor", return_value=executor),
+        pytest.raises(RuntimeError, match="previous media was preserved"),
+    ):
+        workflow.finalize_story(FinalizeRequest(session_id=checkpoint.session_id, image_count=1))
+
+    assert old_image.read_bytes() == b"original image"
+    assert old_video.read_text(encoding="utf-8") == "original video"
+    assert list(output.glob(".storyforge-finalize-*")) == []
+
+
+def test_successful_replacement_promotes_media_without_overwriting_unrelated_files(tmp_path):
+    output = tmp_path / "output"
+    output.mkdir()
+    old_image = output / "drawing_01.png"
+    old_image.write_bytes(b"old")
+    unrelated = output / "personal.png"
+    unrelated.write_bytes(b"personal")
+    checkpoint = _checkpoint_with_story()
+    checkpoint.resolved_config.update(
+        {
+            "output_directory": str(output),
+            "superseded_artifacts": {
+                "images": [{"filename": str(old_image)}],
+                "video_prompt": None,
+                "context_file": None,
+            },
+        }
+    )
+    manager = MagicMock()
+    executor = MagicMock()
+
+    def generate(current, _phase):
+        assert current.resolved_config["output_directory"] == str(output)
+        staged_image = executor.media_output_directory / "drawing_01.png"
+        staged_image.write_bytes(b"new")
+        current.generated_content["generated_images"] = [{"filename": str(staged_image)}]
+        return current
+
+    executor.execute_existing_session.side_effect = generate
+    workflow = StoryForgeWorkflow()
+    with (
+        patch("storyforge.workflow.CheckpointManager", return_value=manager),
+        patch.object(workflow, "_find_checkpoint", return_value=checkpoint),
+        patch.object(workflow, "_executor", return_value=executor),
+    ):
+        workflow.finalize_story(FinalizeRequest(session_id=checkpoint.session_id, image_count=1))
+
+    promoted = Path(checkpoint.generated_content["generated_images"][0]["filename"])
+    assert promoted.read_bytes() == b"new"
+    assert not old_image.exists()
+    assert unrelated.read_bytes() == b"personal"
+
+
+@pytest.mark.parametrize("failure", [OSError("commit failed"), KeyboardInterrupt()])
+def test_replacement_rolls_back_when_checkpoint_commit_fails(tmp_path, failure):
+    output = tmp_path / "output"
+    output.mkdir()
+    old_image = output / "drawing_01.png"
+    old_video = output / "video_prompt.txt"
+    old_image.write_bytes(b"old image")
+    old_video.write_text("old video", encoding="utf-8")
+    checkpoint = _checkpoint_with_story()
+    checkpoint.resolved_config.update(
+        {
+            "output_directory": str(output),
+            "superseded_artifacts": {
+                "images": [{"filename": str(old_image)}],
+                "video_prompt": str(old_video),
+                "context_file": None,
+            },
+        }
+    )
+    manager = MagicMock()
+    manager.save_checkpoint.side_effect = [None, failure, None]
+    executor = MagicMock()
+
+    def generate(current, _phase):
+        assert current.resolved_config["output_directory"] == str(output)
+        stage = executor.media_output_directory
+        image = stage / "drawing_01.png"
+        image.write_bytes(b"new image")
+        (stage / "video_prompt.txt").write_text("new video", encoding="utf-8")
+        current.generated_content["generated_images"] = [{"filename": str(image)}]
+        return current
+
+    executor.execute_existing_session.side_effect = generate
+    workflow = StoryForgeWorkflow()
+    with (
+        patch("storyforge.workflow.CheckpointManager", return_value=manager),
+        patch.object(workflow, "_find_checkpoint", return_value=checkpoint),
+        patch.object(workflow, "_executor", return_value=executor),
+        pytest.raises(type(failure)),
+    ):
+        workflow.finalize_story(FinalizeRequest(session_id=checkpoint.session_id, image_count=1, video_scene_count=1))
+
+    assert old_image.read_bytes() == b"old image"
+    assert old_video.read_text(encoding="utf-8") == "old video"
+    assert list(output.glob(".storyforge-finalize-*")) == []
+
+
+def test_interrupted_replacement_keeps_canonical_checkpoint_path(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = tmp_path / "output"
+    output.mkdir()
+    old_image = output / "old.png"
+    old_image.write_bytes(b"original")
+    checkpoint = _checkpoint_with_story()
+    checkpoint.resolved_config.update(
+        {
+            "output_directory": "output",
+            "superseded_artifacts": {
+                "images": [{"filename": str(old_image)}],
+                "video_prompt": None,
+                "context_file": None,
+            },
+        }
+    )
+    with patch("storyforge.checkpoint.user_data_dir", return_value=str(tmp_path / "data")):
+        manager = CheckpointManager(auto_cleanup=False)
+    manager.save_checkpoint(checkpoint)
+    real_save = manager.save_checkpoint
+    saved_outputs = []
+
+    def record_save(current):
+        saved_outputs.append(current.resolved_config["output_directory"])
+        return real_save(current)
+
+    def interrupt_at_image_decision(_executor, phase):
+        if phase is ExecutionPhase.IMAGE_DECISION:
+            raise KeyboardInterrupt
+
+    with (
+        patch("storyforge.workflow.CheckpointManager", return_value=manager),
+        patch.object(manager, "save_checkpoint", side_effect=record_save),
+        patch.object(PhaseExecutor, "_execute_phase", autospec=True, side_effect=interrupt_at_image_decision),
+        pytest.raises(KeyboardInterrupt),
+    ):
+        StoryForgeWorkflow().finalize_story(FinalizeRequest(session_id=checkpoint.session_id))
+
+    persisted = manager.load_checkpoint(manager.checkpoint_dir / f"checkpoint_{checkpoint.session_id}.yaml")
+    assert saved_outputs and set(saved_outputs) == {str(output)}
+    assert persisted.resolved_config["output_directory"] == str(output)
+    assert "pending_media_stage" not in persisted.resolved_config
+    assert persisted.current_phase == ExecutionPhase.STORY_SAVE.value
+    assert old_image.read_bytes() == b"original"
+    assert list(output.glob(".storyforge-finalize-*")) == []
+
+
+def test_resume_rolls_back_partial_promotion_after_process_exit(tmp_path):
+    output = tmp_path / "output"
+    output.mkdir()
+    old_image = output / "old.png"
+    old_image.write_bytes(b"old image")
+    old_video = output / "video_prompt.txt"
+    old_video.write_bytes(b"new video")
+    promoted = output / "new_123.png"
+    promoted.write_bytes(b"new image")
+    stage = output / ".storyforge-finalize-crashed"
+    stage.mkdir()
+    (stage / "previous_video_prompt.txt").write_bytes(b"old video")
+    (stage / "promotion_manifest.json").write_text(
+        json.dumps(
+            {
+                "images": [{"name": promoted.name, "sha256": hashlib.sha256(b"new image").hexdigest()}],
+                "video_sha256": hashlib.sha256(b"new video").hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+    checkpoint = _checkpoint_with_story()
+    checkpoint.completed_phases = [ExecutionPhase.STORY_SAVE.value]
+    checkpoint.resolved_config.update(
+        {
+            "output_directory": str(output),
+            "pending_media_stage": str(stage),
+            "pending_media_promoted": False,
+            "superseded_artifacts": {
+                "images": [{"filename": str(old_image)}],
+                "video_prompt": str(old_video),
+                "context_file": None,
+            },
+        }
+    )
+    checkpoint.generated_content["generated_images"] = [{"filename": str(stage / "new.png")}]
+    with patch("storyforge.checkpoint.user_data_dir", return_value=str(tmp_path / "data")):
+        manager = CheckpointManager(auto_cleanup=False)
+    manager.save_checkpoint(checkpoint)
+
+    with patch("storyforge.workflow.CheckpointManager", return_value=manager):
+        result = StoryForgeWorkflow().resume_session(checkpoint.session_id)
+
+    assert result.output_directory == str(output)
+    assert old_image.read_bytes() == b"old image"
+    assert old_video.read_bytes() == b"old video"
+    assert not promoted.exists() and not stage.exists()
+    assert (
+        "pending_media_stage"
+        not in manager.load_checkpoint(
+            manager.checkpoint_dir / f"checkpoint_{checkpoint.session_id}.yaml"
+        ).resolved_config
+    )
+
+
+def test_resume_finishes_promoted_replacement_after_process_exit(tmp_path):
+    output = tmp_path / "output"
+    output.mkdir()
+    old_image = output / "old.png"
+    old_image.write_bytes(b"old")
+    new_image = output / "new_123.png"
+    new_image.write_bytes(b"new")
+    stage = output / ".storyforge-finalize-committed"
+    stage.mkdir()
+    checkpoint = _checkpoint_with_story()
+    checkpoint.completed_phases = [ExecutionPhase.STORY_SAVE.value]
+    checkpoint.resolved_config.update(
+        {
+            "output_directory": str(output),
+            "pending_media_stage": str(stage),
+            "pending_media_promoted": True,
+            "video_scene_count": 0,
+            "superseded_artifacts": {
+                "images": [{"filename": str(old_image)}],
+                "video_prompt": None,
+                "context_file": None,
+            },
+        }
+    )
+    checkpoint.generated_content["generated_images"] = [{"filename": str(new_image)}]
+    with patch("storyforge.checkpoint.user_data_dir", return_value=str(tmp_path / "data")):
+        manager = CheckpointManager(auto_cleanup=False)
+    manager.save_checkpoint(checkpoint)
+
+    with patch("storyforge.workflow.CheckpointManager", return_value=manager):
+        StoryForgeWorkflow()._recover_pending_replacement(checkpoint, manager)
+
+    assert not old_image.exists() and new_image.read_bytes() == b"new"
+    assert not stage.exists()
+    assert (
+        "pending_media_stage"
+        not in manager.load_checkpoint(
+            manager.checkpoint_dir / f"checkpoint_{checkpoint.session_id}.yaml"
+        ).resolved_config
+    )
 
 
 def test_resume_failed_story_save_retries_the_failed_phase():
@@ -235,7 +525,11 @@ def test_create_extension_draft_preserves_saved_story_parameters():
     context_manager.load_chain_for_extension.return_value = ("Full story chain", metadata)
     config = MagicMock()
     config.get_field_value.side_effect = lambda section, field: (
-        True if (section, field) in {("system", "debug"), ("system", "verbose")} else None
+        True
+        if (section, field) in {("system", "debug"), ("system", "verbose")}
+        else 5
+        if (section, field) == ("images", "image_count")
+        else None
     )
     executor = MagicMock()
 
@@ -264,6 +558,7 @@ def test_create_extension_draft_preserves_saved_story_parameters():
         )
 
     assert result.story == "Continuation"
+    assert result.metadata["image_count"] == 5
 
 
 def test_init_config_create_overwrite_contract(tmp_path):
@@ -477,3 +772,138 @@ def test_generated_story_library_links_saved_extension_context(tmp_path, monkeyp
         story = StoryForgeWorkflow().list_generated_stories()[0]
 
     assert story.context_id == "linked_story"
+
+
+def test_custom_output_and_extend_link_survive_checkpoint_pruning(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    output = tmp_path / "custom" / "nested" / "book"
+    output.mkdir(parents=True)
+    story_path = output / "story.txt"
+    story_path.write_text("Story: A Lasting Story\n\nOnce upon a time.", encoding="utf-8")
+    context_path = tmp_path / "linked.md"
+    context_path.write_text("# Story Context", encoding="utf-8")
+    checkpoint_dir = tmp_path / "data" / "checkpoints"
+    checkpoint_dir.mkdir(parents=True)
+    checkpoint = checkpoint_dir / "checkpoint_old.yaml"
+    checkpoint.write_text(
+        f"resolved_config:\n  output_directory: {output}\ngenerated_content:\n  context_file: {context_path}\n",
+        encoding="utf-8",
+    )
+    manager = MagicMock()
+    manager.checkpoint_dir = checkpoint_dir
+    with patch("storyforge.workflow.CheckpointManager", return_value=manager):
+        first = StoryForgeWorkflow().list_generated_stories()
+        checkpoint.unlink()
+        second = StoryForgeWorkflow().list_generated_stories()
+        story_path.unlink()
+        unavailable = StoryForgeWorkflow().list_generated_stories()
+        story_path.write_text("Story: A Lasting Story\n\nOnce upon a time.", encoding="utf-8")
+        restored = StoryForgeWorkflow().list_generated_stories()
+
+    assert first[0].context_id == "linked"
+    assert len(second) == 1
+    assert second[0].story_path == str(story_path.resolve())
+    assert second[0].context_id == "linked"
+    assert unavailable == []
+    assert restored[0].context_id == "linked"
+
+
+def test_story_index_preserves_concurrent_additions_and_context_updates(tmp_path):
+    index_path = tmp_path / "data" / "generated_stories.sqlite3"
+    stories = []
+    contexts = []
+    for number in range(12):
+        output = tmp_path / f"book-{number}"
+        output.mkdir()
+        story = output / "story.txt"
+        story.write_text(f"Story: Book {number}", encoding="utf-8")
+        context = tmp_path / f"book-{number}.md"
+        context.write_text(f"# Book {number}", encoding="utf-8")
+        stories.append(story)
+        contexts.append(context)
+
+    with patch.object(StoryForgeWorkflow, "_story_index_path", return_value=index_path):
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            list(pool.map(StoryForgeWorkflow._remember_story_path, stories))
+            list(
+                pool.map(
+                    lambda pair: StoryForgeWorkflow._remember_story_path(*pair), zip(stories, contexts, strict=True)
+                )
+            )
+        records = StoryForgeWorkflow._read_story_index()
+
+    assert len(records) == len(stories)
+    assert records == {
+        str(story.resolve()): str(context.resolve()) for story, context in zip(stories, contexts, strict=True)
+    }
+
+
+def test_story_index_migrates_existing_json_records(tmp_path):
+    index_path = tmp_path / "data" / "generated_stories.sqlite3"
+    index_path.parent.mkdir()
+    old_story = tmp_path / "old" / "story.txt"
+    old_story.parent.mkdir()
+    old_story.write_text("Story: Old", encoding="utf-8")
+    (index_path.parent / "generated_stories.json").write_text(
+        json.dumps({str(old_story.resolve()): None}), encoding="utf-8"
+    )
+    new_story = tmp_path / "new" / "story.txt"
+    new_story.parent.mkdir()
+    new_story.write_text("Story: New", encoding="utf-8")
+
+    with patch.object(StoryForgeWorkflow, "_story_index_path", return_value=index_path):
+        StoryForgeWorkflow._remember_story_path(new_story)
+        records = StoryForgeWorkflow._read_story_index()
+
+    assert set(records) == {str(old_story.resolve()), str(new_story.resolve())}
+
+
+@pytest.mark.parametrize("malformed", ["- invalid checkpoint list\n", "resolved_config: invalid\n"])
+def test_malformed_legacy_checkpoint_does_not_block_new_draft(tmp_path, monkeypatch, malformed):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("STORYFORGE_TEST_CONTEXT_DIR", str(tmp_path / "context"))
+    checkpoint_dir = tmp_path / "data" / "checkpoints"
+    checkpoint_dir.mkdir(parents=True)
+    (checkpoint_dir / "checkpoint_bad.yaml").write_text(malformed, encoding="utf-8")
+    config = Config()
+    with (
+        patch("storyforge.checkpoint.user_data_dir", return_value=str(tmp_path / "data")),
+        patch("storyforge.workflow.load_config", return_value=config),
+        patch("storyforge.phase_executor.load_config", return_value=config),
+        patch("storyforge.phase_executor.get_backend", side_effect=AssertionError("provider initialized")),
+    ):
+        draft = StoryForgeWorkflow().create_draft(
+            GenerationRequest(
+                prompt="An offline story", debug=True, use_context=False, output_dir=str(tmp_path / "book")
+            )
+        )
+
+    assert draft.story.startswith("Ethan and Isaac")
+
+
+def test_malformed_legacy_checkpoint_does_not_block_extension(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    checkpoint_dir = tmp_path / "data" / "checkpoints"
+    checkpoint_dir.mkdir(parents=True)
+    (checkpoint_dir / "checkpoint_bad.yaml").write_text("- invalid checkpoint list\n", encoding="utf-8")
+    selected = {"filepath": str(tmp_path / "saved.md"), "filename": "saved"}
+    context_manager = MagicMock()
+    context_manager.list_available_contexts.return_value = [selected]
+    context_manager.load_chain_for_extension.return_value = ("Original story", {})
+    executor = MagicMock()
+
+    def create_extension(prompt, cli_arguments, resolved_config, **_kwargs):
+        checkpoint = CheckpointData.create_new(prompt, cli_arguments, resolved_config)
+        checkpoint.generated_content["story"] = "Continuation"
+        return checkpoint
+
+    executor.execute_new_session.side_effect = create_extension
+    with (
+        patch("storyforge.checkpoint.user_data_dir", return_value=str(tmp_path / "data")),
+        patch("storyforge.workflow.ContextManager", return_value=context_manager),
+        patch("storyforge.workflow.load_config", return_value=Config()),
+        patch.object(StoryForgeWorkflow, "_executor", return_value=executor),
+    ):
+        draft = StoryForgeWorkflow().create_extension_draft(ExtensionRequest(story_id="saved"))
+
+    assert draft.story == "Continuation"

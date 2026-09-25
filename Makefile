@@ -24,7 +24,7 @@ coverage: install
 
 # Run the app
 run: install
-	$(VENV_ACTIVATE) storyforge --help
+	$(VENV_ACTIVATE) storyforge
 
 # Run the bundled StoryForge MCP server over stdio.
 mcp: install
