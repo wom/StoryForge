@@ -67,8 +67,9 @@ without initializing a provider:
 sf "Any prompt here" --debug
 ```
 
-Accepting and saving that draft remains API-free. Refinement, video prompts, and image generation initialize a provider
-only when requested and therefore require the corresponding API key.
+Accepting and saving that draft remains API-free when you choose **zero illustrations** and **no video prompt** on the
+media screen. The default illustration count may be nonzero. Refinement, video prompts, and image generation initialize
+a provider when requested and therefore require the corresponding API key.
 
 ## Project Structure
 
@@ -223,9 +224,17 @@ uv venv .venv && source .venv/bin/activate && uv pip install .[dev]
 
 ## Release Process
 
-1. **Update version** in `storyforge/__init__.py` (`pyproject.toml` reads it dynamically)
-2. **Update CHANGELOG.md** — move `[Unreleased]` items into a new versioned section with today's date
-3. **Validate**: `make lint && make lint-check && make test && make coverage`
-4. **Commit**: `git commit -am "release: v0.0.X"`
-5. **Tag**: `git tag v0.0.X`
-6. **Push**: `git push origin main --tags`
+1. **Prepare:** Finish release fixes, update `storyforge/__init__.py` (the package version is dynamic), and move the
+   relevant `[Unreleased]` notes into a dated version section in `CHANGELOG.md`.
+2. **Validate:** Run `make lint-check`, `make test`, and `make coverage`. Build both distributions with
+   `uv build` (`--offline` when build dependencies are already cached); inspect wheel/sdist metadata, README rendering,
+   and inclusion of `py.typed` and `test_story.txt`. Run the distribution smoke test above in a fresh environment.
+3. **Commit and tag:** Commit the final source and documentation, then tag that exact commit with the matching `vX.Y.Z`
+   tag and push the commit and tag. Do not tag a tree that still has release blockers.
+4. **Publish:** Create the GitHub release from that tag with notes matching the changelog; upload the inspected
+   distributions to PyPI using the project's configured trusted-publishing flow or `uv publish` with credentials
+   supplied outside the repository. Never put tokens in commands recorded in shell history or documentation.
+5. **Verify:** Confirm the GitHub tag/release, PyPI package version, wheel/sdist metadata, and installable CLI all
+   report the same version. For the current milestone that version is `0.1.0` / `v0.1.0`.
+
+Tagging and publication are maintainer actions after the readiness gate; preparing this release does not perform them.

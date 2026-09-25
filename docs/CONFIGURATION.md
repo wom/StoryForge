@@ -17,7 +17,7 @@ sf config init --force
 sf config init --path /path/to/custom/storyforge.ini
 ```
 
-The default location is the XDG config directory (typically `~/.config/storyforge/storyforge.ini`). You can override the location by setting the `STORYFORGE_CONFIG` environment variable:
+The default creation location is the XDG config directory (typically `~/.config/storyforge/storyforge.ini`). To create the file elsewhere, use `sf config init --path ...` as shown above. Then set `STORYFORGE_CONFIG` to select that existing file for subsequent commands:
 
 ```bash
 export STORYFORGE_CONFIG=/path/to/custom/storyforge.ini
@@ -192,5 +192,5 @@ choices from this configuration file.
 ## Tips
 - Prefer using the XDG config path or set `STORYFORGE_CONFIG` to keep your project-level settings separate.
 - Use `debug = true` to load the bundled story without a provider key. Refinement, video prompts, and image generation
-  still require a provider if requested.
+  still require a provider if requested. Choose zero illustrations and no video prompt when finalizing without a key.
 - If you need reproducible runs, enable context and consider tracking the files used (the application stores context metadata in the session checkpoint).
