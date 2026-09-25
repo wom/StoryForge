@@ -1,14 +1,9 @@
 # StoryForge
 
-```text
-    · ✦ ·
-   ╲  │  ╱
-╭─────┴─────╮
-╰───╲___╱───╯
-   ╱_____╲
-```
 
 A full-screen TUI and MCP server that generate illustrated children's stories using AI. Provide a prompt, get a story and AI-generated images.
+
+<img width="1029" height="626" alt="image" src="https://github.com/user-attachments/assets/dbe63bb4-ff9e-4e02-88c1-940d606a5101" />
 
 ## Features
 
@@ -26,6 +21,9 @@ A full-screen TUI and MCP server that generate illustrated children's stories us
 - 🔌 **Bundled MCP server** — the TUI and classic CLI share one typed workflow API that can also be registered with other MCP hosts
 - ⚙️ **In-app configuration editor** — edit and validate the active INI file without leaving the TUI
 - 🤖 **Provider model picker** — refresh available models and persist separate story/image choices
+
+<img width="1103" height="732" alt="image" src="https://github.com/user-attachments/assets/53f8269d-f46d-4130-b06c-78f5384b10ad" />
+
 
 **Backends:** [Google Gemini](https://aistudio.google.com/apikey) ✅ | [OpenAI](https://platform.openai.com/api-keys) ✅ | [Anthropic](https://console.anthropic.com/) (text only)
 
